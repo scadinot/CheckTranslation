@@ -30,9 +30,6 @@ partial class Form1
     {
         components = new System.ComponentModel.Container();
         dataGridView = new DataGridView();
-        colProject = new DataGridViewTextBoxColumn();
-        colFile = new DataGridViewTextBoxColumn();
-        colKey = new DataGridViewTextBoxColumn();
         colFrench = new DataGridViewTextBoxColumn();
         colTranslation = new DataGridViewTextBoxColumn();
         toolStrip = new ToolStrip();
@@ -56,9 +53,6 @@ partial class Form1
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         dataGridView.Columns.AddRange(new DataGridViewColumn[]
         {
-            colProject,
-            colFile,
-            colKey,
             colFrench,
             colTranslation
         });
@@ -70,33 +64,6 @@ partial class Form1
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         dataGridView.Size = new Size(1200, 628);
         dataGridView.TabIndex = 0;
-        //
-        // colProject
-        //
-        colProject.DataPropertyName = "Project";
-        colProject.HeaderText = "Projet";
-        colProject.Name = "colProject";
-        colProject.ReadOnly = true;
-        colProject.Visible = false;
-        colProject.Width = 140;
-        //
-        // colFile
-        //
-        colFile.DataPropertyName = "File";
-        colFile.HeaderText = "Fichier";
-        colFile.Name = "colFile";
-        colFile.ReadOnly = true;
-        colFile.Visible = false;
-        colFile.Width = 140;
-        //
-        // colKey
-        //
-        colKey.DataPropertyName = "Key";
-        colKey.HeaderText = "Clé";
-        colKey.Name = "colKey";
-        colKey.ReadOnly = true;
-        colKey.Visible = false;
-        colKey.Width = 200;
         //
         // colFrench
         //
@@ -208,9 +175,6 @@ partial class Form1
     #endregion
 
     private DataGridView dataGridView;
-    private DataGridViewTextBoxColumn colProject;
-    private DataGridViewTextBoxColumn colFile;
-    private DataGridViewTextBoxColumn colKey;
     private DataGridViewTextBoxColumn colFrench;
     private DataGridViewTextBoxColumn colTranslation;
     private ToolStrip toolStrip;

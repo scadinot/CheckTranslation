@@ -8,9 +8,6 @@ namespace CheckTranslation;
 internal static class ExcelReader
 {
     // Colonnes du fichier ResX Manager (1-indexees)
-    private const int ColProject = 1;  // A
-    private const int ColFile = 2;     // B
-    private const int ColKey = 3;      // C
     private const int ColComment = 4;  // D
     private const int ColFrench = 5;   // E (langue par defaut, sans en-tete)
 
@@ -33,9 +30,6 @@ internal static class ExcelReader
             var row = new TranslationRow
             {
                 RowNumber = r,
-                Project = worksheet.Cell(r, ColProject).GetString(),
-                File = worksheet.Cell(r, ColFile).GetString(),
-                Key = worksheet.Cell(r, ColKey).GetString(),
                 French = worksheet.Cell(r, ColFrench).GetString(),
             };
 
