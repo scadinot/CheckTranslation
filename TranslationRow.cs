@@ -5,6 +5,7 @@ namespace CheckTransation;
 /// </summary>
 internal sealed class TranslationRow
 {
+    public int RowNumber { get; set; }
     public string Project { get; set; } = string.Empty;
     public string File { get; set; } = string.Empty;
     public string Key { get; set; } = string.Empty;

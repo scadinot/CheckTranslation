@@ -15,13 +15,15 @@ internal static class ExcelReader
     private const int ColFrench = 5;   // E (langue par defaut, sans en-tete)
     private const int ColGerman = 7;   // G (.de-DE)
 
-    public static List<TranslationRow> Load(string filePath)
+    public static List<TranslationRow> Load(string filePath, IProgress<int>? progress = null)
     {
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
 
         var rows = new List<TranslationRow>();
         int lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+        int totalRows = lastRow - 1;
+        int lastPercent = 0;
 
         for (int r = 2; r <= lastRow; r++)
         {
@@ -31,14 +33,35 @@ internal static class ExcelReader
 
             rows.Add(new TranslationRow
             {
+                RowNumber = r,
                 Project = worksheet.Cell(r, ColProject).GetString(),
                 File = worksheet.Cell(r, ColFile).GetString(),
                 Key = worksheet.Cell(r, ColKey).GetString(),
                 French = worksheet.Cell(r, ColFrench).GetString(),
                 German = worksheet.Cell(r, ColGerman).GetString(),
             });
+
+            int percent = (r - 1) * 100 / totalRows;
+            if (percent > lastPercent)
+            {
+                lastPercent = percent;
+                progress?.Report(percent);
+            }
         }
 
         return rows;
+    }
+
+    public static void Save(string filePath, IReadOnlyList<TranslationRow> rows)
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheets.First();
+
+        foreach (var row in rows)
+        {
+            worksheet.Cell(row.RowNumber, ColGerman).Value = row.German;
+        }
+
+        workbook.Save();
     }
 }

@@ -1,51 +1,92 @@
-namespace CheckTransation
+namespace CheckTransation;
+
+public partial class Form1 : Form
 {
-    public partial class Form1 : Form
+    private string? _currentFilePath;
+
+    public Form1()
     {
-        private const string InputFile = "Input.xlsx";
+        InitializeComponent();
+        btnOpen.Click += BtnOpen_Click;
+        btnSave.Click += BtnSave_Click;
+    }
 
-        public Form1()
+    private async void BtnOpen_Click(object? sender, EventArgs e)
+    {
+        using var dialog = new OpenFileDialog
         {
-            InitializeComponent();
-            Load += Form1_Load;
+            Title = "Sélectionner un fichier Excel de traductions",
+            Filter = "Fichiers Excel (*.xlsx)|*.xlsx",
+            RestoreDirectory = true,
+        };
+
+        if (dialog.ShowDialog() != DialogResult.OK)
+            return;
+
+        _currentFilePath = dialog.FileName;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Value = 0;
+        statusFileName.Text = $"Fichier : {Path.GetFileName(_currentFilePath)}";
+        statusRowCount.Text = "Chargement...";
+        statusLanguage.Text = "Langue : Allemand";
+        dataGridView.AutoGenerateColumns = false;
+        btnOpen.Enabled = false;
+
+        try
+        {
+            var progress = new Progress<int>(percent => statusProgressBar.Value = percent);
+            var rows = await Task.Run(() => ExcelReader.Load(_currentFilePath, progress));
+
+            dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
+            statusRowCount.Text = $"Lignes : {rows.Count}";
+            btnSave.Enabled = true;
         }
-
-        private async void Form1_Load(object? sender, EventArgs e)
+        catch (Exception ex)
         {
-            statusLabel.Text = "Chargement du fichier Excel...";
-            dataGridView.AutoGenerateColumns = false;
-
-            try
-            {
-                var rows = await Task.Run(() => ExcelReader.Load(GetInputPath()));
-
-                dataGridView.DataSource = rows;
-                statusLabel.Text = $"{rows.Count} traductions chargees (lignes @Invariant ignorees)";
-            }
-            catch (Exception ex)
-            {
-                statusLabel.Text = "Erreur de chargement";
-                MessageBox.Show(
-                    $"Impossible de charger le fichier Excel :\n\n{ex.Message}",
-                    "Erreur",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
+            statusRowCount.Text = "Erreur de chargement";
+            MessageBox.Show(
+                $"Impossible de charger le fichier Excel :\n\n{ex.Message}",
+                "Erreur",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
-
-        private static string GetInputPath()
+        finally
         {
-            // Cherche Input.xlsx a cote de l'executable, sinon dans le répertoire courant
-            var exeDir = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
-            var path = Path.Combine(exeDir, InputFile);
-            if (File.Exists(path))
-                return path;
+            statusProgressBar.Visible = false;
+            btnOpen.Enabled = true;
+        }
+    }
 
-            if (File.Exists(InputFile))
-                return Path.GetFullPath(InputFile);
+    private async void BtnSave_Click(object? sender, EventArgs e)
+    {
+        if (_currentFilePath is null || dataGridView.DataSource is not SortableBindingList<TranslationRow> rows)
+            return;
 
-            throw new FileNotFoundException(
-                $"Le fichier '{InputFile}' est introuvable dans '{exeDir}' ni dans '{Environment.CurrentDirectory}'.");
+        btnSave.Enabled = false;
+        btnOpen.Enabled = false;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Style = ProgressBarStyle.Marquee;
+
+        try
+        {
+            var filePath = _currentFilePath;
+            await Task.Run(() => ExcelReader.Save(filePath, rows));
+            statusRowCount.Text = $"Lignes : {rows.Count} (sauvegardé)";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Impossible de sauvegarder le fichier Excel :\n\n{ex.Message}",
+                "Erreur",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            statusProgressBar.Style = ProgressBarStyle.Blocks;
+            statusProgressBar.Visible = false;
+            btnSave.Enabled = true;
+            btnOpen.Enabled = true;
         }
     }
 }
