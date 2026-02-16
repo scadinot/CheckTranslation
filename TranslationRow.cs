@@ -1,7 +1,7 @@
 namespace CheckTransation;
 
 /// <summary>
-/// Represente une ligne de traduction extraite du fichier Excel ResX Manager.
+/// Représente une ligne de traduction extraite du fichier Excel ResX Manager.
 /// </summary>
 internal sealed class TranslationRow
 {
