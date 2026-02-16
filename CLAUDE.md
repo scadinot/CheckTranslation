@@ -1,36 +1,36 @@
-# CLAUDE.md - AI Assistant Guide for CheckTransation
+# CLAUDE.md - Guide pour assistants IA sur CheckTransation
 
-## Project Overview
+## Apercu du projet
 
-CheckTransation is a .NET 10.0 Windows Forms desktop application for processing/validating transaction data from Excel spreadsheets. The project is in its early stage with scaffolding in place but minimal functional implementation.
+CheckTransation est une application de bureau Windows Forms en .NET 10.0 destinee au traitement et a la validation de donnees de transactions a partir de fichiers Excel. Le projet est a un stade initial avec une structure de base en place mais peu de fonctionnalites implementees.
 
-## Tech Stack
+## Stack technique
 
-- **Language:** C# (latest with nullable references and implicit usings)
-- **Framework:** .NET 10.0 (`net10.0-windows`)
-- **UI:** Windows Forms (WinForms)
-- **Build System:** MSBuild via `dotnet` CLI
-- **IDE Support:** Visual Studio (solution file: `CheckTransation.slnx`)
-- **Dependencies:** None beyond the .NET SDK (no NuGet packages)
+- **Langage :** C# (version recente avec references nullables et usings implicites)
+- **Framework :** .NET 10.0 (`net10.0-windows`)
+- **Interface :** Windows Forms (WinForms)
+- **Systeme de build :** MSBuild via la CLI `dotnet`
+- **Support IDE :** Visual Studio (fichier solution : `CheckTransation.slnx`)
+- **Dependances :** Aucune en dehors du SDK .NET (pas de packages NuGet)
 
-## Project Structure
+## Structure du projet
 
 ```
 CheckTransation/
-├── CheckTransation.slnx       # Solution file
-├── CheckTransation.csproj      # Project file (WinExe, net10.0-windows)
-├── Program.cs                  # Application entry point (STAThread, runs Form1)
-├── Form1.cs                    # Main form logic (partial class)
-├── Form1.Designer.cs           # Auto-generated form designer code
-├── Form1.resx                  # Form resource definitions
-├── Input.xlsx                  # Excel input data file (~3 MB)
-├── README.md                   # Minimal readme
-└── CLAUDE.md                   # This file
+├── CheckTransation.slnx       # Fichier solution
+├── CheckTransation.csproj      # Fichier projet (WinExe, net10.0-windows)
+├── Program.cs                  # Point d'entree de l'application (STAThread, lance Form1)
+├── Form1.cs                    # Logique du formulaire principal (classe partielle)
+├── Form1.Designer.cs           # Code genere automatiquement par le designer
+├── Form1.resx                  # Definitions des ressources du formulaire
+├── Input.xlsx                  # Fichier de donnees Excel en entree (~3 Mo)
+├── README.md                   # Readme minimal
+└── CLAUDE.md                   # Ce fichier
 ```
 
-This is a flat, single-project solution with no subdirectories for source, tests, or configuration.
+Il s'agit d'une solution a projet unique, a plat, sans sous-repertoires pour les sources, les tests ou la configuration.
 
-## Build & Run Commands
+## Commandes de build et d'execution
 
 ```bash
 # Build (debug)
@@ -39,53 +39,53 @@ dotnet build
 # Build (release)
 dotnet build -c Release
 
-# Run the application
+# Lancer l'application
 dotnet run
 
-# Clean build artifacts
+# Nettoyer les artefacts de build
 dotnet clean
 
-# Publish
+# Publier
 dotnet publish -c Release
 ```
 
-## Key Architecture Notes
+## Notes d'architecture
 
-- **Entry point:** `Program.cs` — standard WinForms bootstrap with `ApplicationConfiguration.Initialize()` and `Application.Run(new Form1())`
-- **Main form:** `Form1.cs` / `Form1.Designer.cs` — uses the partial class code-behind pattern standard for WinForms
-- **No dependency injection, no MVVM, no layered architecture** — simple form-based application
-- **Input data:** `Input.xlsx` is checked into the repo and likely contains transaction data the application processes
+- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()` et `Application.Run(new Form1())`
+- **Formulaire principal :** `Form1.cs` / `Form1.Designer.cs` — utilise le patron classe partielle (code-behind) standard de WinForms
+- **Pas d'injection de dependances, pas de MVVM, pas d'architecture en couches** — application simple basee sur des formulaires
+- **Donnees d'entree :** `Input.xlsx` est versionne dans le depot et contient vraisemblablement les donnees de transactions que l'application traite
 
-## Code Conventions
+## Conventions de code
 
-- **Namespace:** `CheckTransation` (note: the project name has a typo — "Transation" instead of "Transaction"; maintain this spelling for consistency)
-- **Nullable references:** Enabled — use `?` annotations where nulls are possible
-- **Implicit usings:** Enabled — common `System.*` and `System.Windows.Forms.*` namespaces are auto-imported
-- **File-scoped namespaces:** Used in `Program.cs` (`namespace CheckTransation;`), block-scoped in `Form1.cs` — either style is acceptable but prefer file-scoped for new files
-- **Access modifiers:** Use `internal` for classes not exposed outside the assembly (see `Program.cs`), `public` for form classes
+- **Namespace :** `CheckTransation` (note : le nom du projet contient une faute de frappe — "Transation" au lieu de "Transaction" ; conserver cette orthographe pour la coherence)
+- **References nullables :** Activees — utiliser les annotations `?` lorsque les valeurs nulles sont possibles
+- **Usings implicites :** Actives — les espaces de noms courants `System.*` et `System.Windows.Forms.*` sont importes automatiquement
+- **Namespaces a portee de fichier :** Utilises dans `Program.cs` (`namespace CheckTransation;`), a portee de bloc dans `Form1.cs` — les deux styles sont acceptables mais privilegier la portee de fichier pour les nouveaux fichiers
+- **Modificateurs d'acces :** Utiliser `internal` pour les classes non exposees hors de l'assembly (voir `Program.cs`), `public` pour les classes de formulaires
 
-## Important Warnings
+## Avertissements importants
 
-- **Do NOT edit `Form1.Designer.cs` by hand** — this file is auto-generated by the Windows Forms designer. UI layout changes should be made through the designer or by carefully modifying the `InitializeComponent()` method
-- **Do NOT modify `Form1.resx` manually** — managed by the designer
-- **`Input.xlsx` is a binary file** — do not attempt to read or parse it as text; use a library like `EPPlus`, `ClosedXML`, or `NPOI` if Excel reading is needed in code
-- **The project targets `net10.0-windows`** — it requires the .NET 10 SDK and only runs on Windows
+- **Ne PAS modifier `Form1.Designer.cs` a la main** — ce fichier est genere automatiquement par le designer Windows Forms. Les modifications de l'interface doivent etre faites via le designer ou en modifiant soigneusement la methode `InitializeComponent()`
+- **Ne PAS modifier `Form1.resx` manuellement** — gere par le designer
+- **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire ou l'analyser comme du texte ; utiliser une bibliotheque comme `EPPlus`, `ClosedXML` ou `NPOI` si la lecture Excel est necessaire dans le code
+- **Le projet cible `net10.0-windows`** — il necessite le SDK .NET 10 et ne fonctionne que sous Windows
 
-## Testing
+## Tests
 
-- No test framework is currently configured
-- No test project exists in the solution
-- If adding tests, use a separate test project with xUnit or NUnit (e.g., `CheckTransation.Tests/`)
+- Aucun framework de test n'est actuellement configure
+- Aucun projet de test n'existe dans la solution
+- Pour ajouter des tests, utiliser un projet de test separe avec xUnit ou NUnit (ex. : `CheckTransation.Tests/`)
 
-## Linting & Formatting
+## Linting et formatage
 
-- No `.editorconfig`, StyleCop, or Roslyn analyzer configuration exists
-- Follow standard C# conventions (PascalCase for public members, camelCase for locals/parameters)
-- No CI/CD pipeline is configured
+- Aucune configuration `.editorconfig`, StyleCop ou analyseur Roslyn n'existe
+- Suivre les conventions C# standard (PascalCase pour les membres publics, camelCase pour les variables locales et parametres)
+- Aucun pipeline CI/CD n'est configure
 
-## Git Workflow
+## Workflow Git
 
-- **Main branch:** `master`
-- **Ignore patterns:** Standard Visual Studio `.gitignore` (build output, user files, packages)
-- **Commits are GPG-signed** via SSH key
-- Keep `Input.xlsx` changes minimal — it is a large binary file (~3 MB)
+- **Branche principale :** `master`
+- **Patterns d'exclusion :** `.gitignore` standard Visual Studio (artefacts de build, fichiers utilisateur, packages)
+- **Les commits sont signes** via cle SSH
+- Limiter les modifications de `Input.xlsx` — c'est un fichier binaire volumineux (~3 Mo)
