@@ -87,7 +87,7 @@ dotnet publish -c Release
 ## Avertissements importants
 
 - **Ne PAS modifier `Form1.Designer.cs` a la main** — ce fichier est genere automatiquement par le designer Windows Forms. Les modifications de l'interface doivent etre faites via le designer ou en modifiant soigneusement la methode `InitializeComponent()`
-- **Ne PAS modifier `Form1.resx` manuellement** — gere par le designer
+- **Ne PAS modifier `Form1.resx` manuellement** — géré par le designer
 - **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire ou l'analyser comme du texte ; la lecture se fait via ClosedXML dans `ExcelReader.cs`
 - **Le projet cible `net10.0-windows`** — il nécessite le SDK .NET 10 et ne fonctionne que sous Windows
 
