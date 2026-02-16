@@ -2,7 +2,7 @@
 
 ## Apercu du projet
 
-CheckTransation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporte par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification.
+CheckTransation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification.
 
 ## Stack technique
 
@@ -26,7 +26,7 @@ CheckTransation/
 ├── Form1.resx                  # Definitions des ressources du formulaire
 ├── ExcelReader.cs              # Lecture du fichier Excel ResX Manager avec filtrage @Invariant
 ├── TranslationRow.cs           # Modele de donnees pour une ligne de traduction
-├── Input.xlsx                  # Fichier Excel exporte par ResX Manager (~3 Mo)
+├── Input.xlsx                  # Fichier Excel exporté par ResX Manager (~3 Mo)
 ├── README.md                   # Readme minimal
 └── CLAUDE.md                   # Ce fichier
 ```
