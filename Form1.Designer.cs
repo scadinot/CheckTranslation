@@ -83,7 +83,7 @@ namespace CheckTransation
             // colKey
             //
             colKey.DataPropertyName = "Key";
-            colKey.HeaderText = "Cle";
+            colKey.HeaderText = "Clé";
             colKey.Name = "colKey";
             colKey.ReadOnly = true;
             colKey.Width = 200;
