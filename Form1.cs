@@ -35,7 +35,7 @@ namespace CheckTransation
 
         private static string GetInputPath()
         {
-            // Cherche Input.xlsx a cote de l'executable, sinon dans le repertoire courant
+            // Cherche Input.xlsx a cote de l'executable, sinon dans le répertoire courant
             var exeDir = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
             var path = Path.Combine(exeDir, InputFile);
             if (File.Exists(path))
