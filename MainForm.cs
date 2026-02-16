@@ -1,4 +1,8 @@
 using System.ComponentModel;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
 namespace CheckTranslation;
 
@@ -22,6 +26,8 @@ public partial class MainForm : Form
     private bool _filterIconClicked;
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
+    private static readonly HttpClient HttpClient = new();
+    private int _contextMenuRowIndex = -1;
 
     public MainForm()
     {
@@ -38,6 +44,7 @@ public partial class MainForm : Form
         dataGridView.CellPainting += DataGridView_CellPainting;
         dataGridView.CellMouseDown += DataGridView_CellMouseDown;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
+        InitContextMenu();
     }
 
     private void InitLanguageMenu()
@@ -361,6 +368,101 @@ public partial class MainForm : Form
     {
         using var form = new ConfigForm();
         form.ShowDialog(this);
+    }
+
+    // --- Menu contextuel ---
+
+    private void InitContextMenu()
+    {
+        var menuTranslate = new ToolStripMenuItem("Traduire");
+        menuTranslate.Click += MenuTranslate_Click;
+
+        var contextMenu = new ContextMenuStrip();
+        contextMenu.Items.Add(menuTranslate);
+
+        dataGridView.CellMouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+                return;
+
+            if (dataGridView.Columns[e.ColumnIndex].Name != "colTranslation")
+                return;
+
+            _contextMenuRowIndex = e.RowIndex;
+            var cellRect = dataGridView.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
+            contextMenu.Show(dataGridView, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
+        };
+    }
+
+    private async void MenuTranslate_Click(object? sender, EventArgs e)
+    {
+        if (_contextMenuRowIndex < 0) return;
+
+        var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+        if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
+
+        var config = AppConfig.Current;
+        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var previousValue = row.Translation;
+        row.Translation = "Traduction en cours...";
+        dataGridView.Refresh();
+
+        try
+        {
+            var translation = await TranslateAsync(row.French, config);
+            row.Translation = translation;
+        }
+        catch (Exception ex)
+        {
+            row.Translation = previousValue;
+            MessageBox.Show($"Erreur lors de la traduction :\n\n{ex.Message}",
+                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            dataGridView.Refresh();
+        }
+    }
+
+    private async Task<string> TranslateAsync(string frenchText, AppConfig config)
+    {
+        var systemPrompt = config.Prompt.Replace("{language}", _currentLanguage.Name);
+
+        var requestBody = new
+        {
+            model = config.ModelName,
+            temperature = 0,
+            messages = new object[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = frenchText },
+            },
+        };
+
+        var json = JsonSerializer.Serialize(requestBody);
+
+        var baseUri = new Uri(config.Url.TrimEnd('/') + "/");
+        var endpoint = new Uri(baseUri, "chat/completions");
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Key);
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var response = await HttpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+        return doc.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString()?.Trim() ?? string.Empty;
     }
 
     // --- Icônes ---
