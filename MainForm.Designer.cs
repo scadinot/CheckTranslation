@@ -1,6 +1,6 @@
 namespace CheckTranslation;
 
-partial class Form1
+partial class MainForm
 {
     /// <summary>
     ///  Required designer variable.
@@ -36,6 +36,7 @@ partial class Form1
         btnOpen = new ToolStripButton();
         btnSave = new ToolStripButton();
         btnLanguage = new ToolStripDropDownButton();
+        btnConfig = new ToolStripButton();
         statusStrip = new StatusStrip();
         statusProgressBar = new ToolStripProgressBar();
         statusFileName = new ToolStripStatusLabel();
@@ -88,7 +89,7 @@ partial class Form1
         // toolStrip
         //
         toolStrip.ImageScalingSize = new Size(24, 24);
-        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnLanguage });
+        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnLanguage, new ToolStripSeparator(), btnConfig });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
         toolStrip.Size = new Size(1200, 31);
@@ -113,6 +114,12 @@ partial class Form1
         btnLanguage.Enabled = false;
         btnLanguage.Name = "btnLanguage";
         btnLanguage.ToolTipText = "Langue à contrôler";
+        //
+        // btnConfig
+        //
+        btnConfig.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnConfig.Name = "btnConfig";
+        btnConfig.ToolTipText = "Configuration";
         //
         // statusStrip
         //
@@ -163,6 +170,7 @@ partial class Form1
         Controls.Add(statusStrip);
         Controls.Add(toolStrip);
         Name = "Form1";
+        ShowIcon = false;
         StartPosition = FormStartPosition.CenterScreen;
         Text = "CheckTranslation - Contrôle des traductions";
         ((System.ComponentModel.ISupportInitialize)dataGridView).EndInit();
@@ -181,6 +189,7 @@ partial class Form1
     private ToolStripButton btnOpen;
     private ToolStripButton btnSave;
     private ToolStripDropDownButton btnLanguage;
+    private ToolStripButton btnConfig;
     private StatusStrip statusStrip;
     private ToolStripProgressBar statusProgressBar;
     private ToolStripStatusLabel statusFileName;
