@@ -3,7 +3,7 @@ using ClosedXML.Excel;
 namespace CheckTransation;
 
 /// <summary>
-/// Lit le fichier Excel exporte par ResX Manager et retourne les lignes de traduction.
+/// Lit le fichier Excel exporté par ResX Manager et retourne les lignes de traduction.
 /// </summary>
 internal static class ExcelReader
 {
