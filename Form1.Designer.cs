@@ -128,7 +128,7 @@ namespace CheckTransation
             Controls.Add(statusStrip);
             Name = "Form1";
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "CheckTransation - Controle des traductions";
+            Text = "CheckTransation - Contrôle des traductions";
             ((System.ComponentModel.ISupportInitialize)dataGridView).EndInit();
             statusStrip.ResumeLayout(false);
             statusStrip.PerformLayout();
