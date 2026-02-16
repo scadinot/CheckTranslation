@@ -1,4 +1,4 @@
-namespace CheckTransation;
+namespace CheckTranslation;
 
 partial class Form1
 {
@@ -34,10 +34,11 @@ partial class Form1
         colFile = new DataGridViewTextBoxColumn();
         colKey = new DataGridViewTextBoxColumn();
         colFrench = new DataGridViewTextBoxColumn();
-        colGerman = new DataGridViewTextBoxColumn();
+        colTranslation = new DataGridViewTextBoxColumn();
         toolStrip = new ToolStrip();
         btnOpen = new ToolStripButton();
         btnSave = new ToolStripButton();
+        btnLanguage = new ToolStripDropDownButton();
         statusStrip = new StatusStrip();
         statusProgressBar = new ToolStripProgressBar();
         statusFileName = new ToolStripStatusLabel();
@@ -59,7 +60,7 @@ partial class Form1
             colFile,
             colKey,
             colFrench,
-            colGerman
+            colTranslation
         });
         dataGridView.Dock = DockStyle.Fill;
         dataGridView.Location = new Point(0, 0);
@@ -107,42 +108,44 @@ partial class Form1
         colFrench.Name = "colFrench";
         colFrench.ReadOnly = true;
         //
-        // colGerman
+        // colTranslation
         //
-        colGerman.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-        colGerman.DataPropertyName = "German";
-        colGerman.DefaultCellStyle = new DataGridViewCellStyle { WrapMode = DataGridViewTriState.True };
-        colGerman.FillWeight = 50;
-        colGerman.HeaderText = "Allemand";
-        colGerman.Name = "colGerman";
-        colGerman.ReadOnly = false;
+        colTranslation.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        colTranslation.DataPropertyName = "Translation";
+        colTranslation.DefaultCellStyle = new DataGridViewCellStyle { WrapMode = DataGridViewTriState.True };
+        colTranslation.FillWeight = 50;
+        colTranslation.HeaderText = "Traduction";
+        colTranslation.Name = "colTranslation";
+        colTranslation.ReadOnly = false;
         //
         // toolStrip
         //
-        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave });
+        toolStrip.ImageScalingSize = new Size(24, 24);
+        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnLanguage });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
-        toolStrip.Size = new Size(1200, 25);
+        toolStrip.Size = new Size(1200, 31);
         toolStrip.TabIndex = 2;
         //
         // btnOpen
         //
-        btnOpen.Image = SystemIcons.Application.ToBitmap();
-        btnOpen.ImageTransparentColor = Color.Magenta;
+        btnOpen.DisplayStyle = ToolStripItemDisplayStyle.Image;
         btnOpen.Name = "btnOpen";
-        btnOpen.Size = new Size(60, 22);
-        btnOpen.Text = "Ouvrir";
-        btnOpen.ToolTipText = "Ouvrir un fichier Excel de traductions";
+        btnOpen.ToolTipText = "Ouvrir";
         //
         // btnSave
         //
+        btnSave.DisplayStyle = ToolStripItemDisplayStyle.Image;
         btnSave.Enabled = false;
-        btnSave.Image = SystemIcons.Application.ToBitmap();
-        btnSave.ImageTransparentColor = Color.Magenta;
         btnSave.Name = "btnSave";
-        btnSave.Size = new Size(80, 22);
-        btnSave.Text = "Sauvegarder";
-        btnSave.ToolTipText = "Sauvegarder les modifications dans le fichier Excel";
+        btnSave.ToolTipText = "Sauvegarder";
+        //
+        // btnLanguage
+        //
+        btnLanguage.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnLanguage.Enabled = false;
+        btnLanguage.Name = "btnLanguage";
+        btnLanguage.ToolTipText = "Langue à contrôler";
         //
         // statusStrip
         //
@@ -194,7 +197,7 @@ partial class Form1
         Controls.Add(toolStrip);
         Name = "Form1";
         StartPosition = FormStartPosition.CenterScreen;
-        Text = "CheckTransation - Contrôle des traductions";
+        Text = "CheckTranslation - Contrôle des traductions";
         ((System.ComponentModel.ISupportInitialize)dataGridView).EndInit();
         statusStrip.ResumeLayout(false);
         statusStrip.PerformLayout();
@@ -209,10 +212,11 @@ partial class Form1
     private DataGridViewTextBoxColumn colFile;
     private DataGridViewTextBoxColumn colKey;
     private DataGridViewTextBoxColumn colFrench;
-    private DataGridViewTextBoxColumn colGerman;
+    private DataGridViewTextBoxColumn colTranslation;
     private ToolStrip toolStrip;
     private ToolStripButton btnOpen;
     private ToolStripButton btnSave;
+    private ToolStripDropDownButton btnLanguage;
     private StatusStrip statusStrip;
     private ToolStripProgressBar statusProgressBar;
     private ToolStripStatusLabel statusFileName;

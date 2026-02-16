@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace CheckTransation;
+namespace CheckTranslation;
 
 internal class SortableBindingList<T> : BindingList<T>
 {

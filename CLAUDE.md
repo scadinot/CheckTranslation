@@ -1,8 +1,8 @@
-# CLAUDE.md - Guide pour assistants IA sur CheckTransation
+# CLAUDE.md - Guide pour assistants IA sur CheckTranslation
 
 ## Apercu du projet
 
-CheckTransation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification.
+CheckTranslation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification.
 
 ## Stack technique
 
@@ -10,16 +10,16 @@ CheckTransation est une application de bureau Windows Forms en .NET 10.0 destine
 - **Framework :** .NET 10.0 (`net10.0-windows`)
 - **Interface :** Windows Forms (WinForms)
 - **Systeme de build :** MSBuild via la CLI `dotnet`
-- **Support IDE :** Visual Studio (fichier solution : `CheckTransation.slnx`)
+- **Support IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
 - **Dependances :**
   - `ClosedXML` 0.104.2 — lecture des fichiers Excel (.xlsx)
 
 ## Structure du projet
 
 ```
-CheckTransation/
-├── CheckTransation.slnx       # Fichier solution
-├── CheckTransation.csproj      # Fichier projet (WinExe, net10.0-windows)
+CheckTranslation/
+├── CheckTranslation.slnx       # Fichier solution
+├── CheckTranslation.csproj      # Fichier projet (WinExe, net10.0-windows)
 ├── Program.cs                  # Point d'entree de l'application (STAThread, lance Form1)
 ├── Form1.cs                    # Logique du formulaire principal (chargement et affichage)
 ├── Form1.Designer.cs           # Code genere par le designer (DataGridView + StatusStrip)
@@ -78,7 +78,7 @@ dotnet publish -c Release
 
 ## Conventions de code
 
-- **Namespace :** `CheckTransation` (note : le nom du projet contient une faute de frappe — "Transation" au lieu de "Transaction" ; conserver cette orthographe pour la coherence)
+- **Namespace :** `CheckTranslation` (note : le nom du projet contient une faute de frappe — "Translation" au lieu de "Transaction" ; conserver cette orthographe pour la coherence)
 - **References nullables :** Activees — utiliser les annotations `?` lorsque les valeurs nulles sont possibles
 - **Usings implicites :** Actives — les espaces de noms courants `System.*` et `System.Windows.Forms.*` sont importes automatiquement
 - **Namespaces a portee de fichier :** Utilises dans `Program.cs`, `ExcelReader.cs`, `TranslationRow.cs` — a portee de bloc dans `Form1.cs` — les deux styles sont acceptables mais privilegier la portee de fichier pour les nouveaux fichiers
@@ -95,7 +95,7 @@ dotnet publish -c Release
 
 - Aucun framework de test n'est actuellement configure
 - Aucun projet de test n'existe dans la solution
-- Pour ajouter des tests, utiliser un projet de test separe avec xUnit ou NUnit (ex. : `CheckTransation.Tests/`)
+- Pour ajouter des tests, utiliser un projet de test separe avec xUnit ou NUnit (ex. : `CheckTranslation.Tests/`)
 
 ## Linting et formatage
 

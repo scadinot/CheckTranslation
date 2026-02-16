@@ -1,4 +1,4 @@
-namespace CheckTransation;
+namespace CheckTranslation;
 
 internal static class Program
 {

@@ -1,6 +1,6 @@
 using ClosedXML.Excel;
 
-namespace CheckTransation;
+namespace CheckTranslation;
 
 /// <summary>
 /// Lit le fichier Excel exporté par ResX Manager et retourne les lignes de traduction.
@@ -13,9 +13,8 @@ internal static class ExcelReader
     private const int ColKey = 3;      // C
     private const int ColComment = 4;  // D
     private const int ColFrench = 5;   // E (langue par defaut, sans en-tete)
-    private const int ColGerman = 7;   // G (.de-DE)
 
-    public static List<TranslationRow> Load(string filePath, IProgress<int>? progress = null)
+    public static List<TranslationRow> Load(string filePath, int[] translationColumns, int activeColumn, IProgress<int>? progress = null)
     {
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
@@ -31,15 +30,20 @@ internal static class ExcelReader
             if (comment.Contains("@Invariant", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            rows.Add(new TranslationRow
+            var row = new TranslationRow
             {
                 RowNumber = r,
                 Project = worksheet.Cell(r, ColProject).GetString(),
                 File = worksheet.Cell(r, ColFile).GetString(),
                 Key = worksheet.Cell(r, ColKey).GetString(),
                 French = worksheet.Cell(r, ColFrench).GetString(),
-                German = worksheet.Cell(r, ColGerman).GetString(),
-            });
+            };
+
+            foreach (var col in translationColumns)
+                row.Translations[col] = worksheet.Cell(r, col).GetString();
+
+            row.Translation = row.Translations.GetValueOrDefault(activeColumn, string.Empty);
+            rows.Add(row);
 
             int percent = (r - 1) * 100 / totalRows;
             if (percent > lastPercent)
@@ -52,14 +56,19 @@ internal static class ExcelReader
         return rows;
     }
 
-    public static void Save(string filePath, IReadOnlyList<TranslationRow> rows)
+    public static void Save(string filePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
     {
+        // Synchroniser la langue active dans le dictionnaire avant de sauvegarder
+        foreach (var row in rows)
+            row.Translations[activeColumn] = row.Translation;
+
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
 
         foreach (var row in rows)
         {
-            worksheet.Cell(row.RowNumber, ColGerman).Value = row.German;
+            foreach (var (col, value) in row.Translations)
+                worksheet.Cell(row.RowNumber, col).Value = value;
         }
 
         workbook.Save();
