@@ -72,7 +72,7 @@ dotnet publish -c Release
 - **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()` et `Application.Run(new Form1())`
 - **Formulaire principal :** `Form1.cs` / `Form1.Designer.cs` — DataGridView en lecture seule avec colonnes Projet, Fichier, Cle, Francais, Allemand + barre de statut
 - **Lecture Excel :** `ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D)
-- **Modele :** `TranslationRow.cs` — POCO avec proprietes Project, File, Key, French, German
+- **Modele :** `TranslationRow.cs` — POCO avec propriétés Project, File, Key, French, German
 - **Pas d'injection de dependances, pas de MVVM, pas d'architecture en couches** — application simple basee sur des formulaires
 - **Donnees d'entree :** `Input.xlsx` est copie dans le repertoire de sortie via `CopyToOutputDirectory`
 
