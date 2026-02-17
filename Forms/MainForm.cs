@@ -252,6 +252,8 @@ public partial class MainForm : Form
         if (_currentFilePath is null || _allRows is null)
             return;
 
+        dataGridView.EndEdit();
+
         btnSave.Enabled = false;
         btnOpen.Enabled = false;
 
@@ -475,20 +477,33 @@ public partial class MainForm : Form
         var menuTranslate = new ToolStripMenuItem("Traduire");
         menuTranslate.Click += MenuTranslate_Click;
 
+        var menuVerify = new ToolStripMenuItem("Vérifier la traduction");
+        menuVerify.Click += MenuVerify_Click;
+
         var menuTranslateSelection = new ToolStripMenuItem("Traduire la sélection");
         menuTranslateSelection.Click += MenuTranslateSelection_Click;
 
+        var menuVerifySelection = new ToolStripMenuItem("Vérifier la sélection");
+        menuVerifySelection.Click += MenuVerifySelection_Click;
+
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(menuTranslate);
+        contextMenu.Items.Add(menuVerify);
         contextMenu.Items.Add(menuTranslateSelection);
+        contextMenu.Items.Add(menuVerifySelection);
 
         contextMenu.Opening += (_, _) =>
         {
             int count = dataGridView.SelectedRows.Count;
             menuTranslate.Visible = count <= 1;
+            menuVerify.Visible = count <= 1;
             menuTranslateSelection.Visible = count > 1;
+            menuVerifySelection.Visible = count > 1;
             if (count > 1)
+            {
                 menuTranslateSelection.Text = $"Traduire la sélection ({count} lignes)";
+                menuVerifySelection.Text = $"Vérifier la sélection ({count} lignes)";
+            }
         };
 
         dataGridView.CellMouseClick += (_, e) =>
@@ -538,6 +553,54 @@ public partial class MainForm : Form
         finally
         {
             dataGridView.Refresh();
+        }
+    }
+
+    private async void MenuVerify_Click(object? sender, EventArgs e)
+    {
+        if (_contextMenuRowIndex < 0) return;
+
+        var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+        if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
+
+        if (string.IsNullOrWhiteSpace(row.Translation))
+        {
+            MessageBox.Show("Aucune traduction à vérifier pour cette ligne.",
+                "Vérification", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var config = AppConfig.Current;
+        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var previousComment = row.Comment;
+        row.Comment = "Vérification...";
+        dataGridView.Refresh();
+
+        statusRowCount.Text = "Vérification en cours...";
+        UseWaitCursor = true;
+
+        try
+        {
+            row.Comment = await Translator.VerifyAsync(row.French, row.Translation, _currentLanguage.Name, config);
+            dataGridView.Refresh();
+        }
+        catch (Exception ex)
+        {
+            row.Comment = previousComment;
+            dataGridView.Refresh();
+            MessageBox.Show($"Erreur lors de la vérification :\n\n{ex.Message}",
+                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            statusRowCount.Text = "Prêt";
+            UseWaitCursor = false;
         }
     }
 
@@ -605,6 +668,73 @@ public partial class MainForm : Form
 
         if (errors > 0)
             MessageBox.Show($"{errors} traduction(s) ont échoué.",
+                "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    private async void MenuVerifySelection_Click(object? sender, EventArgs e)
+    {
+        var config = AppConfig.Current;
+        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var rows = dataGridView.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(r => r.DataBoundItem as TranslationRow)
+            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French) && !string.IsNullOrWhiteSpace(r.Translation))
+            .Cast<TranslationRow>()
+            .ToList();
+
+        if (rows.Count == 0) return;
+
+        btnOpen.Enabled = false;
+        btnSave.Enabled = false;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Maximum = rows.Count;
+        statusProgressBar.Value = 0;
+
+        int done = 0;
+        int errors = 0;
+
+        foreach (var row in rows)
+        {
+            var previousComment = row.Comment;
+            row.Comment = "Vérification...";
+            dataGridView.Refresh();
+
+            try
+            {
+                row.Comment = await Translator.VerifyAsync(row.French, row.Translation, _currentLanguage.Name, config);
+            }
+            catch
+            {
+                row.Comment = previousComment;
+                errors++;
+            }
+            finally
+            {
+                done++;
+                statusProgressBar.Value = done;
+                statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
+                dataGridView.Refresh();
+            }
+        }
+
+        statusProgressBar.Visible = false;
+        btnOpen.Enabled = true;
+        btnSave.Enabled = _allRows is not null;
+
+        var total = _allRows?.Count ?? 0;
+        var visible = dataGridView.RowCount;
+        statusRowCount.Text = _filters.Count > 0
+            ? $"Lignes : {visible} / {total}"
+            : $"Lignes : {total}";
+
+        if (errors > 0)
+            MessageBox.Show($"{errors} vérification(s) ont échoué.",
                 "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 

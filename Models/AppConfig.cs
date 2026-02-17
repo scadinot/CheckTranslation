@@ -9,7 +9,8 @@ internal sealed class AppConfig
 
     public static AppConfig Current { get; private set; } = new();
 
-    public string Prompt { get; set; } = string.Empty;
+    public string TranslatePrompt { get; set; } = string.Empty;
+    public string VerifyPrompt { get; set; } = string.Empty;
     public string Key { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     public string ModelName { get; set; } = string.Empty;
@@ -17,7 +18,7 @@ internal sealed class AppConfig
 
     public void Save()
     {
-        var dto = new ConfigDto(Prompt, EncryptKey(Key), Url, ModelName, ShowDetails);
+        var dto = new ConfigDto(TranslatePrompt, VerifyPrompt, EncryptKey(Key), Url, ModelName, ShowDetails);
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(FilePath, json);
         Current = this;
@@ -35,7 +36,8 @@ internal sealed class AppConfig
 
         var config = new AppConfig
         {
-            Prompt = dto.Prompt,
+            TranslatePrompt = dto.TranslatePrompt,
+            VerifyPrompt = dto.VerifyPrompt,
             Key = DecryptKey(dto.Key),
             Url = dto.Url,
             ModelName = dto.ModelName,
@@ -77,5 +79,5 @@ internal sealed class AppConfig
         }
     }
 
-    private record ConfigDto(string Prompt, string Key, string Url, string ModelName, bool ShowDetails = false);
+    private record ConfigDto(string TranslatePrompt, string VerifyPrompt, string Key, string Url, string ModelName, bool ShowDetails = false);
 }

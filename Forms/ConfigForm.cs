@@ -12,7 +12,8 @@ internal sealed partial class ConfigForm : Form
     private void LoadConfig()
     {
         var config = AppConfig.Current;
-        txtPrompt.Text = config.Prompt;
+        txtTranslatePrompt.Text = config.TranslatePrompt;
+        txtVerifyPrompt.Text = config.VerifyPrompt;
         txtKey.Text = config.Key;
         txtUrl.Text = config.Url;
         txtModelName.Text = config.ModelName;
@@ -22,7 +23,8 @@ internal sealed partial class ConfigForm : Form
     {
         var config = new AppConfig
         {
-            Prompt = txtPrompt.Text.Trim(),
+            TranslatePrompt = txtTranslatePrompt.Text.Trim(),
+            VerifyPrompt = txtVerifyPrompt.Text.Trim(),
             Key = txtKey.Text.Trim(),
             Url = txtUrl.Text.Trim(),
             ModelName = txtModelName.Text.Trim(),
