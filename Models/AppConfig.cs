@@ -1,10 +1,11 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace CheckTranslation;
 
 internal sealed class AppConfig
 {
-    private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "CheckTransation.cfg");
+    private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "CheckTranslation.config.json");
 
     public static AppConfig Current { get; private set; } = new();
 
@@ -12,42 +13,34 @@ internal sealed class AppConfig
     public string Key { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     public string ModelName { get; set; } = string.Empty;
+    public bool ShowDetails { get; set; } = false;
 
     public void Save()
     {
-        var lines = new[]
-        {
-            $"Prompt={Prompt.Replace("\r", "").Replace("\n", "\\n")}",
-            $"Key={EncryptKey(Key)}",
-            $"Url={Url}",
-            $"ModelName={ModelName}",
-        };
-        File.WriteAllLines(FilePath, lines);
+        var dto = new ConfigDto(Prompt, EncryptKey(Key), Url, ModelName, ShowDetails);
+        var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(FilePath, json);
         Current = this;
     }
 
     public static AppConfig Load()
     {
-        var config = new AppConfig();
         if (!File.Exists(FilePath))
-            return config;
+            return new AppConfig();
 
-        foreach (var line in File.ReadAllLines(FilePath))
+        var json = File.ReadAllText(FilePath);
+        var dto = JsonSerializer.Deserialize<ConfigDto>(json);
+        if (dto is null)
+            return new AppConfig();
+
+        var config = new AppConfig
         {
-            var sep = line.IndexOf('=');
-            if (sep < 0) continue;
-
-            var key = line[..sep];
-            var value = line[(sep + 1)..];
-
-            switch (key)
-            {
-                case "Prompt": config.Prompt = value.Replace("\\n", "\n"); break;
-                case "Key": config.Key = DecryptKey(value); break;
-                case "Url": config.Url = value; break;
-                case "ModelName": config.ModelName = value; break;
-            }
-        }
+            Prompt = dto.Prompt,
+            Key = DecryptKey(dto.Key),
+            Url = dto.Url,
+            ModelName = dto.ModelName,
+            ShowDetails = dto.ShowDetails,
+        };
 
         Current = config;
         return config;
@@ -83,4 +76,6 @@ internal sealed class AppConfig
             return encryptedText;
         }
     }
+
+    private record ConfigDto(string Prompt, string Key, string Url, string ModelName, bool ShowDetails = false);
 }

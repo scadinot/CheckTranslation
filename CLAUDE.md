@@ -2,7 +2,7 @@
 
 ## Apercu du projet
 
-CheckTranslation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification.
+CheckTranslation est une application de bureau Windows Forms en .NET 10.0 destinee au controle des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification et edition.
 
 ## Stack technique
 
@@ -12,26 +12,35 @@ CheckTranslation est une application de bureau Windows Forms en .NET 10.0 destin
 - **Systeme de build :** MSBuild via la CLI `dotnet`
 - **Support IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
 - **Dependances :**
-  - `ClosedXML` 0.104.2 — lecture des fichiers Excel (.xlsx)
+  - `ClosedXML` 0.104.2 — lecture et ecriture des fichiers Excel (.xlsx)
 
 ## Structure du projet
 
 ```
 CheckTranslation/
-├── CheckTranslation.slnx       # Fichier solution
+├── CheckTranslation.slnx        # Fichier solution
 ├── CheckTranslation.csproj      # Fichier projet (WinExe, net10.0-windows)
-├── Program.cs                  # Point d'entree de l'application (STAThread, lance Form1)
-├── Form1.cs                    # Logique du formulaire principal (chargement et affichage)
-├── Form1.Designer.cs           # Code genere par le designer (DataGridView + StatusStrip)
-├── Form1.resx                  # Definitions des ressources du formulaire
-├── ExcelReader.cs              # Lecture du fichier Excel ResX Manager avec filtrage @Invariant
-├── TranslationRow.cs           # Modele de donnees pour une ligne de traduction
-├── Input.xlsx                  # Fichier Excel exporté par ResX Manager (~3 Mo)
-├── README.md                   # Readme minimal
-└── CLAUDE.md                   # Ce fichier
+├── Program.cs                   # Point d'entree (STAThread, lance MainForm)
+├── Forms/
+│   ├── MainForm.cs              # Logique du formulaire principal
+│   ├── MainForm.Designer.cs     # Code genere par le designer (ne pas modifier)
+│   ├── MainForm.resx            # Ressources du formulaire (ne pas modifier)
+│   ├── ConfigForm.cs            # Dialog de configuration
+│   ├── ConfigForm.Designer.cs   # Code genere par le designer (ne pas modifier)
+│   └── ConfigForm.resx          # Ressources du dialog (ne pas modifier)
+├── Models/
+│   ├── TranslationRow.cs        # Modele de donnees pour une ligne de traduction
+│   └── AppConfig.cs             # Configuration persistante avec chiffrement DPAPI
+├── Services/
+│   ├── ExcelReader.cs           # Lecture/ecriture du fichier Excel via ClosedXML
+│   └── Translator.cs            # Appel API de traduction IA (OpenAI-compatible)
+├── Controls/
+│   └── SortableBindingList.cs   # BindingList<T> avec tri cote client
+├── Resources/                   # Icones PNG (drapeaux, open, save, config)
+├── Input.xlsx                   # Fichier Excel exporté par ResX Manager (~3 Mo)
+├── README.md                    # Documentation utilisateur
+└── CLAUDE.md                    # Ce fichier
 ```
-
-Il s'agit d'une solution a projet unique, a plat, sans sous-repertoires pour les sources, les tests ou la configuration.
 
 ## Format du fichier Excel (Input.xlsx)
 
@@ -43,7 +52,7 @@ Le fichier est un export ResX Resource Manager contenant une feuille `ResXResour
 | B       | File                     |
 | C       | Key                      |
 | D       | Comment (contient `@Invariant` pour les lignes a ignorer) |
-| E       | Texte francais (langue par defaut, sans en-tete) |
+| E       | Texte francais (langue par defaut) |
 | F       | Comment.de-DE            |
 | G       | .de-DE (allemand)        |
 | H-S     | Autres langues (en-US, es-ES, it-IT, nl-NL, pl-PL, zh-CN) |
@@ -69,27 +78,32 @@ dotnet publish -c Release
 
 ## Notes d'architecture
 
-- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()` et `Application.Run(new Form1())`
-- **Formulaire principal :** `Form1.cs` / `Form1.Designer.cs` — DataGridView en lecture seule avec colonnes Projet, Fichier, Cle, Francais, Allemand + barre de statut
-- **Lecture Excel :** `ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D)
-- **Modele :** `TranslationRow.cs` — POCO avec propriétés Project, File, Key, French, German
-- **Pas d'injection de dépendances, pas de MVVM, pas d'architecture en couches** — application simple basee sur des formulaires
+- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()` et `Application.Run(new MainForm())`
+- **Formulaire principal :** `Forms/MainForm.cs` / `Forms/MainForm.Designer.cs` — DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule) et Traduction (editable) + barre d'outils + barre de statut
+- **Configuration :** `Forms/ConfigForm.cs` — dialog modal pour editer `Models/AppConfig.cs`
+- **Lecture/ecriture Excel :** `Services/ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D), lit les colonnes A/B/C/E et toutes les colonnes de traduction
+- **Traduction IA :** `Services/Translator.cs` — appel HTTP vers une API compatible OpenAI (`/chat/completions`), `HttpClient` statique
+- **Modele :** `Models/TranslationRow.cs` — POCO avec proprietes Project, File, Key, French, Translation et dictionnaire des traductions par colonne
+- **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` (JSON indenté), cle API chiffree via DPAPI (`DataProtectionScope.CurrentUser`), memorise aussi `ShowDetails`
+- **Tri :** `Controls/SortableBindingList.cs` — etend `BindingList<T>` pour activer le tri dans le DataGridView
 - **Donnees d'entree :** `Input.xlsx` est copie dans le repertoire de sortie via `CopyToOutputDirectory`
 
 ## Conventions de code
 
-- **Namespace :** `CheckTranslation` (note : le nom du projet contient une faute de frappe — "Translation" au lieu de "Transaction" ; conserver cette orthographe pour la coherence)
+- **Namespace :** `CheckTranslation` (unique pour tout le projet, independamment des sous-dossiers)
 - **References nullables :** Activees — utiliser les annotations `?` lorsque les valeurs nulles sont possibles
 - **Usings implicites :** Actives — les espaces de noms courants `System.*` et `System.Windows.Forms.*` sont importes automatiquement
-- **Namespaces a portee de fichier :** Utilises dans `Program.cs`, `ExcelReader.cs`, `TranslationRow.cs` — a portee de bloc dans `Form1.cs` — les deux styles sont acceptables mais privilegier la portee de fichier pour les nouveaux fichiers
-- **Modificateurs d'acces :** Utiliser `internal` pour les classes non exposees hors de l'assembly (voir `Program.cs`), `public` pour les classes de formulaires
+- **Namespaces a portee de fichier :** Utilises dans tous les fichiers sources
+- **Modificateurs d'acces :** `internal` pour les classes non exposees hors de l'assembly, `public` pour les classes de formulaires
 
 ## Avertissements importants
 
-- **Ne PAS modifier `Form1.Designer.cs` a la main** — ce fichier est genere automatiquement par le designer Windows Forms. Les modifications de l'interface doivent etre faites via le designer ou en modifiant soigneusement la methode `InitializeComponent()`
-- **Ne PAS modifier `Form1.resx` manuellement** — géré par le designer
-- **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire ou l'analyser comme du texte ; la lecture se fait via ClosedXML dans `ExcelReader.cs`
-- **Le projet cible `net10.0-windows`** — il nécessite le SDK .NET 10 et ne fonctionne que sous Windows
+- **Ne PAS modifier `MainForm.Designer.cs` ni `ConfigForm.Designer.cs` a la main** — ces fichiers sont generes automatiquement par le designer Windows Forms
+- **Ne PAS modifier `MainForm.resx` ni `ConfigForm.resx` manuellement** — geres par le designer
+- **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — necessaire car ils sont dans un sous-dossier `Forms/` ; ne pas supprimer ces entrees
+- **Les colonnes Projet/Fichier/Cle sont creees programmatiquement** dans `MainForm.cs` (`InitDetailsColumns`) et inserees avant les colonnes du Designer ; ne pas les ajouter dans `MainForm.Designer.cs`
+- **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire comme du texte ; la lecture se fait via ClosedXML dans `Services/ExcelReader.cs`
+- **Le projet cible `net10.0-windows`** — il necessite le SDK .NET 10 et ne fonctionne que sous Windows
 
 ## Tests
 

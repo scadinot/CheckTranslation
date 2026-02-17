@@ -6,6 +6,9 @@ namespace CheckTranslation;
 internal sealed class TranslationRow
 {
     public int RowNumber { get; set; }
+    public string Project { get; set; } = string.Empty;
+    public string File { get; set; } = string.Empty;
+    public string Key { get; set; } = string.Empty;
     public string French { get; set; } = string.Empty;
     public string Translation { get; set; } = string.Empty;
     public Dictionary<int, string> Translations { get; } = [];

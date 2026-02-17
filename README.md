@@ -6,9 +6,10 @@ Application de bureau Windows Forms (.NET 10.0) destinee au controle et a la tra
 
 - **Chargement Excel** : ouverture d'un fichier `.xlsx` exporte par ResX Resource Manager
 - **Affichage en tableau** : texte francais (lecture seule) et traduction (editable) cote a cote
+- **Colonnes de detail** : bouton bascule pour afficher/masquer les colonnes Projet, Fichier et Cle (memorise)
 - **7 langues supportees** : Anglais, Allemand, Espagnol, Italien, Neerlandais, Polonais, Chinois
 - **Selection de langue** : boutons drapeaux dans la barre d'outils (mode radio)
-- **Filtres par colonne** : icone entonnoir dans les en-tetes, saisie de texte pour filtrer
+- **Filtres par colonne** : icone entonnoir dans les en-tetes, saisie de texte pour filtrer (toutes colonnes)
 - **Tri par colonne** : clic sur l'en-tete pour trier (ascendant/descendant)
 - **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API ChatGPT (OpenAI)
 - **Sauvegarde** : ecriture des modifications dans le fichier Excel d'origine
@@ -34,10 +35,10 @@ dotnet build -c Release
 
 ## Configuration
 
-Au premier lancement, cliquer sur l'icone de configuration (engrenage) pour definir :
+Au premier lancement, cliquer sur l'icone de configuration pour definir :
 
 - **Prompt** : instructions pour le modele de traduction (utiliser `{language}` comme placeholder pour la langue cible)
-- **Key** : cle API OpenAI (chiffree dans le fichier de configuration)
+- **Key** : cle API OpenAI (chiffree dans `CheckTranslation.config.json`)
 - **Url** : URL de base de l'API (ex: `https://api.openai.com/v1`)
 - **Model name** : nom du modele (ex: `gpt-4`)
 

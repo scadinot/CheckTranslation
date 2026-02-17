@@ -23,6 +23,10 @@ public partial class MainForm : Form
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
     private int _contextMenuRowIndex = -1;
+    private ToolStripButton? btnDetails;
+    private DataGridViewTextBoxColumn? colProject;
+    private DataGridViewTextBoxColumn? colFile;
+    private DataGridViewTextBoxColumn? colKey;
 
     public MainForm()
     {
@@ -33,6 +37,8 @@ public partial class MainForm : Form
         btnOpen.Click += BtnOpen_Click;
         btnSave.Click += BtnSave_Click;
         btnConfig.Click += BtnConfig_Click;
+        InitDetailsColumns();
+        InitDetailsButton();
         InitLanguageButtons();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
@@ -40,6 +46,76 @@ public partial class MainForm : Form
         dataGridView.CellMouseDown += DataGridView_CellMouseDown;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
         InitContextMenu();
+        ApplyShowDetails(AppConfig.Current.ShowDetails);
+    }
+
+    private void InitDetailsColumns()
+    {
+        colProject = new DataGridViewTextBoxColumn
+        {
+            Name = "colProject",
+            DataPropertyName = "Project",
+            HeaderText = "Projet",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 8,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Programmatic,
+        };
+        colFile = new DataGridViewTextBoxColumn
+        {
+            Name = "colFile",
+            DataPropertyName = "File",
+            HeaderText = "Fichier",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 15,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Programmatic,
+        };
+        colKey = new DataGridViewTextBoxColumn
+        {
+            Name = "colKey",
+            DataPropertyName = "Key",
+            HeaderText = "Clé",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 15,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Programmatic,
+        };
+        dataGridView.Columns.Insert(0, colProject);
+        dataGridView.Columns.Insert(1, colFile);
+        dataGridView.Columns.Insert(2, colKey);
+    }
+
+    private void InitDetailsButton()
+    {
+        btnDetails = new ToolStripButton
+        {
+            Image = CreateDetailsIcon(24),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            CheckOnClick = true,
+            ToolTipText = "Afficher/Masquer Projet, Fichier, Clé",
+        };
+        btnDetails.Click += BtnDetails_Click;
+        toolStrip.Items.Insert(2, btnDetails);
+    }
+
+    private void BtnDetails_Click(object? sender, EventArgs e)
+    {
+        bool show = btnDetails!.Checked;
+        ApplyShowDetails(show);
+        var config = AppConfig.Current;
+        config.ShowDetails = show;
+        config.Save();
+    }
+
+    private void ApplyShowDetails(bool show)
+    {
+        if (colProject is null) return;
+        colProject.Visible = show;
+        colFile!.Visible = show;
+        colKey!.Visible = show;
+        if (btnDetails is not null)
+            btnDetails.Checked = show;
     }
 
     private void InitLanguageButtons()
@@ -344,7 +420,10 @@ public partial class MainForm : Form
         {
             filtered = prop switch
             {
-                "French" => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "Project"     => filtered.Where(r => r.Project.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "File"        => filtered.Where(r => r.File.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "Key"         => filtered.Where(r => r.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "French"      => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "Translation" => filtered.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 _ => filtered,
             };
@@ -431,6 +510,23 @@ public partial class MainForm : Form
     }
 
     // --- Icônes ---
+
+    private static Bitmap CreateDetailsIcon(int size)
+    {
+        var bmp = new Bitmap(size, size);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var brush = new SolidBrush(Color.FromArgb(80, 80, 80));
+        int barH = 3;
+        int gap = (size - 3 * barH) / 4;
+        for (int i = 0; i < 3; i++)
+        {
+            int y = gap + i * (barH + gap);
+            g.FillRectangle(brush, 2, y, 5, barH);
+            g.FillRectangle(brush, 9, y, size - 11, barH);
+        }
+        return bmp;
+    }
 
     private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirectory, "Resources");
 

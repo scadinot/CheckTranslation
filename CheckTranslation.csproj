@@ -19,6 +19,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Update="Forms\MainForm.resx">
+      <LogicalName>CheckTranslation.MainForm.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Forms\ConfigForm.resx">
+      <LogicalName>CheckTranslation.ConfigForm.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Input.xlsx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
