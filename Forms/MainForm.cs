@@ -475,8 +475,21 @@ public partial class MainForm : Form
         var menuTranslate = new ToolStripMenuItem("Traduire");
         menuTranslate.Click += MenuTranslate_Click;
 
+        var menuTranslateSelection = new ToolStripMenuItem("Traduire la sélection");
+        menuTranslateSelection.Click += MenuTranslateSelection_Click;
+
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(menuTranslate);
+        contextMenu.Items.Add(menuTranslateSelection);
+
+        contextMenu.Opening += (_, _) =>
+        {
+            int count = dataGridView.SelectedRows.Count;
+            menuTranslate.Visible = count <= 1;
+            menuTranslateSelection.Visible = count > 1;
+            if (count > 1)
+                menuTranslateSelection.Text = $"Traduire la sélection ({count} lignes)";
+        };
 
         dataGridView.CellMouseClick += (_, e) =>
         {
@@ -526,6 +539,73 @@ public partial class MainForm : Form
         {
             dataGridView.Refresh();
         }
+    }
+
+    private async void MenuTranslateSelection_Click(object? sender, EventArgs e)
+    {
+        var config = AppConfig.Current;
+        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var rows = dataGridView.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(r => r.DataBoundItem as TranslationRow)
+            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
+            .Cast<TranslationRow>()
+            .ToList();
+
+        if (rows.Count == 0) return;
+
+        btnOpen.Enabled = false;
+        btnSave.Enabled = false;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Maximum = rows.Count;
+        statusProgressBar.Value = 0;
+
+        int done = 0;
+        int errors = 0;
+
+        foreach (var row in rows)
+        {
+            var previousValue = row.Translation;
+            row.Translation = "Traduction en cours...";
+            dataGridView.Refresh();
+
+            try
+            {
+                row.Translation = await Translator.TranslateAsync(row.French, config, _currentLanguage.Name);
+            }
+            catch
+            {
+                row.Translation = previousValue;
+                errors++;
+            }
+            finally
+            {
+                done++;
+                statusProgressBar.Value = done;
+                statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
+                dataGridView.Refresh();
+            }
+        }
+
+        statusProgressBar.Visible = false;
+        btnOpen.Enabled = true;
+        btnSave.Enabled = _allRows is not null;
+
+        var total = _allRows?.Count ?? 0;
+        var visible = dataGridView.RowCount;
+        statusRowCount.Text = _filters.Count > 0
+            ? $"Lignes : {visible} / {total}"
+            : $"Lignes : {total}";
+
+        if (errors > 0)
+            MessageBox.Show($"{errors} traduction(s) ont échoué.",
+                "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     // --- Icônes ---
