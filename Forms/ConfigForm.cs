@@ -26,6 +26,7 @@ internal sealed partial class ConfigForm : Form
             Key = txtKey.Text.Trim(),
             Url = txtUrl.Text.Trim(),
             ModelName = txtModelName.Text.Trim(),
+            ShowDetails = AppConfig.Current.ShowDetails,
         };
         config.Save();
     }

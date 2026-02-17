@@ -27,6 +27,7 @@ public partial class MainForm : Form
     private DataGridViewTextBoxColumn? colProject;
     private DataGridViewTextBoxColumn? colFile;
     private DataGridViewTextBoxColumn? colKey;
+    private DataGridViewTextBoxColumn colComment = null!;
 
     public MainForm()
     {
@@ -38,6 +39,7 @@ public partial class MainForm : Form
         btnSave.Click += BtnSave_Click;
         btnConfig.Click += BtnConfig_Click;
         InitDetailsColumns();
+        InitCommentColumn();
         InitDetailsButton();
         InitLanguageButtons();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
@@ -84,6 +86,21 @@ public partial class MainForm : Form
         dataGridView.Columns.Insert(0, colProject);
         dataGridView.Columns.Insert(1, colFile);
         dataGridView.Columns.Insert(2, colKey);
+    }
+
+    private void InitCommentColumn()
+    {
+        colComment = new DataGridViewTextBoxColumn
+        {
+            Name = "colComment",
+            DataPropertyName = "Comment",
+            HeaderText = "Commentaire",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 25,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Programmatic,
+        };
+        dataGridView.Columns.Add(colComment);
     }
 
     private void InitDetailsButton()
@@ -144,6 +161,7 @@ public partial class MainForm : Form
     {
         _currentLanguage = lang;
         colTranslation.HeaderText = lang.Name;
+        colComment.HeaderText = $"Commentaire {lang.Name}";
         statusLanguage.Image = LoadIcon($"{lang.Code}.png");
         statusLanguage.Text = $"Langue : {lang.Name}";
 
@@ -425,6 +443,7 @@ public partial class MainForm : Form
                 "Key"         => filtered.Where(r => r.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "French"      => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "Translation" => filtered.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "Comment"     => filtered.Where(r => r.Comment.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 _ => filtered,
             };
         }

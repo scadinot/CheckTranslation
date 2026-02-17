@@ -40,9 +40,13 @@ internal static class ExcelReader
             };
 
             foreach (var col in translationColumns)
+            {
                 row.Translations[col] = worksheet.Cell(r, col).GetString();
+                row.Comments[col] = worksheet.Cell(r, col - 1).GetString();
+            }
 
             row.Translation = row.Translations.GetValueOrDefault(activeColumn, string.Empty);
+            row.Comment = row.Comments.GetValueOrDefault(activeColumn, string.Empty);
             rows.Add(row);
 
             int percent = (r - 1) * 100 / totalRows;
