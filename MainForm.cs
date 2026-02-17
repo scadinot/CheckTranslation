@@ -1,8 +1,4 @@
 using System.ComponentModel;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 
 namespace CheckTranslation;
 
@@ -26,7 +22,6 @@ public partial class MainForm : Form
     private bool _filterIconClicked;
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
-    private static readonly HttpClient HttpClient = new();
     private int _contextMenuRowIndex = -1;
 
     public MainForm()
@@ -420,7 +415,7 @@ public partial class MainForm : Form
 
         try
         {
-            var translation = await TranslateAsync(row.French, config);
+            var translation = await Translator.TranslateAsync(row.French, config, _currentLanguage.Name);
             row.Translation = translation;
         }
         catch (Exception ex)
@@ -435,46 +430,11 @@ public partial class MainForm : Form
         }
     }
 
-    private async Task<string> TranslateAsync(string frenchText, AppConfig config)
-    {
-        var systemPrompt = config.Prompt.Replace("{language}", _currentLanguage.Name);
-
-        var requestBody = new
-        {
-            model = config.ModelName,
-            temperature = 0,
-            messages = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = frenchText },
-            },
-        };
-
-        var json = JsonSerializer.Serialize(requestBody);
-
-        var baseUri = new Uri(config.Url.TrimEnd('/') + "/");
-        var endpoint = new Uri(baseUri, "chat/completions");
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Key);
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        using var response = await HttpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-        return doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString()?.Trim() ?? string.Empty;
-    }
-
     // --- Icônes ---
 
     private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirectory, "Resources");
 
-private static Bitmap LoadIcon(string name, int size = 16)
+    private static Bitmap LoadIcon(string name, int size = 16)
     {
         using var original = new Bitmap(Path.Combine(ResourceDir, name));
         var resized = new Bitmap(size, size);
