@@ -90,7 +90,7 @@ public partial class MainForm : Form
     {
         btnDetails = new ToolStripButton
         {
-            Image = CreateDetailsIcon(24),
+            Image = LoadIcon("columns.png", 24),
             DisplayStyle = ToolStripItemDisplayStyle.Image,
             CheckOnClick = true,
             ToolTipText = "Afficher/Masquer Projet, Fichier, Clé",
@@ -511,24 +511,7 @@ public partial class MainForm : Form
 
     // --- Icônes ---
 
-    private static Bitmap CreateDetailsIcon(int size)
-    {
-        var bmp = new Bitmap(size, size);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        using var brush = new SolidBrush(Color.FromArgb(80, 80, 80));
-        int barH = 3;
-        int gap = (size - 3 * barH) / 4;
-        for (int i = 0; i < 3; i++)
-        {
-            int y = gap + i * (barH + gap);
-            g.FillRectangle(brush, 2, y, 5, barH);
-            g.FillRectangle(brush, 9, y, size - 11, barH);
-        }
-        return bmp;
-    }
-
-    private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirectory, "Resources");
+private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirectory, "Resources");
 
     private static Bitmap LoadIcon(string name, int size = 16)
     {
