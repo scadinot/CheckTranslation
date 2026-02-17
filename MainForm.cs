@@ -95,6 +95,7 @@ public partial class MainForm : Form
             foreach (var row in _allRows)
                 row.SwitchLanguage(oldCol, newCol);
 
+            _filters.Remove("Translation");
             ApplyFilters();
         }
 
