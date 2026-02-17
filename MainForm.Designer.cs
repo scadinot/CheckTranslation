@@ -35,7 +35,6 @@ partial class MainForm
         toolStrip = new ToolStrip();
         btnOpen = new ToolStripButton();
         btnSave = new ToolStripButton();
-        btnLanguage = new ToolStripDropDownButton();
         btnConfig = new ToolStripButton();
         statusStrip = new StatusStrip();
         statusProgressBar = new ToolStripProgressBar();
@@ -89,7 +88,7 @@ partial class MainForm
         // toolStrip
         //
         toolStrip.ImageScalingSize = new Size(24, 24);
-        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnLanguage, new ToolStripSeparator(), btnConfig });
+        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnConfig });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
         toolStrip.Size = new Size(1200, 31);
@@ -107,13 +106,6 @@ partial class MainForm
         btnSave.Enabled = false;
         btnSave.Name = "btnSave";
         btnSave.ToolTipText = "Sauvegarder";
-        //
-        // btnLanguage
-        //
-        btnLanguage.DisplayStyle = ToolStripItemDisplayStyle.Image;
-        btnLanguage.Enabled = false;
-        btnLanguage.Name = "btnLanguage";
-        btnLanguage.ToolTipText = "Langue à contrôler";
         //
         // btnConfig
         //
@@ -188,7 +180,7 @@ partial class MainForm
     private ToolStrip toolStrip;
     private ToolStripButton btnOpen;
     private ToolStripButton btnSave;
-    private ToolStripDropDownButton btnLanguage;
+    private readonly List<ToolStripButton> _languageButtons = new();
     private ToolStripButton btnConfig;
     private StatusStrip statusStrip;
     private ToolStripProgressBar statusProgressBar;

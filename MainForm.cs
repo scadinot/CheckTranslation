@@ -38,7 +38,7 @@ public partial class MainForm : Form
         btnOpen.Click += BtnOpen_Click;
         btnSave.Click += BtnSave_Click;
         btnConfig.Click += BtnConfig_Click;
-        InitLanguageMenu();
+        InitLanguageButtons();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
@@ -47,36 +47,42 @@ public partial class MainForm : Form
         InitContextMenu();
     }
 
-    private void InitLanguageMenu()
+    private void InitLanguageButtons()
     {
+        int insertIndex = toolStrip.Items.IndexOf(btnConfig);
+
         foreach (var lang in Languages)
         {
-            var item = new ToolStripMenuItem(lang.Name, LoadIcon($"{lang.Code}.png", 24));
-            item.Tag = lang;
-            item.Click += LanguageItem_Click;
-            btnLanguage.DropDownItems.Add(item);
+            var btn = new ToolStripButton
+            {
+                Image = LoadIcon($"{lang.Code}.png", 24),
+                DisplayStyle = ToolStripItemDisplayStyle.Image,
+                Tag = lang,
+                ToolTipText = lang.Name,
+            };
+            btn.Click += LanguageButton_Click;
+            _languageButtons.Add(btn);
+            toolStrip.Items.Insert(insertIndex++, btn);
         }
 
-        // Sélectionner l'allemand par défaut
+        toolStrip.Items.Insert(insertIndex, new ToolStripSeparator());
         SelectLanguage(Languages[0]);
     }
 
     private void SelectLanguage(LanguageInfo lang)
     {
         _currentLanguage = lang;
-        btnLanguage.Image = LoadIcon($"{lang.Code}.png", 24);
-        btnLanguage.ToolTipText = $"Langue : {lang.Name}";
         colTranslation.HeaderText = lang.Name;
         statusLanguage.Image = LoadIcon($"{lang.Code}.png");
         statusLanguage.Text = $"Langue : {lang.Name}";
 
-        foreach (ToolStripMenuItem item in btnLanguage.DropDownItems)
-            item.Checked = item.Tag is LanguageInfo l && l == lang;
+        foreach (var btn in _languageButtons)
+            btn.Checked = btn.Tag is LanguageInfo l && l == lang;
     }
 
-    private void LanguageItem_Click(object? sender, EventArgs e)
+    private void LanguageButton_Click(object? sender, EventArgs e)
     {
-        if (sender is not ToolStripMenuItem item || item.Tag is not LanguageInfo lang)
+        if (sender is not ToolStripButton btn || btn.Tag is not LanguageInfo lang)
             return;
 
         if (lang == _currentLanguage)
@@ -119,7 +125,7 @@ public partial class MainForm : Form
         statusRowCount.Text = "Chargement...";
         dataGridView.AutoGenerateColumns = false;
         btnOpen.Enabled = false;
-        btnLanguage.Enabled = false;
+
         btnSave.Enabled = false;
 
         try
@@ -134,7 +140,6 @@ public partial class MainForm : Form
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             statusRowCount.Text = $"Lignes : {rows.Count}";
             btnSave.Enabled = true;
-            btnLanguage.Enabled = true;
         }
         catch (Exception ex)
         {
@@ -159,7 +164,7 @@ public partial class MainForm : Form
 
         btnSave.Enabled = false;
         btnOpen.Enabled = false;
-        btnLanguage.Enabled = false;
+
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Marquee;
 
@@ -184,7 +189,6 @@ public partial class MainForm : Form
             statusProgressBar.Visible = false;
             btnSave.Enabled = true;
             btnOpen.Enabled = true;
-            btnLanguage.Enabled = true;
         }
     }
 
