@@ -34,7 +34,7 @@ public partial class MainForm : Form
         InitializeComponent();
         btnOpen.Image = LoadIcon("open.png", 24);
         btnSave.Image = LoadIcon("save.png", 24);
-        btnConfig.Image = CreateGearIcon(24);
+        btnConfig.Image = LoadIcon("config.png", 24);
         btnOpen.Click += BtnOpen_Click;
         btnSave.Click += BtnSave_Click;
         btnConfig.Click += BtnConfig_Click;
@@ -474,41 +474,7 @@ public partial class MainForm : Form
 
     private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirectory, "Resources");
 
-    private static Bitmap CreateGearIcon(int size)
-    {
-        var bmp = new Bitmap(size, size);
-        using var g = Graphics.FromImage(bmp);
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        float cx = size / 2f, cy = size / 2f;
-        float outer = size * 0.45f, inner = size * 0.30f;
-        int teeth = 8;
-
-        var path = new System.Drawing.Drawing2D.GraphicsPath();
-        var points = new PointF[teeth * 4];
-        for (int i = 0; i < teeth; i++)
-        {
-            double a0 = 2 * Math.PI * i / teeth - Math.PI / teeth * 0.4;
-            double a1 = 2 * Math.PI * i / teeth + Math.PI / teeth * 0.4;
-            double a2 = 2 * Math.PI * (i + 0.5) / teeth - Math.PI / teeth * 0.4;
-            double a3 = 2 * Math.PI * (i + 0.5) / teeth + Math.PI / teeth * 0.4;
-            points[i * 4]     = new((float)(cx + outer * Math.Cos(a0)), (float)(cy + outer * Math.Sin(a0)));
-            points[i * 4 + 1] = new((float)(cx + outer * Math.Cos(a1)), (float)(cy + outer * Math.Sin(a1)));
-            points[i * 4 + 2] = new((float)(cx + inner * Math.Cos(a2)), (float)(cy + inner * Math.Sin(a2)));
-            points[i * 4 + 3] = new((float)(cx + inner * Math.Cos(a3)), (float)(cy + inner * Math.Sin(a3)));
-        }
-        path.AddPolygon(points);
-
-        using var brush = new SolidBrush(Color.FromArgb(100, 100, 100));
-        g.FillPath(brush, path);
-
-        float holeR = size * 0.12f;
-        g.FillEllipse(Brushes.White, cx - holeR, cy - holeR, holeR * 2, holeR * 2);
-
-        return bmp;
-    }
-
-    private static Bitmap LoadIcon(string name, int size = 16)
+private static Bitmap LoadIcon(string name, int size = 16)
     {
         using var original = new Bitmap(Path.Combine(ResourceDir, name));
         var resized = new Bitmap(size, size);
