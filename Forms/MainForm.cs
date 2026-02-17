@@ -211,6 +211,8 @@ public partial class MainForm : Form
     private async Task LoadFileAsync(string filePath)
     {
         statusProgressBar.Visible = true;
+        statusProgressBar.Style = ProgressBarStyle.Blocks;
+        statusProgressBar.Maximum = 100;
         statusProgressBar.Value = 0;
         statusRowCount.Text = "Chargement...";
         dataGridView.AutoGenerateColumns = false;
@@ -629,33 +631,45 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
-        int done = 0;
-        int errors = 0;
-
         foreach (var row in rows)
-        {
-            var previousValue = row.Translation;
             row.Translation = "Traduction en cours...";
-            dataGridView.Refresh();
+        dataGridView.Refresh();
 
-            try
+        int errors = 0;
+        var texts = rows.Select(r => r.French).ToList();
+        var previousValues = rows.Select(r => r.Translation).ToList();
+        var progress = new Progress<int>(done =>
+        {
+            statusProgressBar.Value = done;
+            statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
+        });
+
+        try
+        {
+            var batches = await Translator.TranslateInBatchesAsync(texts, config, _currentLanguage.Name, progress);
+
+            int rowIndex = 0;
+            foreach (var batch in batches)
             {
-                row.Translation = await Translator.TranslateAsync(row.French, config, _currentLanguage.Name);
-            }
-            catch
-            {
-                row.Translation = previousValue;
-                errors++;
-            }
-            finally
-            {
-                done++;
-                statusProgressBar.Value = done;
-                statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
-                dataGridView.Refresh();
+                for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
+                {
+                    if (!string.IsNullOrEmpty(batch[i]))
+                        rows[rowIndex].Translation = batch[i];
+                    else
+                        errors++;
+                }
             }
         }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de la traduction par lot :\n\n{ex.Message}",
+                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            for (int i = 0; i < rows.Count; i++)
+                if (rows[i].Translation == "Traduction en cours...")
+                    rows[i].Translation = previousValues[i];
+        }
 
+        dataGridView.Refresh();
         statusProgressBar.Visible = false;
         btnOpen.Enabled = true;
         btnSave.Enabled = _allRows is not null;
@@ -667,7 +681,7 @@ public partial class MainForm : Form
             : $"Lignes : {total}";
 
         if (errors > 0)
-            MessageBox.Show($"{errors} traduction(s) ont échoué.",
+            MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.",
                 "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
@@ -696,33 +710,45 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
-        int done = 0;
-        int errors = 0;
-
         foreach (var row in rows)
-        {
-            var previousComment = row.Comment;
             row.Comment = "Vérification...";
-            dataGridView.Refresh();
+        dataGridView.Refresh();
 
-            try
+        int errors = 0;
+        var pairs = rows.Select(r => (r.French, r.Translation)).ToList();
+        var previousValues = rows.Select(r => r.Comment).ToList();
+        var progress = new Progress<int>(done =>
+        {
+            statusProgressBar.Value = done;
+            statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
+        });
+
+        try
+        {
+            var batches = await Translator.VerifyInBatchesAsync(pairs, config, _currentLanguage.Name, progress);
+
+            int rowIndex = 0;
+            foreach (var batch in batches)
             {
-                row.Comment = await Translator.VerifyAsync(row.French, row.Translation, _currentLanguage.Name, config);
-            }
-            catch
-            {
-                row.Comment = previousComment;
-                errors++;
-            }
-            finally
-            {
-                done++;
-                statusProgressBar.Value = done;
-                statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
-                dataGridView.Refresh();
+                for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
+                {
+                    if (!string.IsNullOrEmpty(batch[i]))
+                        rows[rowIndex].Comment = batch[i];
+                    else
+                        errors++;
+                }
             }
         }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de la vérification par lot :\n\n{ex.Message}",
+                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            for (int i = 0; i < rows.Count; i++)
+                if (rows[i].Comment == "Vérification...")
+                    rows[i].Comment = previousValues[i];
+        }
 
+        dataGridView.Refresh();
         statusProgressBar.Visible = false;
         btnOpen.Enabled = true;
         btnSave.Enabled = _allRows is not null;
