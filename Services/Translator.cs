@@ -116,6 +116,10 @@ internal static partial class Translator
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
         using var response = await HttpClient.SendAsync(request);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.");
+
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
