@@ -550,7 +550,7 @@ public partial class MainForm : Form
         {
             row.Translation = previousValue;
             MessageBox.Show($"Erreur lors de la traduction :\n\n{ex.Message}",
-                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -597,7 +597,7 @@ public partial class MainForm : Form
             row.Comment = previousComment;
             dataGridView.Refresh();
             MessageBox.Show($"Erreur lors de la vérification :\n\n{ex.Message}",
-                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Erreur de vérification", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -663,7 +663,7 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Erreur lors de la traduction par lot :\n\n{ex.Message}",
-                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Erreur de traduction par lot", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Translation == "Traduction en cours...")
                     rows[i].Translation = previousValues[i];
@@ -681,8 +681,8 @@ public partial class MainForm : Form
             : $"Lignes : {total}";
 
         if (errors > 0)
-            MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.",
-                "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                "Erreur de traduction partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     private async void MenuVerifySelection_Click(object? sender, EventArgs e)
@@ -742,7 +742,7 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Erreur lors de la vérification par lot :\n\n{ex.Message}",
-                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Erreur de vérification par lot", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Comment == "Vérification...")
                     rows[i].Comment = previousValues[i];
@@ -760,8 +760,8 @@ public partial class MainForm : Form
             : $"Lignes : {total}";
 
         if (errors > 0)
-            MessageBox.Show($"{errors} vérification(s) ont échoué.",
-                "Erreur partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                "Erreur de vérification partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     // --- Icônes ---

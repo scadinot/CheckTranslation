@@ -19,19 +19,24 @@ internal static partial class Translator
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
         var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage)
-            + "\nYou will receive a numbered list. Reply with the same numbered list, each line translated. Keep the numbering. Do not add any explanation.";
+            + "\nIMPORTANT FORMAT: You will receive a numbered list. Reply ONLY with the same numbered list, each line translated."
+            + " Use the exact format \"1. translated text\" (number, dot, space, text). One line per item. No headers, no explanation, no markdown.";
 
         var sb = new StringBuilder();
         for (int i = 0; i < texts.Count; i++)
             sb.AppendLine($"{i + 1}. {texts[i]}");
 
         var content = await CallApiAsync(systemPrompt, sb.ToString(), config);
+        System.Diagnostics.Debug.WriteLine($"[TranslateBatch] Réponse IA :\n{content}");
         return ParseNumberedList(content, texts.Count);
     }
 
+    private const string VerifyScoreInstruction =
+        "\nFORMAT OBLIGATOIRE : Ta réponse entière doit utiliser le format exact : \"XXX/100 - commentaire\" où XXX est un score à trois chiffres de 000 à 100, suivi d'un slash, 100, un tiret, et un court commentaire en français. Exemple : \"085/100 - Traduction correcte, légère nuance manquante\". Rien d'autre. Pas de markdown.";
+
     public static async Task<string> VerifyAsync(string frenchText, string translation, string targetLanguage, AppConfig config)
     {
-        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage);
+        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction;
         var userMessage = $"Texte source (français) :\n{frenchText}\n\nTraduction ({targetLanguage}) :\n{translation}";
         return await CallApiAsync(systemPrompt, userMessage, config);
     }
@@ -41,14 +46,16 @@ internal static partial class Translator
         AppConfig config,
         string targetLanguage)
     {
-        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage)
-            + "\nYou will receive a numbered list of source/translation pairs. Reply with the same numbered list, each line containing your verification comment. Keep the numbering. Do not add any explanation.";
+        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction
+            + "\nTu vas recevoir une liste numérotée de paires source/traduction."
+            + " Réponds avec la même liste numérotée. Chaque entrée : \"N. XXX/100 - commentaire en français\". Une ligne par entrée. Pas d'en-tête.";
 
         var sb = new StringBuilder();
         for (int i = 0; i < pairs.Count; i++)
             sb.AppendLine($"{i + 1}. Source: {pairs[i].French} | Traduction: {pairs[i].Translation}");
 
         var content = await CallApiAsync(systemPrompt, sb.ToString(), config);
+        System.Diagnostics.Debug.WriteLine($"[VerifyBatch] Réponse IA :\n{content}");
         return ParseNumberedList(content, pairs.Count);
     }
 
@@ -98,19 +105,18 @@ internal static partial class Translator
     {
         var requestBody = new
         {
-            model = config.ModelName,
-            temperature = 0,
-            messages = new object[]
+            model = config.ModelName, // "gpt-5-mini"
+            input = new object[]
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userMessage },
-            },
+            }
         };
 
         var json = JsonSerializer.Serialize(requestBody);
 
         var baseUri = new Uri(config.Url.TrimEnd('/') + "/");
-        var endpoint = new Uri(baseUri, "chat/completions");
+        var endpoint = new Uri(baseUri, "responses");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Key);
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -124,11 +130,21 @@ internal static partial class Translator
 
         var responseJson = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(responseJson);
-        return doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString()?.Trim() ?? string.Empty;
+
+        if (doc.RootElement.TryGetProperty("output_text", out var outText))
+            return outText.GetString()?.Trim() ?? string.Empty;
+
+        // fallback (si output_text absent)
+        if (doc.RootElement.TryGetProperty("output", out var output))
+        {
+            foreach (var item in output.EnumerateArray())
+                if (item.TryGetProperty("content", out var contentArr))
+                    foreach (var c in contentArr.EnumerateArray())
+                        if (c.TryGetProperty("text", out var txt))
+                            return txt.GetString()?.Trim() ?? string.Empty;
+        }
+
+        return string.Empty;
     }
 
     private static string[] ParseNumberedList(string content, int expectedCount)
@@ -163,6 +179,6 @@ internal static partial class Translator
         return results;
     }
 
-    [GeneratedRegex(@"^(\d+)\.\s*(.+)$")]
+    [GeneratedRegex(@"^\s*(\d+)[.)]\s*(.+)$")]
     private static partial Regex NumberedLineRegex();
 }
