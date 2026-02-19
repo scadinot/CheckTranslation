@@ -19,8 +19,14 @@ internal static partial class Translator
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
         var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage)
-            + "\nIMPORTANT FORMAT: You will receive a numbered list. Reply ONLY with the same numbered list, each line translated."
-            + " Use the exact format \"1. translated text\" (number, dot, space, text). One line per item. No headers, no explanation, no markdown.";
+            + "\n"
+            + "FORMAT OBLIGATOIRE : "
+            + "Tu vas recevoir une liste numérotée. "
+            + "Réponds avec la même liste numérotée. "
+            + "Chaque entrée : \"1. texte traduit\". "
+            + "(numéro, point, espace, texte). "
+            + "Une ligne par entrée. Pas d'en-tête."
+            ;
 
         var sb = new StringBuilder();
         for (int i = 0; i < texts.Count; i++)
@@ -32,7 +38,12 @@ internal static partial class Translator
     }
 
     private const string VerifyScoreInstruction =
-        "\nFORMAT OBLIGATOIRE : Ta réponse entière doit utiliser le format exact : \"XXX/100 - commentaire\" où XXX est un score à trois chiffres de 000 à 100, suivi d'un slash, 100, un tiret, et un court commentaire en français. Exemple : \"085/100 - Traduction correcte, légère nuance manquante\". Rien d'autre. Pas de markdown.";
+        "\n"
+        + "FORMAT OBLIGATOIRE : "
+        + "Ta réponse entière doit utiliser le format exact : \"XXX - commentaire\" où XXX est un score à trois chiffres de 000 à 100, suivi d'un tiret, et un court commentaire en français. "
+        + "Exemple : \"085 - Traduction correcte, légère nuance manquante\". "
+        + "Rien d'autre. Pas de markdown."
+        ;
 
     public static async Task<string> VerifyAsync(string frenchText, string translation, string targetLanguage, AppConfig config)
     {
@@ -47,8 +58,12 @@ internal static partial class Translator
         string targetLanguage)
     {
         var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction
-            + "\nTu vas recevoir une liste numérotée de paires source/traduction."
-            + " Réponds avec la même liste numérotée. Chaque entrée : \"N. XXX/100 - commentaire en français\". Une ligne par entrée. Pas d'en-tête.";
+            + "\n"
+            + "Tu vas recevoir une liste numérotée de paires source/traduction. "
+            + "Réponds avec la même liste numérotée. "
+            + "Chaque entrée : \"N. XXX - commentaire en français\". "
+            + "Une ligne par entrée. Pas d'en-tête."
+            ;
 
         var sb = new StringBuilder();
         for (int i = 0; i < pairs.Count; i++)
