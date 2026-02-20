@@ -47,9 +47,11 @@ partial class ConfigForm
         grpAuth.Controls.Add(txtUrl);
         grpAuth.Controls.Add(lblModelName);
         grpAuth.Controls.Add(txtModelName);
-        grpAuth.Location = new Point(12, 275);
+        grpAuth.Location = new Point(10, 206);
+        grpAuth.Margin = new Padding(3, 2, 3, 2);
         grpAuth.Name = "grpAuth";
-        grpAuth.Size = new Size(458, 126);
+        grpAuth.Padding = new Padding(3, 2, 3, 2);
+        grpAuth.Size = new Size(401, 94);
         grpAuth.TabIndex = 0;
         grpAuth.TabStop = false;
         grpAuth.Text = "Authentification";
@@ -57,100 +59,106 @@ partial class ConfigForm
         // lblKey
         // 
         lblKey.AutoSize = true;
-        lblKey.Location = new Point(6, 23);
+        lblKey.Location = new Point(5, 17);
         lblKey.Name = "lblKey";
-        lblKey.Size = new Size(40, 20);
+        lblKey.Size = new Size(32, 15);
         lblKey.TabIndex = 1;
         lblKey.Text = "Key :";
         // 
         // txtKey
         // 
         txtKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtKey.Location = new Point(112, 23);
+        txtKey.Location = new Point(98, 17);
+        txtKey.Margin = new Padding(3, 2, 3, 2);
         txtKey.Name = "txtKey";
-        txtKey.Size = new Size(330, 27);
+        txtKey.Size = new Size(289, 23);
         txtKey.TabIndex = 1;
         txtKey.UseSystemPasswordChar = true;
         // 
         // lblUrl
         // 
         lblUrl.AutoSize = true;
-        lblUrl.Location = new Point(6, 59);
+        lblUrl.Location = new Point(5, 44);
         lblUrl.Name = "lblUrl";
-        lblUrl.Size = new Size(35, 20);
+        lblUrl.Size = new Size(28, 15);
         lblUrl.TabIndex = 2;
         lblUrl.Text = "Url :";
         // 
         // txtUrl
         // 
         txtUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtUrl.Location = new Point(112, 56);
+        txtUrl.Location = new Point(98, 42);
+        txtUrl.Margin = new Padding(3, 2, 3, 2);
         txtUrl.Name = "txtUrl";
-        txtUrl.Size = new Size(330, 27);
+        txtUrl.Size = new Size(289, 23);
         txtUrl.TabIndex = 2;
         // 
         // lblModelName
         // 
         lblModelName.AutoSize = true;
-        lblModelName.Location = new Point(6, 92);
+        lblModelName.Location = new Point(5, 69);
         lblModelName.Name = "lblModelName";
-        lblModelName.Size = new Size(100, 20);
+        lblModelName.Size = new Size(80, 15);
         lblModelName.TabIndex = 3;
         lblModelName.Text = "Model name :";
         // 
         // txtModelName
         // 
         txtModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtModelName.Location = new Point(112, 89);
+        txtModelName.Location = new Point(98, 67);
+        txtModelName.Margin = new Padding(3, 2, 3, 2);
         txtModelName.Name = "txtModelName";
-        txtModelName.Size = new Size(330, 27);
+        txtModelName.Size = new Size(289, 23);
         txtModelName.TabIndex = 3;
         // 
         // lblPrompt
         // 
         lblPrompt.AutoSize = true;
-        lblPrompt.Location = new Point(6, 20);
+        lblPrompt.Location = new Point(5, 15);
         lblPrompt.Name = "lblPrompt";
-        lblPrompt.Size = new Size(86, 20);
+        lblPrompt.Size = new Size(70, 15);
         lblPrompt.TabIndex = 0;
         lblPrompt.Text = "Traduction :";
         // 
         // txtTranslatePrompt
         // 
         txtTranslatePrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        txtTranslatePrompt.Location = new Point(112, 17);
+        txtTranslatePrompt.Location = new Point(98, 13);
+        txtTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
         txtTranslatePrompt.Multiline = true;
         txtTranslatePrompt.Name = "txtTranslatePrompt";
         txtTranslatePrompt.ScrollBars = ScrollBars.Vertical;
-        txtTranslatePrompt.Size = new Size(330, 100);
+        txtTranslatePrompt.Size = new Size(289, 76);
         txtTranslatePrompt.TabIndex = 0;
         // 
         // lblVerifyPrompt
         // 
         lblVerifyPrompt.AutoSize = true;
-        lblVerifyPrompt.Location = new Point(6, 19);
+        lblVerifyPrompt.Location = new Point(5, 14);
         lblVerifyPrompt.Name = "lblVerifyPrompt";
-        lblVerifyPrompt.Size = new Size(91, 20);
+        lblVerifyPrompt.Size = new Size(72, 15);
         lblVerifyPrompt.TabIndex = 6;
         lblVerifyPrompt.Text = "Vérification :";
         // 
         // txtVerifyPrompt
         // 
         txtVerifyPrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        txtVerifyPrompt.Location = new Point(112, 16);
+        txtVerifyPrompt.Location = new Point(98, 12);
+        txtVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
         txtVerifyPrompt.Multiline = true;
         txtVerifyPrompt.Name = "txtVerifyPrompt";
         txtVerifyPrompt.ScrollBars = ScrollBars.Vertical;
-        txtVerifyPrompt.Size = new Size(330, 100);
+        txtVerifyPrompt.Size = new Size(289, 77);
         txtVerifyPrompt.TabIndex = 1;
         // 
         // btnOk
         // 
         btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnOk.DialogResult = DialogResult.OK;
-        btnOk.Location = new Point(300, 413);
+        btnOk.Location = new Point(262, 310);
+        btnOk.Margin = new Padding(3, 2, 3, 2);
         btnOk.Name = "btnOk";
-        btnOk.Size = new Size(80, 28);
+        btnOk.Size = new Size(70, 21);
         btnOk.TabIndex = 4;
         btnOk.Text = "OK";
         // 
@@ -158,16 +166,18 @@ partial class ConfigForm
         // 
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location = new Point(390, 413);
+        btnCancel.Location = new Point(341, 310);
+        btnCancel.Margin = new Padding(3, 2, 3, 2);
         btnCancel.Name = "btnCancel";
-        btnCancel.Size = new Size(80, 28);
+        btnCancel.Size = new Size(70, 21);
         btnCancel.TabIndex = 5;
         btnCancel.Text = "Annuler";
         // 
         // splitContainer1
         // 
         splitContainer1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        splitContainer1.Location = new Point(12, 12);
+        splitContainer1.Location = new Point(10, 9);
+        splitContainer1.Margin = new Padding(3, 2, 3, 2);
         splitContainer1.Name = "splitContainer1";
         splitContainer1.Orientation = Orientation.Horizontal;
         // 
@@ -180,24 +190,25 @@ partial class ConfigForm
         // 
         splitContainer1.Panel2.Controls.Add(txtVerifyPrompt);
         splitContainer1.Panel2.Controls.Add(lblVerifyPrompt);
-        splitContainer1.Size = new Size(458, 257);
-        splitContainer1.SplitterDistance = 127;
+        splitContainer1.Size = new Size(401, 193);
+        splitContainer1.SplitterDistance = 95;
+        splitContainer1.SplitterWidth = 3;
         splitContainer1.TabIndex = 7;
         // 
         // ConfigForm
         // 
-        AcceptButton = btnOk;
-        AutoScaleDimensions = new SizeF(8F, 20F);
+        AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(482, 453);
+        ClientSize = new Size(424, 346);
         Controls.Add(splitContainer1);
         Controls.Add(grpAuth);
         Controls.Add(btnOk);
         Controls.Add(btnCancel);
+        Margin = new Padding(3, 2, 3, 2);
         MaximizeBox = false;
         MinimizeBox = false;
-        MinimumSize = new Size(500, 500);
+        MinimumSize = new Size(440, 385);
         Name = "ConfigForm";
         ShowIcon = false;
         ShowInTaskbar = false;

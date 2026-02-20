@@ -32,6 +32,9 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
+        if (File.Exists(icoPath))
+            Icon = new Icon(icoPath);
         btnOpen.Image = LoadIcon("open.png", 24);
         btnSave.Image = LoadIcon("save.png", 24);
         btnConfig.Image = LoadIcon("config.png", 24);

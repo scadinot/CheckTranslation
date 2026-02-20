@@ -13,20 +13,22 @@ internal static partial class Translator
     public static async Task<string> TranslateAsync(string frenchText, AppConfig config, string targetLanguage)
     {
         var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage);
+
         return await CallApiAsync(systemPrompt, frenchText, config);
     }
 
+    private const string TranslateBatchAsyncInstruction =
+        "\n"
+        + "FORMAT OBLIGATOIRE : "
+        + "Tu vas recevoir une liste numérotée. "
+        + "Réponds avec la même liste numérotée. "
+        + "Format strict pour chaque entrée : \"1. texte traduit\" (numéro, point, espace, texte) "
+        + "Une ligne par entrée. Pas d'en-tête."
+        ;
+
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
-        var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage)
-            + "\n"
-            + "FORMAT OBLIGATOIRE : "
-            + "Tu vas recevoir une liste numérotée. "
-            + "Réponds avec la même liste numérotée. "
-            + "Chaque entrée : \"1. texte traduit\". "
-            + "(numéro, point, espace, texte). "
-            + "Une ligne par entrée. Pas d'en-tête."
-            ;
+        var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage) + TranslateBatchAsyncInstruction;
 
         var sb = new StringBuilder();
         for (int i = 0; i < texts.Count; i++)
@@ -34,6 +36,7 @@ internal static partial class Translator
 
         var content = await CallApiAsync(systemPrompt, sb.ToString(), config);
         System.Diagnostics.Debug.WriteLine($"[TranslateBatch] Réponse IA :\n{content}");
+
         return ParseNumberedList(content, texts.Count);
     }
 
@@ -45,25 +48,27 @@ internal static partial class Translator
         + "Rien d'autre. Pas de markdown."
         ;
 
+    private const string VerifyBatchAsyncInstruction =
+        "\n"
+        + "Tu vas recevoir une liste numérotée de paires source/traduction. "
+        + "Interdiction de faire référence à une autre entrée (pas de « comme au point X », « idem », « voir plus haut », « même remarque », « pareil que… », « cf. ligne… », etc.). "
+        + "Chaque ligne de sortie doit être auto-suffisante et ne dépendre d’aucun contexte hors de l’entrée correspondante. "
+        + "Réponds avec la même liste numérotée. "
+        + "Format strict pour chaque entrée : \"N. XXX - commentaire en français\". "
+        + "Une seule ligne par entrée. Pas d'en-tête. "
+        ;
+
     public static async Task<string> VerifyAsync(string frenchText, string translation, string targetLanguage, AppConfig config)
     {
         var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction;
         var userMessage = $"Texte source (français) :\n{frenchText}\n\nTraduction ({targetLanguage}) :\n{translation}";
+
         return await CallApiAsync(systemPrompt, userMessage, config);
     }
 
-    public static async Task<string[]> VerifyBatchAsync(
-        IReadOnlyList<(string French, string Translation)> pairs,
-        AppConfig config,
-        string targetLanguage)
+    public static async Task<string[]> VerifyBatchAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage)
     {
-        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction
-            + "\n"
-            + "Tu vas recevoir une liste numérotée de paires source/traduction. "
-            + "Réponds avec la même liste numérotée. "
-            + "Chaque entrée : \"N. XXX - commentaire en français\". "
-            + "Une ligne par entrée. Pas d'en-tête."
-            ;
+        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage) + VerifyScoreInstruction + VerifyBatchAsyncInstruction;
 
         var sb = new StringBuilder();
         for (int i = 0; i < pairs.Count; i++)
@@ -71,14 +76,11 @@ internal static partial class Translator
 
         var content = await CallApiAsync(systemPrompt, sb.ToString(), config);
         System.Diagnostics.Debug.WriteLine($"[VerifyBatch] Réponse IA :\n{content}");
+
         return ParseNumberedList(content, pairs.Count);
     }
 
-    public static async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(
-        IReadOnlyList<(string French, string Translation)> pairs,
-        AppConfig config,
-        string targetLanguage,
-        IProgress<int>? progress = null)
+    public static async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
     {
         var results = new List<string[]>();
         int done = 0;
@@ -95,11 +97,7 @@ internal static partial class Translator
         return results;
     }
 
-    public static async Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(
-        IReadOnlyList<string> texts,
-        AppConfig config,
-        string targetLanguage,
-        IProgress<int>? progress = null)
+    public static async Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
     {
         var results = new List<string[]>();
         int done = 0;

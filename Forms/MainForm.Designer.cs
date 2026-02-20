@@ -28,7 +28,7 @@ partial class MainForm
     /// </summary>
     private void InitializeComponent()
     {
-        components = new System.ComponentModel.Container();
+        System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
         dataGridView = new DataGridView();
         colFrench = new DataGridViewTextBoxColumn();
         colTranslation = new DataGridViewTextBoxColumn();
@@ -42,130 +42,126 @@ partial class MainForm
         statusRowCount = new ToolStripStatusLabel();
         statusLanguage = new ToolStripStatusLabel();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
+        toolStrip.SuspendLayout();
         statusStrip.SuspendLayout();
         SuspendLayout();
-        //
+        // 
         // dataGridView
-        //
+        // 
         dataGridView.AllowUserToAddRows = false;
         dataGridView.AllowUserToDeleteRows = false;
         dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-        dataGridView.Columns.AddRange(new DataGridViewColumn[]
-        {
-            colFrench,
-            colTranslation
-        });
+        dataGridView.Columns.AddRange(new DataGridViewColumn[] { colFrench, colTranslation });
         dataGridView.Dock = DockStyle.Fill;
-        dataGridView.Location = new Point(0, 0);
+        dataGridView.Location = new Point(0, 25);
         dataGridView.Name = "dataGridView";
-        dataGridView.ReadOnly = false;
         dataGridView.RowHeadersVisible = false;
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        dataGridView.Size = new Size(1200, 628);
+        dataGridView.Size = new Size(1200, 603);
         dataGridView.TabIndex = 0;
-        //
+        // 
         // colFrench
-        //
+        // 
         colFrench.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         colFrench.DataPropertyName = "French";
-        colFrench.DefaultCellStyle = new DataGridViewCellStyle { WrapMode = DataGridViewTriState.True };
-        colFrench.FillWeight = 50;
+        colFrench.FillWeight = 50F;
         colFrench.HeaderText = "Francais";
         colFrench.Name = "colFrench";
         colFrench.ReadOnly = true;
-        //
+        // 
         // colTranslation
-        //
+        // 
         colTranslation.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         colTranslation.DataPropertyName = "Translation";
-        colTranslation.DefaultCellStyle = new DataGridViewCellStyle { WrapMode = DataGridViewTriState.True };
-        colTranslation.FillWeight = 50;
+        colTranslation.FillWeight = 50F;
         colTranslation.HeaderText = "Traduction";
         colTranslation.Name = "colTranslation";
-        colTranslation.ReadOnly = false;
-        //
+        // 
         // toolStrip
-        //
+        // 
         toolStrip.ImageScalingSize = new Size(24, 24);
-        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, new ToolStripSeparator(), btnConfig });
+        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, btnConfig });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
-        toolStrip.Size = new Size(1200, 31);
+        toolStrip.Size = new Size(1200, 25);
         toolStrip.TabIndex = 2;
-        //
+        // 
         // btnOpen
-        //
+        // 
         btnOpen.DisplayStyle = ToolStripItemDisplayStyle.Image;
         btnOpen.Name = "btnOpen";
+        btnOpen.Size = new Size(23, 22);
         btnOpen.ToolTipText = "Ouvrir";
-        //
+        // 
         // btnSave
-        //
+        // 
         btnSave.DisplayStyle = ToolStripItemDisplayStyle.Image;
         btnSave.Enabled = false;
         btnSave.Name = "btnSave";
+        btnSave.Size = new Size(23, 22);
         btnSave.ToolTipText = "Sauvegarder";
-        //
+        // 
         // btnConfig
-        //
+        // 
         btnConfig.DisplayStyle = ToolStripItemDisplayStyle.Image;
         btnConfig.Name = "btnConfig";
+        btnConfig.Size = new Size(23, 22);
         btnConfig.ToolTipText = "Configuration";
-        //
+        // 
         // statusStrip
-        //
+        // 
         statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusLanguage });
         statusStrip.Location = new Point(0, 628);
         statusStrip.Name = "statusStrip";
         statusStrip.Size = new Size(1200, 22);
         statusStrip.TabIndex = 1;
-        //
+        // 
         // statusProgressBar
-        //
+        // 
         statusProgressBar.Name = "statusProgressBar";
         statusProgressBar.Size = new Size(150, 16);
         statusProgressBar.Visible = false;
-        //
+        // 
         // statusFileName
-        //
-        statusFileName.BorderSides = ToolStripStatusLabelBorderSides.All;
+        // 
+        statusFileName.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
         statusFileName.BorderStyle = Border3DStyle.SunkenOuter;
         statusFileName.Name = "statusFileName";
-        statusFileName.Size = new Size(350, 17);
-        statusFileName.Text = "";
+        statusFileName.Size = new Size(4, 17);
         statusFileName.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // statusRowCount
-        //
-        statusRowCount.BorderSides = ToolStripStatusLabelBorderSides.All;
+        // 
+        statusRowCount.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
         statusRowCount.BorderStyle = Border3DStyle.SunkenOuter;
         statusRowCount.Name = "statusRowCount";
-        statusRowCount.Size = new Size(150, 17);
-        statusRowCount.Text = "";
+        statusRowCount.Size = new Size(4, 17);
         statusRowCount.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // statusLanguage
-        //
-        statusLanguage.BorderSides = ToolStripStatusLabelBorderSides.All;
+        // 
+        statusLanguage.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
         statusLanguage.BorderStyle = Border3DStyle.SunkenOuter;
         statusLanguage.Name = "statusLanguage";
-        statusLanguage.Size = new Size(150, 17);
-        statusLanguage.Text = "";
+        statusLanguage.Size = new Size(4, 17);
         statusLanguage.TextAlign = ContentAlignment.MiddleLeft;
-        //
-        // Form1
-        //
+        // 
+        // MainForm
+        // 
+        AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(1200, 650);
         Controls.Add(dataGridView);
         Controls.Add(statusStrip);
         Controls.Add(toolStrip);
-        Name = "Form1";
-        ShowIcon = false;
+        Icon = (Icon)resources.GetObject("$this.Icon");
+        Name = "MainForm";
         StartPosition = FormStartPosition.CenterScreen;
         Text = "CheckTranslation - Contrôle des traductions";
         ((System.ComponentModel.ISupportInitialize)dataGridView).EndInit();
+        toolStrip.ResumeLayout(false);
+        toolStrip.PerformLayout();
         statusStrip.ResumeLayout(false);
         statusStrip.PerformLayout();
         ResumeLayout(false);
