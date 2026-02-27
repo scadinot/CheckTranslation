@@ -1,14 +1,22 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using OpenAI;
+using OpenAI.Responses;
+using System.ClientModel;
 
 namespace CheckTranslation;
 
 internal static partial class Translator
 {
     private const int BatchSize = 20;
-    private static readonly HttpClient HttpClient = new();
+    private const float DefaultTemperature = 0f;
+
+#pragma warning disable OPENAI001
+
+    private static OpenAIClient? _client;
+    private static string? _clientKey;
+    private static string? _clientEndpoint;
 
     public static async Task<string> TranslateAsync(string frenchText, AppConfig config, string targetLanguage)
     {
@@ -116,48 +124,77 @@ internal static partial class Translator
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
-        var requestBody = new
+        try
         {
-            model = config.ModelName, // "gpt-5-mini"
-            input = new object[]
+            var client = GetClient(config);
+            var responses = client.GetResponsesClient(config.ModelName);
+
+            var options = new CreateResponseOptions
             {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userMessage },
+                Instructions = systemPrompt,
+                Temperature = DefaultTemperature,
+            };
+
+            options.InputItems.Add(ResponseItem.CreateUserMessageItem(userMessage));
+
+            var result = await responses.CreateResponseAsync(options);
+            var responseJson = result.GetRawResponse().Content.ToString();
+            using var doc = JsonDocument.Parse(responseJson);
+
+            if (doc.RootElement.TryGetProperty("output_text", out var outText))
+                return outText.GetString()?.Trim() ?? string.Empty;
+
+            // fallback (si output_text absent)
+            if (doc.RootElement.TryGetProperty("output", out var output))
+            {
+                foreach (var item in output.EnumerateArray())
+                    if (item.TryGetProperty("content", out var contentArr))
+                        foreach (var c in contentArr.EnumerateArray())
+                            if (c.TryGetProperty("text", out var txt))
+                                return txt.GetString()?.Trim() ?? string.Empty;
             }
-        };
 
-        var json = JsonSerializer.Serialize(requestBody);
-
-        var baseUri = new Uri(config.Url.TrimEnd('/') + "/");
-        var endpoint = new Uri(baseUri, "responses");
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Key);
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        using var response = await HttpClient.SendAsync(request);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.");
-
-        response.EnsureSuccessStatusCode();
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-
-        if (doc.RootElement.TryGetProperty("output_text", out var outText))
-            return outText.GetString()?.Trim() ?? string.Empty;
-
-        // fallback (si output_text absent)
-        if (doc.RootElement.TryGetProperty("output", out var output))
-        {
-            foreach (var item in output.EnumerateArray())
-                if (item.TryGetProperty("content", out var contentArr))
-                    foreach (var c in contentArr.EnumerateArray())
-                        if (c.TryGetProperty("text", out var txt))
-                            return txt.GetString()?.Trim() ?? string.Empty;
+            return string.Empty;
         }
+        catch (ClientResultException ex) when (ex.Status == 429)
+        {
+            throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.", ex);
+        }
+    }
 
-        return string.Empty;
+    private static OpenAIClient GetClient(AppConfig config)
+    {
+        var endpoint = NormalizeEndpoint(config.Url);
+        if (_client is not null && _clientKey == config.Key && _clientEndpoint == endpoint)
+            return _client;
+
+        var options = new OpenAIClientOptions();
+        if (!string.IsNullOrWhiteSpace(endpoint))
+            options.Endpoint = new Uri(endpoint);
+
+        _client = new OpenAIClient(new ApiKeyCredential(config.Key), options);
+        _clientKey = config.Key;
+        _clientEndpoint = endpoint;
+        return _client;
+    }
+
+    private static string NormalizeEndpoint(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return string.Empty;
+
+        var trimmed = url.Trim().TrimEnd('/');
+
+        if (trimmed.EndsWith("/v1/responses", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/responses".Length];
+
+        if (trimmed.EndsWith("/v1/chat/completions", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/chat/completions".Length];
+
+        if (trimmed.EndsWith("/responses", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/responses".Length];
+
+        return trimmed.TrimEnd('/') + "/";
     }
 
     private static string[] ParseNumberedList(string content, int expectedCount)
