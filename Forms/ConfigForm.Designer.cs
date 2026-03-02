@@ -244,9 +244,10 @@ partial class ConfigForm
         // lblPrompt
         // 
         lblPrompt.AutoSize = true;
-        lblPrompt.Location = new Point(5, 15);
+        lblPrompt.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+        lblPrompt.Location = new Point(5, 10);
         lblPrompt.Name = "lblPrompt";
-        lblPrompt.Size = new Size(70, 15);
+        lblPrompt.Size = new Size(72, 15);
         lblPrompt.TabIndex = 0;
         lblPrompt.Text = "Traduction :";
         // 
@@ -256,11 +257,11 @@ partial class ConfigForm
         tabTranslatePrompt.Controls.Add(tabTranslatePreview);
         tabTranslatePrompt.Controls.Add(tabTranslateEdit);
         tabTranslatePrompt.ImageList = tabPromptIcons;
-        tabTranslatePrompt.Location = new Point(98, 13);
+        tabTranslatePrompt.Location = new Point(5, 27);
         tabTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
         tabTranslatePrompt.Name = "tabTranslatePrompt";
         tabTranslatePrompt.SelectedIndex = 0;
-        tabTranslatePrompt.Size = new Size(587, 201);
+        tabTranslatePrompt.Size = new Size(680, 187);
         tabTranslatePrompt.TabIndex = 0;
         // 
         // tabTranslatePreview
@@ -271,7 +272,7 @@ partial class ConfigForm
         tabTranslatePreview.Margin = new Padding(3, 2, 3, 2);
         tabTranslatePreview.Name = "tabTranslatePreview";
         tabTranslatePreview.Padding = new Padding(3);
-        tabTranslatePreview.Size = new Size(579, 173);
+        tabTranslatePreview.Size = new Size(672, 159);
         tabTranslatePreview.TabIndex = 0;
         tabTranslatePreview.Text = "Aperçu";
         tabTranslatePreview.UseVisualStyleBackColor = true;
@@ -283,7 +284,7 @@ partial class ConfigForm
         webTranslatePreview.Margin = new Padding(3, 2, 3, 2);
         webTranslatePreview.MinimumSize = new Size(20, 20);
         webTranslatePreview.Name = "webTranslatePreview";
-        webTranslatePreview.Size = new Size(573, 167);
+        webTranslatePreview.Size = new Size(666, 153);
         webTranslatePreview.TabIndex = 0;
         // 
         // tabTranslateEdit
@@ -319,9 +320,10 @@ partial class ConfigForm
         // lblVerifyPrompt
         // 
         lblVerifyPrompt.AutoSize = true;
-        lblVerifyPrompt.Location = new Point(5, 14);
+        lblVerifyPrompt.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+        lblVerifyPrompt.Location = new Point(5, 10);
         lblVerifyPrompt.Name = "lblVerifyPrompt";
-        lblVerifyPrompt.Size = new Size(72, 15);
+        lblVerifyPrompt.Size = new Size(77, 15);
         lblVerifyPrompt.TabIndex = 6;
         lblVerifyPrompt.Text = "Vérification :";
         // 
@@ -331,11 +333,11 @@ partial class ConfigForm
         tabVerifyPrompt.Controls.Add(tabVerifyPreview);
         tabVerifyPrompt.Controls.Add(tabVerifyEdit);
         tabVerifyPrompt.ImageList = tabPromptIcons;
-        tabVerifyPrompt.Location = new Point(98, 12);
+        tabVerifyPrompt.Location = new Point(5, 27);
         tabVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
         tabVerifyPrompt.Name = "tabVerifyPrompt";
         tabVerifyPrompt.SelectedIndex = 0;
-        tabVerifyPrompt.Size = new Size(587, 197);
+        tabVerifyPrompt.Size = new Size(680, 182);
         tabVerifyPrompt.TabIndex = 1;
         // 
         // tabVerifyPreview
@@ -346,7 +348,7 @@ partial class ConfigForm
         tabVerifyPreview.Margin = new Padding(3, 2, 3, 2);
         tabVerifyPreview.Name = "tabVerifyPreview";
         tabVerifyPreview.Padding = new Padding(3);
-        tabVerifyPreview.Size = new Size(579, 169);
+        tabVerifyPreview.Size = new Size(672, 154);
         tabVerifyPreview.TabIndex = 0;
         tabVerifyPreview.Text = "Aperçu";
         tabVerifyPreview.UseVisualStyleBackColor = true;
@@ -358,7 +360,7 @@ partial class ConfigForm
         webVerifyPreview.Margin = new Padding(3, 2, 3, 2);
         webVerifyPreview.MinimumSize = new Size(20, 20);
         webVerifyPreview.Name = "webVerifyPreview";
-        webVerifyPreview.Size = new Size(573, 163);
+        webVerifyPreview.Size = new Size(666, 148);
         webVerifyPreview.TabIndex = 0;
         // 
         // tabVerifyEdit
