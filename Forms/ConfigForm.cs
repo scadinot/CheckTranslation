@@ -4,6 +4,8 @@ namespace CheckTranslation;
 
 internal sealed partial class ConfigForm : Form
 {
+    private bool _isLoading;
+
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .Build();
@@ -20,9 +22,39 @@ internal sealed partial class ConfigForm : Form
     public ConfigForm()
     {
         InitializeComponent();
+        InitProviderUi();
         InitMarkdownEditors();
         btnOk.Click += (_, _) => SaveConfig();
         LoadConfig();
+    }
+
+    private void InitProviderUi()
+    {
+        rbOpenAi.CheckedChanged += ProviderChanged;
+        rbAnthropic.CheckedChanged += ProviderChanged;
+    }
+
+    private void ProviderChanged(object? sender, EventArgs e)
+    {
+        if (_isLoading)
+            return;
+
+        if (rbOpenAi.Checked)
+        {
+            if (string.IsNullOrWhiteSpace(txtUrl.Text))
+                txtUrl.Text = AppConfig.GetDefaultUrl(AiProvider.OpenAI);
+
+            if (string.IsNullOrWhiteSpace(txtModelName.Text))
+                txtModelName.Text = AppConfig.GetDefaultModelName(AiProvider.OpenAI);
+        }
+        else if (rbAnthropic.Checked)
+        {
+            if (string.IsNullOrWhiteSpace(txtAnthropicUrl.Text))
+                txtAnthropicUrl.Text = AppConfig.GetDefaultUrl(AiProvider.Anthropic);
+
+            if (string.IsNullOrWhiteSpace(txtAnthropicModelName.Text))
+                txtAnthropicModelName.Text = AppConfig.GetDefaultModelName(AiProvider.Anthropic);
+        }
     }
 
     private void InitMarkdownEditors()
@@ -194,11 +226,28 @@ internal sealed partial class ConfigForm : Form
     private void LoadConfig()
     {
         var config = AppConfig.Current;
+
+        _isLoading = true;
+        try
+        {
+            rbOpenAi.Checked = config.Provider != AiProvider.Anthropic;
+            rbAnthropic.Checked = config.Provider == AiProvider.Anthropic;
+
+            txtKey.Text = config.OpenAiKey;
+            txtUrl.Text = config.OpenAiUrl;
+            txtModelName.Text = config.OpenAiModelName;
+
+            txtAnthropicKey.Text = config.AnthropicKey;
+            txtAnthropicUrl.Text = config.AnthropicUrl;
+            txtAnthropicModelName.Text = config.AnthropicModelName;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+
         txtTranslatePrompt.Text = config.TranslatePrompt;
         txtVerifyPrompt.Text = config.VerifyPrompt;
-        txtKey.Text = config.Key;
-        txtUrl.Text = config.Url;
-        txtModelName.Text = config.ModelName;
     }
 
     private void SaveConfig()
@@ -207,9 +256,16 @@ internal sealed partial class ConfigForm : Form
         {
             TranslatePrompt = txtTranslatePrompt.Text.Trim(),
             VerifyPrompt = txtVerifyPrompt.Text.Trim(),
-            Key = txtKey.Text.Trim(),
-            Url = txtUrl.Text.Trim(),
-            ModelName = txtModelName.Text.Trim(),
+
+            OpenAiKey = txtKey.Text.Trim(),
+            OpenAiUrl = txtUrl.Text.Trim(),
+            OpenAiModelName = txtModelName.Text.Trim(),
+
+            AnthropicKey = txtAnthropicKey.Text.Trim(),
+            AnthropicUrl = txtAnthropicUrl.Text.Trim(),
+            AnthropicModelName = txtAnthropicModelName.Text.Trim(),
+
+            Provider = rbAnthropic.Checked ? AiProvider.Anthropic : AiProvider.OpenAI,
             ShowDetails = AppConfig.Current.ShowDetails,
         };
         config.Save();

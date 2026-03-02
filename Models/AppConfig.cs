@@ -7,9 +7,19 @@ internal sealed class AppConfig
 {
     private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "CheckTranslation.config.json");
 
-    private const string DefaultUrl = "https://api.openai.com/v1";
-    private const string DefaultModelName = "gpt-5.2";
+    private const string DefaultOpenAiUrl = "https://api.openai.com/v1";
+    private const string DefaultOpenAiModelName = "gpt-5.2";
+
+    private const string DefaultAnthropicUrl = "https://api.anthropic.com";
+    private const string DefaultAnthropicModelName = "claude-3-7-sonnet-latest";
+
     private const bool DefaultShowDetails = true;
+
+    internal static string GetDefaultUrl(AiProvider provider)
+        => provider == AiProvider.Anthropic ? DefaultAnthropicUrl : DefaultOpenAiUrl;
+
+    internal static string GetDefaultModelName(AiProvider provider)
+        => provider == AiProvider.Anthropic ? DefaultAnthropicModelName : DefaultOpenAiModelName;
 
     private const string DefaultTranslatePrompt = """
         Tu es un expert en traduction technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
@@ -151,14 +161,40 @@ internal sealed class AppConfig
 
     public string TranslatePrompt { get; set; } = DefaultTranslatePrompt;
     public string VerifyPrompt { get; set; } = DefaultVerifyPrompt;
-    public string Key { get; set; } = string.Empty;
-    public string Url { get; set; } = DefaultUrl;
-    public string ModelName { get; set; } = DefaultModelName;
+
+    public string OpenAiKey { get; set; } = string.Empty;
+    public string OpenAiUrl { get; set; } = DefaultOpenAiUrl;
+    public string OpenAiModelName { get; set; } = DefaultOpenAiModelName;
+
+    public string AnthropicKey { get; set; } = string.Empty;
+    public string AnthropicUrl { get; set; } = DefaultAnthropicUrl;
+    public string AnthropicModelName { get; set; } = DefaultAnthropicModelName;
+
+    public AiProvider Provider { get; set; } = AiProvider.OpenAI;
     public bool ShowDetails { get; set; } = DefaultShowDetails;
+
+    public string Key => Provider == AiProvider.Anthropic ? AnthropicKey : OpenAiKey;
+    public string Url => Provider == AiProvider.Anthropic ? AnthropicUrl : OpenAiUrl;
+    public string ModelName => Provider == AiProvider.Anthropic ? AnthropicModelName : OpenAiModelName;
 
     public void Save()
     {
-        var dto = new ConfigDto(TranslatePrompt, VerifyPrompt, EncryptKey(Key), Url, ModelName, ShowDetails);
+        var dto = new ConfigDto
+        {
+            TranslatePrompt = TranslatePrompt,
+            VerifyPrompt = VerifyPrompt,
+
+            OpenAiKey = EncryptKey(OpenAiKey),
+            OpenAiUrl = OpenAiUrl,
+            OpenAiModelName = OpenAiModelName,
+
+            AnthropicKey = EncryptKey(AnthropicKey),
+            AnthropicUrl = AnthropicUrl,
+            AnthropicModelName = AnthropicModelName,
+
+            Provider = Provider.ToString(),
+            ShowDetails = ShowDetails,
+        };
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(FilePath, json);
         Current = this;
@@ -183,15 +219,36 @@ internal sealed class AppConfig
         if (dto is null)
             return new AppConfig();
 
+        var provider = Enum.TryParse<AiProvider>(dto.Provider ?? string.Empty, ignoreCase: true, out var p)
+            ? p
+            : AiProvider.OpenAI;
+
         var config = new AppConfig
         {
             TranslatePrompt = string.IsNullOrWhiteSpace(dto.TranslatePrompt) ? DefaultTranslatePrompt : dto.TranslatePrompt,
             VerifyPrompt = string.IsNullOrWhiteSpace(dto.VerifyPrompt) ? DefaultVerifyPrompt : dto.VerifyPrompt,
-            Key = DecryptKey(dto.Key),
-            Url = string.IsNullOrWhiteSpace(dto.Url) ? DefaultUrl : dto.Url,
-            ModelName = string.IsNullOrWhiteSpace(dto.ModelName) ? DefaultModelName : dto.ModelName,
-            ShowDetails = dto.ShowDetails,
+
+            OpenAiKey = DecryptKey(dto.OpenAiKey ?? dto.Key ?? string.Empty),
+            OpenAiUrl = string.IsNullOrWhiteSpace(dto.OpenAiUrl ?? dto.Url) ? DefaultOpenAiUrl : (dto.OpenAiUrl ?? dto.Url)!,
+            OpenAiModelName = string.IsNullOrWhiteSpace(dto.OpenAiModelName ?? dto.ModelName) ? DefaultOpenAiModelName : (dto.OpenAiModelName ?? dto.ModelName)!,
+
+            AnthropicKey = DecryptKey(dto.AnthropicKey ?? string.Empty),
+            AnthropicUrl = string.IsNullOrWhiteSpace(dto.AnthropicUrl) ? DefaultAnthropicUrl : dto.AnthropicUrl,
+            AnthropicModelName = string.IsNullOrWhiteSpace(dto.AnthropicModelName) ? DefaultAnthropicModelName : dto.AnthropicModelName,
+
+            Provider = provider,
+            ShowDetails = dto.ShowDetails ?? DefaultShowDetails,
         };
+
+        // Si un des champs a été laissé vide, on applique les valeurs par défaut du provider sélectionné.
+        if (string.IsNullOrWhiteSpace(config.OpenAiUrl))
+            config.OpenAiUrl = DefaultOpenAiUrl;
+        if (string.IsNullOrWhiteSpace(config.OpenAiModelName))
+            config.OpenAiModelName = DefaultOpenAiModelName;
+        if (string.IsNullOrWhiteSpace(config.AnthropicUrl))
+            config.AnthropicUrl = DefaultAnthropicUrl;
+        if (string.IsNullOrWhiteSpace(config.AnthropicModelName))
+            config.AnthropicModelName = DefaultAnthropicModelName;
 
         Current = config;
         return config;
@@ -228,6 +285,26 @@ internal sealed class AppConfig
         }
     }
 
-    private record ConfigDto(string TranslatePrompt, string VerifyPrompt, string Key, string Url, string ModelName, bool ShowDetails = DefaultShowDetails);
+    private sealed class ConfigDto
+    {
+        public string? TranslatePrompt { get; set; }
+        public string? VerifyPrompt { get; set; }
+
+        // Legacy (OpenAI only)
+        public string? Key { get; set; }
+        public string? Url { get; set; }
+        public string? ModelName { get; set; }
+
+        // Provider specific
+        public string? OpenAiKey { get; set; }
+        public string? OpenAiUrl { get; set; }
+        public string? OpenAiModelName { get; set; }
+        public string? AnthropicKey { get; set; }
+        public string? AnthropicUrl { get; set; }
+        public string? AnthropicModelName { get; set; }
+
+        public string? Provider { get; set; } = nameof(AiProvider.OpenAI);
+        public bool? ShowDetails { get; set; } = DefaultShowDetails;
+    }
 }
 

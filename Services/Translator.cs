@@ -75,6 +75,9 @@ internal static partial class Translator
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
+        if (config.Provider != AiProvider.OpenAI)
+            throw new NotSupportedException($"Provider '{config.Provider}' not supported yet.");
+
         var client = new ChatClient(
             config.ModelName,
             new ApiKeyCredential(config.Key),
