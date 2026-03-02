@@ -1,6 +1,10 @@
 using System.ClientModel;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using Anthropic;
+using Anthropic.Exceptions;
+using Anthropic.Models.Messages;
 using OpenAI;
 using OpenAI.Chat;
 
@@ -10,6 +14,7 @@ internal static partial class Translator
 {
     private const int BatchSize = 20;
     private const float Temperature = 0.1f;
+    private const long AnthropicMaxTokens = 2048;
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
@@ -75,9 +80,16 @@ internal static partial class Translator
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
-        if (config.Provider != AiProvider.OpenAI)
-            throw new NotSupportedException($"Provider '{config.Provider}' not supported yet.");
+        return config.Provider switch
+        {
+            AiProvider.OpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
+            AiProvider.Anthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
+            _ => throw new NotSupportedException($"Provider '{config.Provider}' not supported."),
+        };
+    }
 
+    private static async Task<string> CallOpenAiAsync(string systemPrompt, string userMessage, AppConfig config)
+    {
         var client = new ChatClient(
             config.ModelName,
             new ApiKeyCredential(config.Key),
@@ -96,6 +108,62 @@ internal static partial class Translator
             options);
 
         return result.Value.Content[0].Text?.Trim() ?? string.Empty;
+    }
+
+    private static async Task<string> CallAnthropicAsync(string systemPrompt, string userMessage, AppConfig config)
+    {
+        try
+        {
+            var client = new AnthropicClient
+            {
+                ApiKey = config.Key,
+                BaseUrl = NormalizeAnthropicEndpoint(config.Url),
+            };
+
+            var parameters = new MessageCreateParams
+            {
+                Model = config.ModelName,
+                MaxTokens = AnthropicMaxTokens,
+                Temperature = Temperature,
+                System = new MessageCreateParamsSystem(systemPrompt, null),
+                Messages = new List<MessageParam>
+                {
+                    new()
+                    {
+                        Role = Role.User,
+                        Content = new MessageParamContent(userMessage, null),
+                    },
+                },
+            };
+
+            var message = await client.Messages.Create(parameters);
+
+            var sb = new StringBuilder();
+            foreach (var block in message.Content)
+                if (block.TryPickText(out var textBlock))
+                    sb.Append(textBlock.Text);
+
+            return sb.ToString().Trim();
+        }
+        catch (AnthropicRateLimitException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.", ex);
+        }
+    }
+
+    private static string NormalizeAnthropicEndpoint(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return string.Empty;
+
+        var trimmed = url.Trim().TrimEnd('/');
+
+        if (trimmed.EndsWith("/v1/messages", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/v1/messages".Length];
+        else if (trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/v1".Length];
+
+        return trimmed;
     }
 
     private static string[] ParseNumberedList(string content, int expectedCount)

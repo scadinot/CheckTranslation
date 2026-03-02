@@ -1,4 +1,8 @@
 ﻿using Markdig;
+using System.ClientModel;
+using Anthropic;
+using Anthropic.Models.Models;
+using OpenAI;
 
 namespace CheckTranslation;
 
@@ -6,6 +10,9 @@ internal sealed partial class ConfigForm : Form
 {
     private bool _isLoading;
     private bool _isUpdatingProvider;
+    private bool _openAiModelsLoaded;
+    private bool _anthropicModelsLoaded;
+    private bool _isLoadingModels;
 
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -23,11 +30,48 @@ internal sealed partial class ConfigForm : Form
     public ConfigForm()
     {
         InitializeComponent();
+        InitModelSelectors();
         InitProviderUi();
         InitMarkdownEditors();
         btnOk.Click += (_, _) => SaveConfig();
         LoadConfig();
     }
+
+        private void InitModelSelectors()
+    {
+        txtOpenAiModelName.DropDownStyle = ComboBoxStyle.DropDown;
+        txtOpenAiModelName.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        txtOpenAiModelName.AutoCompleteSource = AutoCompleteSource.ListItems;
+
+        txtOpenAiModelName.DropDown += async (_, _) => await TryLoadOpenAiModelsAsync();
+        txtOpenAiModelName.MouseDown += async (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                await TryLoadOpenAiModelsAsync();
+        };
+        txtOpenAiKey.TextChanged += (_, _) => _openAiModelsLoaded = false;
+        txtOpenAiUrl.TextChanged += (_, _) => _openAiModelsLoaded = false;
+
+        txtAnthropicModelName.DropDownStyle = ComboBoxStyle.DropDown;
+        txtAnthropicModelName.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        txtAnthropicModelName.AutoCompleteSource = AutoCompleteSource.ListItems;
+
+        txtAnthropicModelName.DropDown += async (_, _) => await TryLoadAnthropicModelsAsync();
+        txtAnthropicModelName.MouseDown += async (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                await TryLoadAnthropicModelsAsync();
+        };
+        txtAnthropicKey.TextChanged += (_, _) => _anthropicModelsLoaded = false;
+        txtAnthropicUrl.TextChanged += (_, _) => _anthropicModelsLoaded = false;
+
+        txtOpenAiModelName.Items.Clear();
+        txtOpenAiModelName.Items.Add(AppConfig.GetDefaultModelName(AiProvider.OpenAI));
+
+        txtAnthropicModelName.Items.Clear();
+        txtAnthropicModelName.Items.Add(AppConfig.GetDefaultModelName(AiProvider.Anthropic));
+    }
+
 
     private void InitProviderUi()
     {
@@ -57,11 +101,11 @@ internal sealed partial class ConfigForm : Form
 
         if (rbOpenAi.Checked)
         {
-            if (string.IsNullOrWhiteSpace(txtUrl.Text))
-                txtUrl.Text = AppConfig.GetDefaultUrl(AiProvider.OpenAI);
+            if (string.IsNullOrWhiteSpace(txtOpenAiUrl.Text))
+                txtOpenAiUrl.Text = AppConfig.GetDefaultUrl(AiProvider.OpenAI);
 
-            if (string.IsNullOrWhiteSpace(txtModelName.Text))
-                txtModelName.Text = AppConfig.GetDefaultModelName(AiProvider.OpenAI);
+            if (string.IsNullOrWhiteSpace(txtOpenAiModelName.Text))
+                txtOpenAiModelName.Text = AppConfig.GetDefaultModelName(AiProvider.OpenAI);
         }
         else if (rbAnthropic.Checked)
         {
@@ -70,6 +114,215 @@ internal sealed partial class ConfigForm : Form
 
             if (string.IsNullOrWhiteSpace(txtAnthropicModelName.Text))
                 txtAnthropicModelName.Text = AppConfig.GetDefaultModelName(AiProvider.Anthropic);
+        }
+    }
+
+        private async Task TryLoadOpenAiModelsAsync()
+    {
+        if (_isLoading)
+            return;
+
+        if (_isLoadingModels || _openAiModelsLoaded)
+            return;
+
+        var key = txtOpenAiKey.Text.Trim();
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
+        var endpoint = NormalizeOpenAiEndpoint(txtOpenAiUrl.Text);
+        var currentModel = txtOpenAiModelName.Text;
+
+        try
+        {
+            _isLoadingModels = true;
+
+            var client = new OpenAIClient(new ApiKeyCredential(key), new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+            var modelClient = client.GetOpenAIModelClient();
+
+            var response = await modelClient.GetModelsAsync(CancellationToken.None);
+            var payload = UnwrapClientResult(response);
+            if (payload is null)
+                return;
+
+            var modelIds = ExtractIds(payload)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .Cast<object>()
+                .ToArray();
+
+            if (modelIds.Length == 0)
+                return;
+
+            _openAiModelsLoaded = true;
+
+            if (IsHandleCreated)
+            {
+                BeginInvoke(() =>
+                {
+                    txtOpenAiModelName.BeginUpdate();
+                    try
+                    {
+                        txtOpenAiModelName.Items.Clear();
+                        txtOpenAiModelName.Items.AddRange(modelIds);
+                        txtOpenAiModelName.Text = currentModel;
+                    }
+                    finally
+                    {
+                        txtOpenAiModelName.EndUpdate();
+                    }
+                });
+            }
+        }
+        catch
+        {
+            // best effort
+        }
+        finally
+        {
+            _isLoadingModels = false;
+        }
+    }
+
+
+    private async Task TryLoadAnthropicModelsAsync()
+    {
+        if (_isLoading)
+            return;
+
+        if (_isLoadingModels || _anthropicModelsLoaded)
+            return;
+
+        var key = txtAnthropicKey.Text.Trim();
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
+        var baseUrl = NormalizeAnthropicBaseUrl(txtAnthropicUrl.Text);
+        var currentModel = txtAnthropicModelName.Text;
+
+        try
+        {
+            _isLoadingModels = true;
+            var client = new AnthropicClient
+            {
+                ApiKey = key,
+                BaseUrl = baseUrl,
+            };
+
+            var page = await client.Models.List(new ModelListParams(), CancellationToken.None);
+
+            var modelIds = page.Items
+                .Select(GetModelId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .Cast<object>()
+                .ToArray();
+
+            if (modelIds.Length == 0)
+                return;
+
+            _anthropicModelsLoaded = true;
+
+            if (IsHandleCreated)
+            {
+                BeginInvoke(() =>
+                {
+                    txtAnthropicModelName.BeginUpdate();
+                    try
+                    {
+                        txtAnthropicModelName.Items.Clear();
+                        txtAnthropicModelName.Items.AddRange(modelIds);
+                        txtAnthropicModelName.Text = currentModel;
+                    }
+                    finally
+                    {
+                        txtAnthropicModelName.EndUpdate();
+                    }
+                });
+            }
+        }
+        catch
+        {
+            // best effort: si la clé est invalide / pas de réseau / etc., on garde la liste statique
+        }
+        finally
+        {
+            _isLoadingModels = false;
+        }
+    }
+
+    private static string? GetModelId(object model)
+    {
+        var t = model.GetType();
+        var p = t.GetProperty("ID") ?? t.GetProperty("Id") ?? t.GetProperty("ModelID") ?? t.GetProperty("ModelId");
+        return p?.GetValue(model)?.ToString();
+    }
+
+    private static string NormalizeAnthropicBaseUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return AppConfig.GetDefaultUrl(AiProvider.Anthropic);
+
+        var trimmed = url.Trim().TrimEnd('/');
+        if (trimmed.EndsWith("/v1/messages", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/v1/messages".Length];
+        else if (trimmed.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/v1".Length];
+
+        return trimmed;
+    }
+
+    private static string NormalizeOpenAiEndpoint(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return AppConfig.GetDefaultUrl(AiProvider.OpenAI);
+
+        var trimmed = url.Trim().TrimEnd('/');
+
+        if (trimmed.EndsWith("/v1/responses", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/responses".Length];
+        if (trimmed.EndsWith("/v1/chat/completions", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/chat/completions".Length];
+        if (trimmed.EndsWith("/responses", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[..^"/responses".Length];
+
+        return trimmed;
+    }
+
+    private static object? UnwrapClientResult(object? maybeClientResult)
+    {
+        if (maybeClientResult is null)
+            return null;
+
+        var valueProp = maybeClientResult.GetType().GetProperty("Value");
+        return valueProp?.GetValue(maybeClientResult) ?? maybeClientResult;
+    }
+
+    private static IEnumerable<string?> ExtractIds(object payload)
+    {
+        System.Collections.IEnumerable? models = payload as System.Collections.IEnumerable;
+
+        if (models is null)
+        {
+            var dataProp = payload.GetType().GetProperty("Data") ?? payload.GetType().GetProperty("Items");
+            models = dataProp?.GetValue(payload) as System.Collections.IEnumerable;
+        }
+
+        if (models is null)
+            yield break;
+
+        foreach (var model in models)
+        {
+            if (model is null)
+                continue;
+
+            var t = model.GetType();
+            var p = t.GetProperty("Id") ?? t.GetProperty("ID") ?? t.GetProperty("Model") ?? t.GetProperty("Name");
+            if (p is null)
+                continue;
+
+            yield return p.GetValue(model)?.ToString();
         }
     }
 
@@ -249,9 +502,9 @@ internal sealed partial class ConfigForm : Form
             rbOpenAi.Checked = config.Provider != AiProvider.Anthropic;
             rbAnthropic.Checked = config.Provider == AiProvider.Anthropic;
 
-            txtKey.Text = config.OpenAiKey;
-            txtUrl.Text = config.OpenAiUrl;
-            txtModelName.Text = config.OpenAiModelName;
+            txtOpenAiKey.Text = config.OpenAiKey;
+            txtOpenAiUrl.Text = config.OpenAiUrl;
+            txtOpenAiModelName.Text = config.OpenAiModelName;
 
             txtAnthropicKey.Text = config.AnthropicKey;
             txtAnthropicUrl.Text = config.AnthropicUrl;
@@ -273,9 +526,9 @@ internal sealed partial class ConfigForm : Form
             TranslatePrompt = txtTranslatePrompt.Text.Trim(),
             VerifyPrompt = txtVerifyPrompt.Text.Trim(),
 
-            OpenAiKey = txtKey.Text.Trim(),
-            OpenAiUrl = txtUrl.Text.Trim(),
-            OpenAiModelName = txtModelName.Text.Trim(),
+            OpenAiKey = txtOpenAiKey.Text.Trim(),
+            OpenAiUrl = txtOpenAiUrl.Text.Trim(),
+            OpenAiModelName = txtOpenAiModelName.Text.Trim(),
 
             AnthropicKey = txtAnthropicKey.Text.Trim(),
             AnthropicUrl = txtAnthropicUrl.Text.Trim(),
@@ -287,3 +540,4 @@ internal sealed partial class ConfigForm : Form
         config.Save();
     }
 }
+

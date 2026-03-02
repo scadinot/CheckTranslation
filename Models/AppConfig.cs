@@ -11,7 +11,7 @@ internal sealed class AppConfig
     private const string DefaultOpenAiModelName = "gpt-5.2";
 
     private const string DefaultAnthropicUrl = "https://api.anthropic.com";
-    private const string DefaultAnthropicModelName = "claude-3-7-sonnet-latest";
+    private const string DefaultAnthropicModelName = "claude-sonnet-4-6";
 
     private const bool DefaultShowDetails = true;
 

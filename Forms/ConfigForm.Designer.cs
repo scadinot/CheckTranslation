@@ -2,6 +2,8 @@ namespace CheckTranslation;
 
 partial class ConfigForm
 {
+    // This is a test designer patch
+    private string testField;
     private System.ComponentModel.IContainer components = null;
 
     protected override void Dispose(bool disposing)
@@ -22,18 +24,18 @@ partial class ConfigForm
         splitContainer2 = new SplitContainer();
         lblKey = new Label();
         rbOpenAi = new RadioButton();
-        txtKey = new TextBox();
-        txtUrl = new TextBox();
+        txtOpenAiKey = new TextBox();
+        txtOpenAiUrl = new TextBox();
         lblModelName = new Label();
         lblUrl = new Label();
-        txtModelName = new TextBox();
+        txtOpenAiModelName = new ComboBox();
         txtAnthropicKey = new TextBox();
         rbAnthropic = new RadioButton();
         lblAnthropicKey = new Label();
         txtAnthropicUrl = new TextBox();
         lblAnthropicModelName = new Label();
         lblAnthropicUrl = new Label();
-        txtAnthropicModelName = new TextBox();
+        txtAnthropicModelName = new ComboBox();
         lblPrompt = new Label();
         tabTranslatePrompt = new TabControl();
         tabTranslatePreview = new TabPage();
@@ -71,11 +73,9 @@ partial class ConfigForm
         // 
         grpAuth.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         grpAuth.Controls.Add(splitContainer2);
-        grpAuth.Location = new Point(10, 590);
-        grpAuth.Margin = new Padding(3, 2, 3, 2);
+        grpAuth.Location = new Point(11, 787);
         grpAuth.Name = "grpAuth";
-        grpAuth.Padding = new Padding(3, 2, 3, 2);
-        grpAuth.Size = new Size(821, 154);
+        grpAuth.Size = new Size(938, 205);
         grpAuth.TabIndex = 0;
         grpAuth.TabStop = false;
         grpAuth.Text = "Paramètres IA";
@@ -83,18 +83,19 @@ partial class ConfigForm
         // splitContainer2
         // 
         splitContainer2.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        splitContainer2.Location = new Point(6, 21);
+        splitContainer2.Location = new Point(7, 28);
+        splitContainer2.Margin = new Padding(3, 4, 3, 4);
         splitContainer2.Name = "splitContainer2";
         // 
         // splitContainer2.Panel1
         // 
         splitContainer2.Panel1.Controls.Add(lblKey);
         splitContainer2.Panel1.Controls.Add(rbOpenAi);
-        splitContainer2.Panel1.Controls.Add(txtKey);
-        splitContainer2.Panel1.Controls.Add(txtUrl);
+        splitContainer2.Panel1.Controls.Add(txtOpenAiKey);
+        splitContainer2.Panel1.Controls.Add(txtOpenAiUrl);
         splitContainer2.Panel1.Controls.Add(lblModelName);
         splitContainer2.Panel1.Controls.Add(lblUrl);
-        splitContainer2.Panel1.Controls.Add(txtModelName);
+        splitContainer2.Panel1.Controls.Add(txtOpenAiModelName);
         // 
         // splitContainer2.Panel2
         // 
@@ -105,16 +106,17 @@ partial class ConfigForm
         splitContainer2.Panel2.Controls.Add(lblAnthropicModelName);
         splitContainer2.Panel2.Controls.Add(lblAnthropicUrl);
         splitContainer2.Panel2.Controls.Add(txtAnthropicModelName);
-        splitContainer2.Size = new Size(809, 128);
-        splitContainer2.SplitterDistance = 403;
+        splitContainer2.Size = new Size(925, 171);
+        splitContainer2.SplitterDistance = 460;
+        splitContainer2.SplitterWidth = 5;
         splitContainer2.TabIndex = 8;
         // 
         // lblKey
         // 
         lblKey.AutoSize = true;
-        lblKey.Location = new Point(6, 34);
+        lblKey.Location = new Point(7, 45);
         lblKey.Name = "lblKey";
-        lblKey.Size = new Size(32, 15);
+        lblKey.Size = new Size(40, 20);
         lblKey.TabIndex = 1;
         lblKey.Text = "Key :";
         // 
@@ -122,76 +124,75 @@ partial class ConfigForm
         // 
         rbOpenAi.AutoSize = true;
         rbOpenAi.Checked = true;
-        rbOpenAi.Location = new Point(10, 7);
+        rbOpenAi.Location = new Point(11, 9);
+        rbOpenAi.Margin = new Padding(3, 4, 3, 4);
         rbOpenAi.Name = "rbOpenAi";
-        rbOpenAi.Size = new Size(123, 19);
+        rbOpenAi.Size = new Size(150, 24);
         rbOpenAi.TabIndex = 0;
         rbOpenAi.TabStop = true;
         rbOpenAi.Text = "OpenAI (ChatGPT)";
         rbOpenAi.UseVisualStyleBackColor = true;
         // 
-        // txtKey
+        // txtOpenAiKey
         // 
-        txtKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtKey.Location = new Point(68, 31);
-        txtKey.Margin = new Padding(3, 2, 3, 2);
-        txtKey.Name = "txtKey";
-        txtKey.Size = new Size(332, 23);
-        txtKey.TabIndex = 1;
-        txtKey.UseSystemPasswordChar = true;
+        txtOpenAiKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtOpenAiKey.Location = new Point(78, 41);
+        txtOpenAiKey.Name = "txtOpenAiKey";
+        txtOpenAiKey.Size = new Size(378, 27);
+        txtOpenAiKey.TabIndex = 1;
+        txtOpenAiKey.UseSystemPasswordChar = true;
         // 
-        // txtUrl
+        // txtOpenAiUrl
         // 
-        txtUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtUrl.Location = new Point(68, 58);
-        txtUrl.Margin = new Padding(3, 2, 3, 2);
-        txtUrl.Name = "txtUrl";
-        txtUrl.Size = new Size(332, 23);
-        txtUrl.TabIndex = 2;
+        txtOpenAiUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtOpenAiUrl.Location = new Point(78, 77);
+        txtOpenAiUrl.Name = "txtOpenAiUrl";
+        txtOpenAiUrl.Size = new Size(378, 27);
+        txtOpenAiUrl.TabIndex = 2;
         // 
         // lblModelName
         // 
         lblModelName.AutoSize = true;
-        lblModelName.Location = new Point(6, 88);
+        lblModelName.Location = new Point(7, 117);
         lblModelName.Name = "lblModelName";
-        lblModelName.Size = new Size(47, 15);
+        lblModelName.Size = new Size(59, 20);
         lblModelName.TabIndex = 4;
         lblModelName.Text = "Model :";
         // 
         // lblUrl
         // 
         lblUrl.AutoSize = true;
-        lblUrl.Location = new Point(6, 61);
+        lblUrl.Location = new Point(7, 81);
         lblUrl.Name = "lblUrl";
-        lblUrl.Size = new Size(28, 15);
+        lblUrl.Size = new Size(35, 20);
         lblUrl.TabIndex = 2;
         lblUrl.Text = "Url :";
         // 
-        // txtModelName
+        // txtOpenAiModelName
         // 
-        txtModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtModelName.Location = new Point(68, 85);
-        txtModelName.Margin = new Padding(3, 2, 3, 2);
-        txtModelName.Name = "txtModelName";
-        txtModelName.Size = new Size(332, 23);
-        txtModelName.TabIndex = 4;
+        txtOpenAiModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtOpenAiModelName.FormattingEnabled = true;
+        txtOpenAiModelName.Location = new Point(78, 113);
+        txtOpenAiModelName.Name = "txtOpenAiModelName";
+        txtOpenAiModelName.Size = new Size(378, 28);
+        txtOpenAiModelName.TabIndex = 4;
         // 
         // txtAnthropicKey
         // 
         txtAnthropicKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtAnthropicKey.Location = new Point(68, 31);
-        txtAnthropicKey.Margin = new Padding(3, 2, 3, 2);
+        txtAnthropicKey.Location = new Point(78, 41);
         txtAnthropicKey.Name = "txtAnthropicKey";
-        txtAnthropicKey.Size = new Size(331, 23);
+        txtAnthropicKey.Size = new Size(379, 27);
         txtAnthropicKey.TabIndex = 5;
         txtAnthropicKey.UseSystemPasswordChar = true;
         // 
         // rbAnthropic
         // 
         rbAnthropic.AutoSize = true;
-        rbAnthropic.Location = new Point(10, 7);
+        rbAnthropic.Location = new Point(11, 9);
+        rbAnthropic.Margin = new Padding(3, 4, 3, 4);
         rbAnthropic.Name = "rbAnthropic";
-        rbAnthropic.Size = new Size(126, 19);
+        rbAnthropic.Size = new Size(155, 24);
         rbAnthropic.TabIndex = 0;
         rbAnthropic.Text = "Anthropic (Claude)";
         rbAnthropic.UseVisualStyleBackColor = true;
@@ -199,55 +200,54 @@ partial class ConfigForm
         // lblAnthropicKey
         // 
         lblAnthropicKey.AutoSize = true;
-        lblAnthropicKey.Location = new Point(6, 34);
+        lblAnthropicKey.Location = new Point(7, 45);
         lblAnthropicKey.Name = "lblAnthropicKey";
-        lblAnthropicKey.Size = new Size(32, 15);
+        lblAnthropicKey.Size = new Size(40, 20);
         lblAnthropicKey.TabIndex = 5;
         lblAnthropicKey.Text = "Key :";
         // 
         // txtAnthropicUrl
         // 
         txtAnthropicUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtAnthropicUrl.Location = new Point(68, 60);
-        txtAnthropicUrl.Margin = new Padding(3, 2, 3, 2);
+        txtAnthropicUrl.Location = new Point(78, 80);
         txtAnthropicUrl.Name = "txtAnthropicUrl";
-        txtAnthropicUrl.Size = new Size(330, 23);
+        txtAnthropicUrl.Size = new Size(378, 27);
         txtAnthropicUrl.TabIndex = 6;
         // 
         // lblAnthropicModelName
         // 
         lblAnthropicModelName.AutoSize = true;
-        lblAnthropicModelName.Location = new Point(6, 88);
+        lblAnthropicModelName.Location = new Point(7, 117);
         lblAnthropicModelName.Name = "lblAnthropicModelName";
-        lblAnthropicModelName.Size = new Size(47, 15);
+        lblAnthropicModelName.Size = new Size(59, 20);
         lblAnthropicModelName.TabIndex = 7;
         lblAnthropicModelName.Text = "Model :";
         // 
         // lblAnthropicUrl
         // 
         lblAnthropicUrl.AutoSize = true;
-        lblAnthropicUrl.Location = new Point(6, 61);
+        lblAnthropicUrl.Location = new Point(7, 81);
         lblAnthropicUrl.Name = "lblAnthropicUrl";
-        lblAnthropicUrl.Size = new Size(28, 15);
+        lblAnthropicUrl.Size = new Size(35, 20);
         lblAnthropicUrl.TabIndex = 6;
         lblAnthropicUrl.Text = "Url :";
         // 
         // txtAnthropicModelName
         // 
         txtAnthropicModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        txtAnthropicModelName.Location = new Point(68, 87);
-        txtAnthropicModelName.Margin = new Padding(3, 2, 3, 2);
+        txtAnthropicModelName.FormattingEnabled = true;
+        txtAnthropicModelName.Location = new Point(78, 116);
         txtAnthropicModelName.Name = "txtAnthropicModelName";
-        txtAnthropicModelName.Size = new Size(330, 23);
+        txtAnthropicModelName.Size = new Size(378, 28);
         txtAnthropicModelName.TabIndex = 7;
         // 
         // lblPrompt
         // 
         lblPrompt.AutoSize = true;
         lblPrompt.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-        lblPrompt.Location = new Point(5, 10);
+        lblPrompt.Location = new Point(6, 13);
         lblPrompt.Name = "lblPrompt";
-        lblPrompt.Size = new Size(72, 15);
+        lblPrompt.Size = new Size(92, 20);
         lblPrompt.TabIndex = 0;
         lblPrompt.Text = "Traduction :";
         // 
@@ -257,22 +257,20 @@ partial class ConfigForm
         tabTranslatePrompt.Controls.Add(tabTranslatePreview);
         tabTranslatePrompt.Controls.Add(tabTranslateEdit);
         tabTranslatePrompt.ImageList = tabPromptIcons;
-        tabTranslatePrompt.Location = new Point(5, 27);
-        tabTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
+        tabTranslatePrompt.Location = new Point(6, 36);
         tabTranslatePrompt.Name = "tabTranslatePrompt";
         tabTranslatePrompt.SelectedIndex = 0;
-        tabTranslatePrompt.Size = new Size(816, 262);
+        tabTranslatePrompt.Size = new Size(933, 348);
         tabTranslatePrompt.TabIndex = 0;
         // 
         // tabTranslatePreview
         // 
         tabTranslatePreview.Controls.Add(webTranslatePreview);
         tabTranslatePreview.ImageKey = "preview";
-        tabTranslatePreview.Location = new Point(4, 24);
-        tabTranslatePreview.Margin = new Padding(3, 2, 3, 2);
+        tabTranslatePreview.Location = new Point(4, 29);
         tabTranslatePreview.Name = "tabTranslatePreview";
-        tabTranslatePreview.Padding = new Padding(3);
-        tabTranslatePreview.Size = new Size(808, 234);
+        tabTranslatePreview.Padding = new Padding(3, 4, 3, 4);
+        tabTranslatePreview.Size = new Size(925, 315);
         tabTranslatePreview.TabIndex = 0;
         tabTranslatePreview.Text = "Aperçu";
         tabTranslatePreview.UseVisualStyleBackColor = true;
@@ -280,22 +278,20 @@ partial class ConfigForm
         // webTranslatePreview
         // 
         webTranslatePreview.Dock = DockStyle.Fill;
-        webTranslatePreview.Location = new Point(3, 3);
-        webTranslatePreview.Margin = new Padding(3, 2, 3, 2);
-        webTranslatePreview.MinimumSize = new Size(20, 20);
+        webTranslatePreview.Location = new Point(3, 4);
+        webTranslatePreview.MinimumSize = new Size(23, 27);
         webTranslatePreview.Name = "webTranslatePreview";
-        webTranslatePreview.Size = new Size(802, 228);
+        webTranslatePreview.Size = new Size(919, 307);
         webTranslatePreview.TabIndex = 0;
         // 
         // tabTranslateEdit
         // 
         tabTranslateEdit.Controls.Add(txtTranslatePrompt);
         tabTranslateEdit.ImageKey = "edit";
-        tabTranslateEdit.Location = new Point(4, 24);
-        tabTranslateEdit.Margin = new Padding(3, 2, 3, 2);
+        tabTranslateEdit.Location = new Point(4, 29);
         tabTranslateEdit.Name = "tabTranslateEdit";
-        tabTranslateEdit.Padding = new Padding(3);
-        tabTranslateEdit.Size = new Size(573, 173);
+        tabTranslateEdit.Padding = new Padding(3, 4, 3, 4);
+        tabTranslateEdit.Size = new Size(925, 316);
         tabTranslateEdit.TabIndex = 1;
         tabTranslateEdit.Text = "Édition";
         tabTranslateEdit.UseVisualStyleBackColor = true;
@@ -303,12 +299,11 @@ partial class ConfigForm
         // txtTranslatePrompt
         // 
         txtTranslatePrompt.Dock = DockStyle.Fill;
-        txtTranslatePrompt.Location = new Point(3, 3);
-        txtTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
+        txtTranslatePrompt.Location = new Point(3, 4);
         txtTranslatePrompt.Multiline = true;
         txtTranslatePrompt.Name = "txtTranslatePrompt";
         txtTranslatePrompt.ScrollBars = ScrollBars.Vertical;
-        txtTranslatePrompt.Size = new Size(567, 167);
+        txtTranslatePrompt.Size = new Size(919, 308);
         txtTranslatePrompt.TabIndex = 0;
         // 
         // tabPromptIcons
@@ -321,9 +316,9 @@ partial class ConfigForm
         // 
         lblVerifyPrompt.AutoSize = true;
         lblVerifyPrompt.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-        lblVerifyPrompt.Location = new Point(5, 10);
+        lblVerifyPrompt.Location = new Point(6, 13);
         lblVerifyPrompt.Name = "lblVerifyPrompt";
-        lblVerifyPrompt.Size = new Size(77, 15);
+        lblVerifyPrompt.Size = new Size(97, 20);
         lblVerifyPrompt.TabIndex = 6;
         lblVerifyPrompt.Text = "Vérification :";
         // 
@@ -333,22 +328,20 @@ partial class ConfigForm
         tabVerifyPrompt.Controls.Add(tabVerifyPreview);
         tabVerifyPrompt.Controls.Add(tabVerifyEdit);
         tabVerifyPrompt.ImageList = tabPromptIcons;
-        tabVerifyPrompt.Location = new Point(5, 27);
-        tabVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyPrompt.Location = new Point(6, 36);
         tabVerifyPrompt.Name = "tabVerifyPrompt";
         tabVerifyPrompt.SelectedIndex = 0;
-        tabVerifyPrompt.Size = new Size(816, 256);
+        tabVerifyPrompt.Size = new Size(933, 344);
         tabVerifyPrompt.TabIndex = 1;
         // 
         // tabVerifyPreview
         // 
         tabVerifyPreview.Controls.Add(webVerifyPreview);
         tabVerifyPreview.ImageKey = "preview";
-        tabVerifyPreview.Location = new Point(4, 24);
-        tabVerifyPreview.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyPreview.Location = new Point(4, 29);
         tabVerifyPreview.Name = "tabVerifyPreview";
-        tabVerifyPreview.Padding = new Padding(3);
-        tabVerifyPreview.Size = new Size(808, 228);
+        tabVerifyPreview.Padding = new Padding(3, 4, 3, 4);
+        tabVerifyPreview.Size = new Size(925, 311);
         tabVerifyPreview.TabIndex = 0;
         tabVerifyPreview.Text = "Aperçu";
         tabVerifyPreview.UseVisualStyleBackColor = true;
@@ -356,22 +349,20 @@ partial class ConfigForm
         // webVerifyPreview
         // 
         webVerifyPreview.Dock = DockStyle.Fill;
-        webVerifyPreview.Location = new Point(3, 3);
-        webVerifyPreview.Margin = new Padding(3, 2, 3, 2);
-        webVerifyPreview.MinimumSize = new Size(20, 20);
+        webVerifyPreview.Location = new Point(3, 4);
+        webVerifyPreview.MinimumSize = new Size(23, 27);
         webVerifyPreview.Name = "webVerifyPreview";
-        webVerifyPreview.Size = new Size(802, 222);
+        webVerifyPreview.Size = new Size(919, 303);
         webVerifyPreview.TabIndex = 0;
         // 
         // tabVerifyEdit
         // 
         tabVerifyEdit.Controls.Add(txtVerifyPrompt);
         tabVerifyEdit.ImageKey = "edit";
-        tabVerifyEdit.Location = new Point(4, 24);
-        tabVerifyEdit.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyEdit.Location = new Point(4, 29);
         tabVerifyEdit.Name = "tabVerifyEdit";
-        tabVerifyEdit.Padding = new Padding(3);
-        tabVerifyEdit.Size = new Size(573, 169);
+        tabVerifyEdit.Padding = new Padding(3, 4, 3, 4);
+        tabVerifyEdit.Size = new Size(925, 310);
         tabVerifyEdit.TabIndex = 1;
         tabVerifyEdit.Text = "Édition";
         tabVerifyEdit.UseVisualStyleBackColor = true;
@@ -379,22 +370,20 @@ partial class ConfigForm
         // txtVerifyPrompt
         // 
         txtVerifyPrompt.Dock = DockStyle.Fill;
-        txtVerifyPrompt.Location = new Point(3, 3);
-        txtVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
+        txtVerifyPrompt.Location = new Point(3, 4);
         txtVerifyPrompt.Multiline = true;
         txtVerifyPrompt.Name = "txtVerifyPrompt";
         txtVerifyPrompt.ScrollBars = ScrollBars.Vertical;
-        txtVerifyPrompt.Size = new Size(567, 163);
+        txtVerifyPrompt.Size = new Size(919, 302);
         txtVerifyPrompt.TabIndex = 1;
         // 
         // btnOk
         // 
         btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnOk.DialogResult = DialogResult.OK;
-        btnOk.Location = new Point(682, 748);
-        btnOk.Margin = new Padding(3, 2, 3, 2);
+        btnOk.Location = new Point(779, 997);
         btnOk.Name = "btnOk";
-        btnOk.Size = new Size(70, 21);
+        btnOk.Size = new Size(80, 28);
         btnOk.TabIndex = 4;
         btnOk.Text = "OK";
         // 
@@ -402,18 +391,16 @@ partial class ConfigForm
         // 
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location = new Point(761, 748);
-        btnCancel.Margin = new Padding(3, 2, 3, 2);
+        btnCancel.Location = new Point(870, 997);
         btnCancel.Name = "btnCancel";
-        btnCancel.Size = new Size(70, 21);
+        btnCancel.Size = new Size(80, 28);
         btnCancel.TabIndex = 5;
         btnCancel.Text = "Annuler";
         // 
         // splitContainer1
         // 
         splitContainer1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        splitContainer1.Location = new Point(10, 9);
-        splitContainer1.Margin = new Padding(3, 2, 3, 2);
+        splitContainer1.Location = new Point(11, 12);
         splitContainer1.Name = "splitContainer1";
         splitContainer1.Orientation = Orientation.Horizontal;
         // 
@@ -426,25 +413,23 @@ partial class ConfigForm
         // 
         splitContainer1.Panel2.Controls.Add(tabVerifyPrompt);
         splitContainer1.Panel2.Controls.Add(lblVerifyPrompt);
-        splitContainer1.Size = new Size(821, 577);
-        splitContainer1.SplitterDistance = 291;
-        splitContainer1.SplitterWidth = 3;
+        splitContainer1.Size = new Size(938, 769);
+        splitContainer1.SplitterDistance = 387;
         splitContainer1.TabIndex = 7;
         // 
         // ConfigForm
         // 
-        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleDimensions = new SizeF(8F, 20F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(844, 784);
+        ClientSize = new Size(965, 1045);
         Controls.Add(splitContainer1);
         Controls.Add(grpAuth);
         Controls.Add(btnOk);
         Controls.Add(btnCancel);
-        Margin = new Padding(3, 2, 3, 2);
         MaximizeBox = false;
         MinimizeBox = false;
-        MinimumSize = new Size(600, 550);
+        MinimumSize = new Size(683, 718);
         Name = "ConfigForm";
         ShowIcon = false;
         ShowInTaskbar = false;
@@ -490,19 +475,19 @@ partial class ConfigForm
     private TabPage tabVerifyEdit;
     private TextBox txtVerifyPrompt;
     private Label lblKey;
-    private TextBox txtKey;
+    private TextBox txtOpenAiKey;
     private Label lblUrl;
-    private TextBox txtUrl;
+    private TextBox txtOpenAiUrl;
     private RadioButton rbOpenAi;
     private RadioButton rbAnthropic;
     private Label lblModelName;
-    private TextBox txtModelName;
+    private ComboBox txtOpenAiModelName;
     private Label lblAnthropicKey;
     private TextBox txtAnthropicKey;
     private Label lblAnthropicUrl;
     private TextBox txtAnthropicUrl;
     private Label lblAnthropicModelName;
-    private TextBox txtAnthropicModelName;
+    private ComboBox txtAnthropicModelName;
     private Button btnOk;
     private Button btnCancel;
     private SplitContainer splitContainer1;
