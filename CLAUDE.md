@@ -25,12 +25,13 @@ CheckTranslation/
 │   ├── MainForm.cs              # Logique du formulaire principal
 │   ├── MainForm.Designer.cs     # Code genere par le designer (ne pas modifier)
 │   ├── MainForm.resx            # Ressources du formulaire (ne pas modifier)
-│   ├── ConfigForm.cs            # Dialog de configuration
+│   ├── ConfigForm.cs            # Dialog de configuration (prompts + IA providers)
 │   ├── ConfigForm.Designer.cs   # Code genere par le designer (ne pas modifier)
 │   └── ConfigForm.resx          # Ressources du dialog (ne pas modifier)
 ├── Models/
 │   ├── TranslationRow.cs        # Modele de donnees pour une ligne de traduction
-│   └── AppConfig.cs             # Configuration persistante avec chiffrement DPAPI
+│   ├── AiProvider.cs            # Enum fournisseur IA (OpenAI / Anthropic)
+│   └── AppConfig.cs             # Configuration persistante (multi-fournisseur) avec chiffrement DPAPI
 ├── Services/
 │   ├── ExcelReader.cs           # Lecture/ecriture du fichier Excel via ClosedXML
 │   └── Translator.cs            # Appel API de traduction IA (OpenAI-compatible)
@@ -82,9 +83,9 @@ dotnet publish -c Release
 - **Formulaire principal :** `Forms/MainForm.cs` / `Forms/MainForm.Designer.cs` — DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule) et Traduction (editable) + barre d'outils + barre de statut
 - **Configuration :** `Forms/ConfigForm.cs` — dialog modal pour editer `Models/AppConfig.cs`
 - **Lecture/ecriture Excel :** `Services/ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D), lit les colonnes A/B/C/E et toutes les colonnes de traduction
-- **Traduction IA :** `Services/Translator.cs` — appel HTTP vers une API compatible OpenAI (`/chat/completions`), `HttpClient` statique
+- **Traduction IA :** `Services/Translator.cs` — utilise le client `OpenAI.Chat.ChatClient` pour le provider OpenAI; le provider Anthropic est configure mais peut ne pas etre implemente cote appels.
 - **Modele :** `Models/TranslationRow.cs` — POCO avec proprietes Project, File, Key, French, Translation et dictionnaire des traductions par colonne
-- **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` (JSON indenté), cle API chiffree via DPAPI (`DataProtectionScope.CurrentUser`), memorise aussi `ShowDetails`
+- **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` (JSON indenté), cles API chiffrees via DPAPI (`DataProtectionScope.CurrentUser`), memorise aussi `ShowDetails` et le provider selectionne
 - **Tri :** `Controls/SortableBindingList.cs` — etend `BindingList<T>` pour activer le tri dans le DataGridView
 - **Donnees d'entree :** `Input.xlsx` est copie dans le repertoire de sortie via `CopyToOutputDirectory`
 

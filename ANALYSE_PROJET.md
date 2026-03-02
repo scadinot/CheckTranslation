@@ -108,19 +108,18 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 
 ### Stockage
 - Fichier : `CheckTranslation.config.json` dans `AppContext.BaseDirectory`.
-- Contenu : prompts + endpoint + modèle + clé API + préférence UI `ShowDetails`.
+- Contenu : prompts + choix du fournisseur IA (`Provider`) + paramètres par fournisseur (clé/endpoint/modèle) + préférence UI `ShowDetails`.
 
 ### Sécurité clé API
-- `Key` est chiffrée via DPAPI (`ProtectedData.Protect`) avec `DataProtectionScope.CurrentUser`.
+- Les clés API sont chiffrées via DPAPI (`ProtectedData.Protect`) avec `DataProtectionScope.CurrentUser`.
 - À la lecture, la clé est déchiffrée; si le déchiffrement échoue (mauvais format / autre utilisateur), le code retourne la valeur telle quelle.
 
 ### Formulaire de configuration
 - `ConfigForm` affiche et sauve :
-  - `TranslatePrompt`
-  - `VerifyPrompt`
-  - `Key`
-  - `Url`
-  - `ModelName`
+  - `TranslatePrompt` / `VerifyPrompt` (avec onglets Édition + Aperçu Markdown)
+  - fournisseur (`OpenAI` / `Anthropic`) via boutons radio
+  - paramètres **OpenAI** : `OpenAiKey`, `OpenAiUrl`, `OpenAiModelName`
+  - paramètres **Anthropic** : `AnthropicKey`, `AnthropicUrl`, `AnthropicModelName`
 
 ## 8) UI principale (`MainForm`) — comportement
 
@@ -152,11 +151,12 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 ## 9) Service IA (`Translator`)
 
 ### Appels API
-- Utilise `OpenAI.Chat.ChatClient`.
-- Paramètres :
+- Utilise `OpenAI.Chat.ChatClient` pour le provider `OpenAI`.
+- Paramètres effectifs (calculés selon le provider) :
   - `config.ModelName`
   - `config.Key` (API key)
   - `config.Url` (endpoint)
+- Si `Provider != OpenAI`, le code lève actuellement une exception (support Anthropic à implémenter).
 
 ### Traduction
 - `TranslateAsync(frenchText, config, targetLanguage)` : un texte.
@@ -179,7 +179,8 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 - La robustesse des batchs dépend fortement du respect des formats imposés dans les prompts.
 - `ExcelReader.Save(...)` ne persiste pas `Comment` (seulement la traduction).
 - `AppConfig.Load()` retourne un nouvel objet si le fichier n’existe pas, mais n’affecte `Current` que si le fichier existe et est valide (comportement à connaître si on s’attend à `Current` toujours mis à jour dès le démarrage).
-- Les icônes sont chargées via `Resources/` et redimensionnées; l’absence d’un fichier d’icône peut provoquer une exception lors de `LoadIcon`.
+- Les icônes des onglets (œil/crayon) sont chargées depuis `Resources/eyes.png` et `Resources/pencil.png` (avec fallback en dessin GDI+ si absent).
+- Le support Anthropic est présent côté configuration, mais l'appel API peut ne pas être implémenté (exception côté `Translator`).
 
 ## 11) Commandes utiles
 - `dotnet build`

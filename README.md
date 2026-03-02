@@ -11,9 +11,9 @@ Application de bureau Windows Forms (.NET 10.0) destinee au controle et a la tra
 - **Selection de langue** : boutons drapeaux dans la barre d'outils (mode radio)
 - **Filtres par colonne** : icone entonnoir dans les en-tetes, saisie de texte pour filtrer (toutes colonnes)
 - **Tri par colonne** : clic sur l'en-tete pour trier (ascendant/descendant)
-- **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API ChatGPT (OpenAI)
+- **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API (OpenAI / Anthropic)
 - **Sauvegarde** : ecriture des modifications dans le fichier Excel d'origine
-- **Configuration** : prompt, cle API (chiffree via DPAPI), URL et modele configurables
+- **Configuration** : prompts (avec apercu), choix du fournisseur IA, cles API (chiffrees via DPAPI), URLs et modeles configurables
 
 ## Prerequis
 
@@ -38,9 +38,14 @@ dotnet build -c Release
 Au premier lancement, cliquer sur l'icone de configuration pour definir :
 
 - **Prompt** : instructions pour le modele de traduction (utiliser `{language}` comme placeholder pour la langue cible)
-- **Key** : cle API OpenAI (chiffree dans `CheckTranslation.config.json`)
-- **Url** : URL de base de l'API (ex: `https://api.openai.com/v1`)
-- **Model name** : nom du modele (ex: `gpt-4`)
+- **Prompts** : traduction + verification (utiliser `{language}` comme placeholder pour la langue cible)
+- **Fournisseur IA** : OpenAI (ChatGPT) ou Anthropic (Claude)
+- **OpenAI** : `Key`, `Url`, `Model`
+- **Anthropic** : `Key`, `Url`, `Model`
+
+Les cles API sont chiffrees via DPAPI (scope utilisateur) dans `CheckTranslation.config.json`.
+
+Note : l'integration Anthropic peut etre presente cote configuration; si l'appel API n'est pas implemente, l'application affichera une erreur lors de la traduction.
 
 ## Dependances
 
