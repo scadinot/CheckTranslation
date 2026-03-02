@@ -1,14 +1,15 @@
-using System.Net.Http.Headers;
+using System.ClientModel;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using OpenAI;
+using OpenAI.Chat;
 
 namespace CheckTranslation;
 
 internal static partial class Translator
 {
     private const int BatchSize = 20;
-    private static readonly HttpClient HttpClient = new();
+    private const float Temperature = 0.1f;
 
     public static async Task<string> TranslateAsync(string frenchText, AppConfig config, string targetLanguage)
     {
@@ -116,48 +117,24 @@ internal static partial class Translator
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
-        var requestBody = new
+        var client = new ChatClient(
+            config.ModelName,
+            new ApiKeyCredential(config.Key),
+            new OpenAIClientOptions { Endpoint = new Uri(config.Url) });
+
+        var options = new ChatCompletionOptions
         {
-            model = config.ModelName, // "gpt-5-mini"
-            input = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userMessage },
-            }
+            Temperature = Temperature,
         };
 
-        var json = JsonSerializer.Serialize(requestBody);
+        var result = await client.CompleteChatAsync(
+            [
+                new SystemChatMessage(systemPrompt),
+                new UserChatMessage(userMessage),
+            ],
+            options);
 
-        var baseUri = new Uri(config.Url.TrimEnd('/') + "/");
-        var endpoint = new Uri(baseUri, "responses");
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Key);
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        using var response = await HttpClient.SendAsync(request);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.");
-
-        response.EnsureSuccessStatusCode();
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-
-        if (doc.RootElement.TryGetProperty("output_text", out var outText))
-            return outText.GetString()?.Trim() ?? string.Empty;
-
-        // fallback (si output_text absent)
-        if (doc.RootElement.TryGetProperty("output", out var output))
-        {
-            foreach (var item in output.EnumerateArray())
-                if (item.TryGetProperty("content", out var contentArr))
-                    foreach (var c in contentArr.EnumerateArray())
-                        if (c.TryGetProperty("text", out var txt))
-                            return txt.GetString()?.Trim() ?? string.Empty;
-        }
-
-        return string.Empty;
+        return result.Value.Content[0].Text?.Trim() ?? string.Empty;
     }
 
     private static string[] ParseNumberedList(string content, int expectedCount)
