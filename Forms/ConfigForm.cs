@@ -5,6 +5,7 @@ namespace CheckTranslation;
 internal sealed partial class ConfigForm : Form
 {
     private bool _isLoading;
+    private bool _isUpdatingProvider;
 
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -36,8 +37,23 @@ internal sealed partial class ConfigForm : Form
 
     private void ProviderChanged(object? sender, EventArgs e)
     {
-        if (_isLoading)
+        if (_isLoading || _isUpdatingProvider)
             return;
+
+        // Les deux RadioButton sont dans deux containers différents (SplitContainer.Panel1/Panel2),
+        // donc WinForms ne gère pas l'exclusivité automatiquement.
+        try
+        {
+            _isUpdatingProvider = true;
+            if (ReferenceEquals(sender, rbOpenAi) && rbOpenAi.Checked)
+                rbAnthropic.Checked = false;
+            else if (ReferenceEquals(sender, rbAnthropic) && rbAnthropic.Checked)
+                rbOpenAi.Checked = false;
+        }
+        finally
+        {
+            _isUpdatingProvider = false;
+        }
 
         if (rbOpenAi.Checked)
         {
