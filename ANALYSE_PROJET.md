@@ -13,7 +13,9 @@
 
 ### Dépendances NuGet
 - `ClosedXML` `0.104.2` : lecture/écriture de fichiers Excel `.xlsx`
-- `OpenAI` `2.8.0` : client OpenAI (chat completions) avec endpoint custom
+- `OpenAI` `2.8.0` : client OpenAI (chat completions + listing de modèles)
+- `Anthropic` : client Anthropic (messages + listing de modèles)
+- `Markdig` : rendu Markdown pour l’aperçu des prompts
 
 ## 3) Structure du projet (fichiers clés)
 
@@ -152,11 +154,11 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 
 ### Appels API
 - Utilise `OpenAI.Chat.ChatClient` pour le provider `OpenAI`.
+- Utilise `AnthropicClient` (endpoint `v1/messages`) pour le provider `Anthropic`.
 - Paramètres effectifs (calculés selon le provider) :
   - `config.ModelName`
   - `config.Key` (API key)
   - `config.Url` (endpoint)
-- Si `Provider != OpenAI`, le code lève actuellement une exception (support Anthropic à implémenter).
 
 ### Traduction
 - `TranslateAsync(frenchText, config, targetLanguage)` : un texte.
@@ -180,7 +182,7 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 - `ExcelReader.Save(...)` ne persiste pas `Comment` (seulement la traduction).
 - `AppConfig.Load()` retourne un nouvel objet si le fichier n’existe pas, mais n’affecte `Current` que si le fichier existe et est valide (comportement à connaître si on s’attend à `Current` toujours mis à jour dès le démarrage).
 - Les icônes des onglets (œil/crayon) sont chargées depuis `Resources/eyes.png` et `Resources/pencil.png` (avec fallback en dessin GDI+ si absent).
-- Le support Anthropic est présent côté configuration, mais l'appel API peut ne pas être implémenté (exception côté `Translator`).
+- Les listes de modèles OpenAI/Anthropic dans `ConfigForm` sont chargées au moment de l’ouverture de la combo **Model** (nécessite une clé valide et un accès réseau).
 
 ## 11) Commandes utiles
 - `dotnet build`

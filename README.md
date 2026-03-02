@@ -13,7 +13,7 @@ Application de bureau Windows Forms (.NET 10.0) destinee au controle et a la tra
 - **Tri par colonne** : clic sur l'en-tete pour trier (ascendant/descendant)
 - **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API (OpenAI / Anthropic)
 - **Sauvegarde** : ecriture des modifications dans le fichier Excel d'origine
-- **Configuration** : prompts (avec apercu), choix du fournisseur IA, cles API (chiffrees via DPAPI), URLs et modeles configurables
+- **Configuration** : prompts (avec apercu), choix du fournisseur IA, cles API (chiffrees via DPAPI), URLs et modeles configurables (liste des modeles chargee via l'API)
 
 ## Prerequis
 
@@ -43,10 +43,13 @@ Au premier lancement, cliquer sur l'icone de configuration pour definir :
 - **OpenAI** : `Key`, `Url`, `Model`
 - **Anthropic** : `Key`, `Url`, `Model`
 
-Les cles API sont chiffrees via DPAPI (scope utilisateur) dans `CheckTranslation.config.json`.
+Pour **OpenAI** et **Anthropic**, la liste des modeles est recuperee automatiquement depuis l'API au moment ou vous ouvrez la liste deroulante **Model** (la saisie manuelle reste possible).
 
-Note : l'integration Anthropic peut etre presente cote configuration; si l'appel API n'est pas implemente, l'application affichera une erreur lors de la traduction.
+Les cles API sont chiffrees via DPAPI (scope utilisateur) dans `CheckTranslation.config.json`.
 
 ## Dependances
 
 - [ClosedXML](https://github.com/ClosedXML/ClosedXML) 0.104.2 — lecture et ecriture des fichiers Excel
+- [OpenAI](https://www.nuget.org/packages/OpenAI) — appels API OpenAI
+- [Anthropic](https://www.nuget.org/packages/Anthropic) — appels API Anthropic
+- [Markdig](https://github.com/xoofx/markdig) — rendu Markdown pour l'aperçu des prompts

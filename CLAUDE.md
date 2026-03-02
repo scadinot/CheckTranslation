@@ -13,6 +13,9 @@ CheckTranslation est une application de bureau Windows Forms en .NET 10.0 destin
 - **Support IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
 - **Dependances :**
   - `ClosedXML` 0.104.2 — lecture et ecriture des fichiers Excel (.xlsx)
+  - `OpenAI` — appels API OpenAI (chat + listing de modèles)
+  - `Anthropic` — appels API Anthropic (messages + listing de modèles)
+  - `Markdig` — rendu Markdown pour l'aperçu des prompts
 
 ## Structure du projet
 
@@ -83,7 +86,8 @@ dotnet publish -c Release
 - **Formulaire principal :** `Forms/MainForm.cs` / `Forms/MainForm.Designer.cs` — DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule) et Traduction (editable) + barre d'outils + barre de statut
 - **Configuration :** `Forms/ConfigForm.cs` — dialog modal pour editer `Models/AppConfig.cs`
 - **Lecture/ecriture Excel :** `Services/ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D), lit les colonnes A/B/C/E et toutes les colonnes de traduction
-- **Traduction IA :** `Services/Translator.cs` — utilise le client `OpenAI.Chat.ChatClient` pour le provider OpenAI; le provider Anthropic est configure mais peut ne pas etre implemente cote appels.
+- **Traduction IA :** `Services/Translator.cs` — supporte OpenAI (`OpenAI.Chat.ChatClient`) et Anthropic (`AnthropicClient`).
+- **Sélection du modèle :** `Forms/ConfigForm.cs` — les listes de modèles OpenAI/Anthropic sont chargées via l'API au moment où l'utilisateur ouvre la liste déroulante.
 - **Modele :** `Models/TranslationRow.cs` — POCO avec proprietes Project, File, Key, French, Translation et dictionnaire des traductions par colonne
 - **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` (JSON indenté), cles API chiffrees via DPAPI (`DataProtectionScope.CurrentUser`), memorise aussi `ShowDetails` et le provider selectionne
 - **Tri :** `Controls/SortableBindingList.cs` — etend `BindingList<T>` pour activer le tri dans le DataGridView
