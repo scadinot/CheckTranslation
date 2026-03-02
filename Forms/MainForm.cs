@@ -3,6 +3,7 @@ using System.ComponentModel;
 namespace CheckTranslation;
 
 public partial class MainForm : Form
+
 {
     private static readonly LanguageInfo[] Languages =
     [
