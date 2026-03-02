@@ -17,6 +17,7 @@ partial class ConfigForm
 
     private void InitializeComponent()
     {
+        components = new System.ComponentModel.Container();
         grpAuth = new GroupBox();
         lblKey = new Label();
         txtKey = new TextBox();
@@ -25,18 +26,36 @@ partial class ConfigForm
         lblModelName = new Label();
         txtModelName = new TextBox();
         lblPrompt = new Label();
+        tabTranslatePrompt = new TabControl();
+        tabTranslatePreview = new TabPage();
+        webTranslatePreview = new WebBrowser();
+        tabTranslateEdit = new TabPage();
         txtTranslatePrompt = new TextBox();
         lblVerifyPrompt = new Label();
+        tabVerifyPrompt = new TabControl();
+        tabVerifyPreview = new TabPage();
+        webVerifyPreview = new WebBrowser();
+        tabVerifyEdit = new TabPage();
         txtVerifyPrompt = new TextBox();
         btnOk = new Button();
         btnCancel = new Button();
         splitContainer1 = new SplitContainer();
+        tabPromptIcons = new ImageList(components);
         grpAuth.SuspendLayout();
+        tabTranslatePrompt.SuspendLayout();
+        tabTranslatePreview.SuspendLayout();
+        tabTranslateEdit.SuspendLayout();
+        tabVerifyPrompt.SuspendLayout();
+        tabVerifyPreview.SuspendLayout();
+        tabVerifyEdit.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
         splitContainer1.Panel1.SuspendLayout();
         splitContainer1.Panel2.SuspendLayout();
         splitContainer1.SuspendLayout();
         SuspendLayout();
+
+        tabTranslatePrompt.ImageList = tabPromptIcons;
+        tabVerifyPrompt.ImageList = tabPromptIcons;
         // 
         // grpAuth
         // 
@@ -47,11 +66,11 @@ partial class ConfigForm
         grpAuth.Controls.Add(txtUrl);
         grpAuth.Controls.Add(lblModelName);
         grpAuth.Controls.Add(txtModelName);
-        grpAuth.Location = new Point(10, 206);
+        grpAuth.Location = new Point(10, 778);
         grpAuth.Margin = new Padding(3, 2, 3, 2);
         grpAuth.Name = "grpAuth";
         grpAuth.Padding = new Padding(3, 2, 3, 2);
-        grpAuth.Size = new Size(401, 94);
+        grpAuth.Size = new Size(930, 94);
         grpAuth.TabIndex = 0;
         grpAuth.TabStop = false;
         grpAuth.Text = "Authentification";
@@ -71,7 +90,7 @@ partial class ConfigForm
         txtKey.Location = new Point(98, 17);
         txtKey.Margin = new Padding(3, 2, 3, 2);
         txtKey.Name = "txtKey";
-        txtKey.Size = new Size(289, 23);
+        txtKey.Size = new Size(818, 23);
         txtKey.TabIndex = 1;
         txtKey.UseSystemPasswordChar = true;
         // 
@@ -90,7 +109,7 @@ partial class ConfigForm
         txtUrl.Location = new Point(98, 42);
         txtUrl.Margin = new Padding(3, 2, 3, 2);
         txtUrl.Name = "txtUrl";
-        txtUrl.Size = new Size(289, 23);
+        txtUrl.Size = new Size(818, 23);
         txtUrl.TabIndex = 2;
         // 
         // lblModelName
@@ -108,7 +127,7 @@ partial class ConfigForm
         txtModelName.Location = new Point(98, 67);
         txtModelName.Margin = new Padding(3, 2, 3, 2);
         txtModelName.Name = "txtModelName";
-        txtModelName.Size = new Size(289, 23);
+        txtModelName.Size = new Size(818, 23);
         txtModelName.TabIndex = 3;
         // 
         // lblPrompt
@@ -120,15 +139,63 @@ partial class ConfigForm
         lblPrompt.TabIndex = 0;
         lblPrompt.Text = "Traduction :";
         // 
+        // tabTranslatePrompt
+        // 
+        tabTranslatePrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        tabTranslatePrompt.Controls.Add(tabTranslatePreview);
+        tabTranslatePrompt.Controls.Add(tabTranslateEdit);
+        tabTranslatePrompt.Location = new Point(98, 13);
+        tabTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
+        tabTranslatePrompt.Name = "tabTranslatePrompt";
+        tabTranslatePrompt.SelectedIndex = 0;
+        tabTranslatePrompt.Size = new Size(818, 357);
+        tabTranslatePrompt.TabIndex = 0;
+        // 
+        // tabTranslatePreview
+        // 
+        tabTranslatePreview.Controls.Add(webTranslatePreview);
+        tabTranslatePreview.ImageKey = "preview";
+        tabTranslatePreview.Location = new Point(4, 24);
+        tabTranslatePreview.Margin = new Padding(3, 2, 3, 2);
+        tabTranslatePreview.Name = "tabTranslatePreview";
+        tabTranslatePreview.Padding = new Padding(3);
+        tabTranslatePreview.Size = new Size(810, 329);
+        tabTranslatePreview.TabIndex = 0;
+        tabTranslatePreview.Text = "Aperçu";
+        tabTranslatePreview.UseVisualStyleBackColor = true;
+        // 
+        // webTranslatePreview
+        // 
+        webTranslatePreview.Dock = DockStyle.Fill;
+        webTranslatePreview.Location = new Point(3, 3);
+        webTranslatePreview.Margin = new Padding(3, 2, 3, 2);
+        webTranslatePreview.MinimumSize = new Size(20, 20);
+        webTranslatePreview.Name = "webTranslatePreview";
+        webTranslatePreview.Size = new Size(804, 323);
+        webTranslatePreview.TabIndex = 0;
+        // 
+        // tabTranslateEdit
+        // 
+        tabTranslateEdit.Controls.Add(txtTranslatePrompt);
+        tabTranslateEdit.ImageKey = "edit";
+        tabTranslateEdit.Location = new Point(4, 24);
+        tabTranslateEdit.Margin = new Padding(3, 2, 3, 2);
+        tabTranslateEdit.Name = "tabTranslateEdit";
+        tabTranslateEdit.Padding = new Padding(3);
+        tabTranslateEdit.Size = new Size(810, 329);
+        tabTranslateEdit.TabIndex = 1;
+        tabTranslateEdit.Text = "Édition";
+        tabTranslateEdit.UseVisualStyleBackColor = true;
+        // 
         // txtTranslatePrompt
         // 
-        txtTranslatePrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        txtTranslatePrompt.Location = new Point(98, 13);
+        txtTranslatePrompt.Dock = DockStyle.Fill;
+        txtTranslatePrompt.Location = new Point(3, 3);
         txtTranslatePrompt.Margin = new Padding(3, 2, 3, 2);
         txtTranslatePrompt.Multiline = true;
         txtTranslatePrompt.Name = "txtTranslatePrompt";
         txtTranslatePrompt.ScrollBars = ScrollBars.Vertical;
-        txtTranslatePrompt.Size = new Size(289, 76);
+        txtTranslatePrompt.Size = new Size(804, 323);
         txtTranslatePrompt.TabIndex = 0;
         // 
         // lblVerifyPrompt
@@ -140,22 +207,70 @@ partial class ConfigForm
         lblVerifyPrompt.TabIndex = 6;
         lblVerifyPrompt.Text = "Vérification :";
         // 
+        // tabVerifyPrompt
+        // 
+        tabVerifyPrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        tabVerifyPrompt.Controls.Add(tabVerifyPreview);
+        tabVerifyPrompt.Controls.Add(tabVerifyEdit);
+        tabVerifyPrompt.Location = new Point(98, 12);
+        tabVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyPrompt.Name = "tabVerifyPrompt";
+        tabVerifyPrompt.SelectedIndex = 0;
+        tabVerifyPrompt.Size = new Size(818, 369);
+        tabVerifyPrompt.TabIndex = 1;
+        // 
+        // tabVerifyPreview
+        // 
+        tabVerifyPreview.Controls.Add(webVerifyPreview);
+        tabVerifyPreview.ImageKey = "preview";
+        tabVerifyPreview.Location = new Point(4, 24);
+        tabVerifyPreview.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyPreview.Name = "tabVerifyPreview";
+        tabVerifyPreview.Padding = new Padding(3);
+        tabVerifyPreview.Size = new Size(810, 341);
+        tabVerifyPreview.TabIndex = 0;
+        tabVerifyPreview.Text = "Aperçu";
+        tabVerifyPreview.UseVisualStyleBackColor = true;
+        // 
+        // webVerifyPreview
+        // 
+        webVerifyPreview.Dock = DockStyle.Fill;
+        webVerifyPreview.Location = new Point(3, 3);
+        webVerifyPreview.Margin = new Padding(3, 2, 3, 2);
+        webVerifyPreview.MinimumSize = new Size(20, 20);
+        webVerifyPreview.Name = "webVerifyPreview";
+        webVerifyPreview.Size = new Size(804, 335);
+        webVerifyPreview.TabIndex = 0;
+        // 
+        // tabVerifyEdit
+        // 
+        tabVerifyEdit.Controls.Add(txtVerifyPrompt);
+        tabVerifyEdit.ImageKey = "edit";
+        tabVerifyEdit.Location = new Point(4, 24);
+        tabVerifyEdit.Margin = new Padding(3, 2, 3, 2);
+        tabVerifyEdit.Name = "tabVerifyEdit";
+        tabVerifyEdit.Padding = new Padding(3);
+        tabVerifyEdit.Size = new Size(281, 50);
+        tabVerifyEdit.TabIndex = 1;
+        tabVerifyEdit.Text = "Édition";
+        tabVerifyEdit.UseVisualStyleBackColor = true;
+        // 
         // txtVerifyPrompt
         // 
-        txtVerifyPrompt.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        txtVerifyPrompt.Location = new Point(98, 12);
+        txtVerifyPrompt.Dock = DockStyle.Fill;
+        txtVerifyPrompt.Location = new Point(3, 3);
         txtVerifyPrompt.Margin = new Padding(3, 2, 3, 2);
         txtVerifyPrompt.Multiline = true;
         txtVerifyPrompt.Name = "txtVerifyPrompt";
         txtVerifyPrompt.ScrollBars = ScrollBars.Vertical;
-        txtVerifyPrompt.Size = new Size(289, 77);
+        txtVerifyPrompt.Size = new Size(275, 44);
         txtVerifyPrompt.TabIndex = 1;
         // 
         // btnOk
         // 
         btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnOk.DialogResult = DialogResult.OK;
-        btnOk.Location = new Point(262, 310);
+        btnOk.Location = new Point(791, 882);
         btnOk.Margin = new Padding(3, 2, 3, 2);
         btnOk.Name = "btnOk";
         btnOk.Size = new Size(70, 21);
@@ -166,7 +281,7 @@ partial class ConfigForm
         // 
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location = new Point(341, 310);
+        btnCancel.Location = new Point(870, 882);
         btnCancel.Margin = new Padding(3, 2, 3, 2);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(70, 21);
@@ -183,15 +298,15 @@ partial class ConfigForm
         // 
         // splitContainer1.Panel1
         // 
-        splitContainer1.Panel1.Controls.Add(txtTranslatePrompt);
+        splitContainer1.Panel1.Controls.Add(tabTranslatePrompt);
         splitContainer1.Panel1.Controls.Add(lblPrompt);
         // 
         // splitContainer1.Panel2
         // 
-        splitContainer1.Panel2.Controls.Add(txtVerifyPrompt);
+        splitContainer1.Panel2.Controls.Add(tabVerifyPrompt);
         splitContainer1.Panel2.Controls.Add(lblVerifyPrompt);
-        splitContainer1.Size = new Size(401, 193);
-        splitContainer1.SplitterDistance = 95;
+        splitContainer1.Size = new Size(930, 765);
+        splitContainer1.SplitterDistance = 376;
         splitContainer1.SplitterWidth = 3;
         splitContainer1.TabIndex = 7;
         // 
@@ -200,7 +315,7 @@ partial class ConfigForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(424, 346);
+        ClientSize = new Size(953, 918);
         Controls.Add(splitContainer1);
         Controls.Add(grpAuth);
         Controls.Add(btnOk);
@@ -216,6 +331,14 @@ partial class ConfigForm
         Text = "Configuration";
         grpAuth.ResumeLayout(false);
         grpAuth.PerformLayout();
+        tabTranslatePrompt.ResumeLayout(false);
+        tabTranslatePreview.ResumeLayout(false);
+        tabTranslateEdit.ResumeLayout(false);
+        tabTranslateEdit.PerformLayout();
+        tabVerifyPrompt.ResumeLayout(false);
+        tabVerifyPreview.ResumeLayout(false);
+        tabVerifyEdit.ResumeLayout(false);
+        tabVerifyEdit.PerformLayout();
         splitContainer1.Panel1.ResumeLayout(false);
         splitContainer1.Panel1.PerformLayout();
         splitContainer1.Panel2.ResumeLayout(false);
@@ -229,8 +352,16 @@ partial class ConfigForm
 
     private GroupBox grpAuth;
     private Label lblPrompt;
+    private TabControl tabTranslatePrompt;
+    private TabPage tabTranslatePreview;
+    private WebBrowser webTranslatePreview;
+    private TabPage tabTranslateEdit;
     private TextBox txtTranslatePrompt;
     private Label lblVerifyPrompt;
+    private TabControl tabVerifyPrompt;
+    private TabPage tabVerifyPreview;
+    private WebBrowser webVerifyPreview;
+    private TabPage tabVerifyEdit;
     private TextBox txtVerifyPrompt;
     private Label lblKey;
     private TextBox txtKey;
@@ -241,4 +372,5 @@ partial class ConfigForm
     private Button btnOk;
     private Button btnCancel;
     private SplitContainer splitContainer1;
+    private ImageList tabPromptIcons;
 }

@@ -8,6 +8,15 @@ internal sealed partial class ConfigForm : Form
         .UseAdvancedExtensions()
         .Build();
 
+    private const string Css = """
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 10pt; padding: 12px; }
+        code, pre { font-family: Consolas, 'Courier New', monospace; }
+        pre { background: #f6f8fa; padding: 10px; border-radius: 6px; overflow-x: auto; }
+        blockquote { border-left: 3px solid #d0d7de; margin: 0; padding-left: 12px; color: #57606a; }
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #d0d7de; padding: 6px 10px; }
+        """;
+
     public ConfigForm()
     {
         InitializeComponent();
@@ -18,88 +27,67 @@ internal sealed partial class ConfigForm : Form
 
     private void InitMarkdownEditors()
     {
-        SetupMarkdownEditorWithPreview(txtTranslatePrompt);
-        SetupMarkdownEditorWithPreview(txtVerifyPrompt);
+        EnsureTabIcons();
+
+        SetupMarkdownPreview(txtTranslatePrompt, tabTranslatePrompt, tabTranslatePreview, webTranslatePreview);
+        SetupMarkdownPreview(txtVerifyPrompt, tabVerifyPrompt, tabVerifyPreview, webVerifyPreview);
+
+        tabTranslatePrompt.SelectedTab = tabTranslatePreview;
+        tabVerifyPrompt.SelectedTab = tabVerifyPreview;
     }
 
-    private static void SetupMarkdownEditorWithPreview(TextBox editor)
+    private void EnsureTabIcons()
     {
-        var parent = editor.Parent;
-        if (parent is null)
-            return;
+        tabPromptIcons.ImageSize = new Size(16, 16);
+        tabPromptIcons.ColorDepth = ColorDepth.Depth32Bit;
+        tabPromptIcons.TransparentColor = Color.Transparent;
 
-        var bounds = editor.Bounds;
-        var anchor = editor.Anchor;
-
-        var tabs = new TabControl
+        if (!tabPromptIcons.Images.ContainsKey("preview") || !tabPromptIcons.Images.ContainsKey("edit"))
         {
-            Location = bounds.Location,
-            Size = bounds.Size,
-            Anchor = anchor,
-        };
+            tabPromptIcons.Images.Clear();
 
-        var editPage = new TabPage("Édition")
-        {
-            Padding = new Padding(3),
-        };
+            var eye = LoadIconFromResources("eyes.png") ?? CreateEyeIcon();
+            var pencil = LoadIconFromResources("pencil.png") ?? CreatePencilIcon();
+            tabPromptIcons.Images.Add("preview", eye);
+            tabPromptIcons.Images.Add("edit", pencil);
+        }
 
-        var previewPage = new TabPage("Aperçu")
-        {
-            Padding = new Padding(3),
-        };
-        var images = new ImageList
-        {
-            ImageSize = new Size(16, 16),
-            ColorDepth = ColorDepth.Depth32Bit,
-        };
-        images.Images.Add("preview", CreateEyeIcon());
-        images.Images.Add("edit", CreatePencilIcon());
+        tabTranslatePrompt.ImageList = tabPromptIcons;
+        tabVerifyPrompt.ImageList = tabPromptIcons;
 
-        tabs.ImageList = images;
-        previewPage.ImageKey = "preview";
-        editPage.ImageKey = "edit";
+        tabTranslatePreview.ImageKey = "preview";
+        tabTranslateEdit.ImageKey = "edit";
+        tabVerifyPreview.ImageKey = "preview";
+        tabVerifyEdit.ImageKey = "edit";
+    }
 
-        var browser = new WebBrowser
-        {
-            Dock = DockStyle.Fill,
-            AllowWebBrowserDrop = false,
-            IsWebBrowserContextMenuEnabled = false,
-            WebBrowserShortcutsEnabled = false,
-            ScriptErrorsSuppressed = true,
-        };
+    private static Bitmap? LoadIconFromResources(string fileName)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Resources", fileName);
+        if (!File.Exists(path))
+            return null;
 
-        parent.Controls.Remove(editor);
+        using var original = new Bitmap(path);
+        return new Bitmap(original);
+    }
 
-        editor.Dock = DockStyle.Fill;
-        editPage.Controls.Add(editor);
-
-        previewPage.Controls.Add(browser);
-        tabs.TabPages.Add(previewPage);
-        tabs.TabPages.Add(editPage);
-        parent.Controls.Add(tabs);
-        tabs.BringToFront();
-        tabs.SelectedTab = previewPage;
+    private static void SetupMarkdownPreview(TextBox editor, TabControl tabs, TabPage previewPage, WebBrowser browser)
+    {
+        browser.AllowWebBrowserDrop = false;
+        browser.IsWebBrowserContextMenuEnabled = false;
+        browser.WebBrowserShortcutsEnabled = false;
+        browser.ScriptErrorsSuppressed = true;
 
         void UpdatePreview()
         {
             var html = Markdig.Markdown.ToHtml(editor.Text ?? string.Empty, MarkdownPipeline);
-
-            const string css = """
-                body { font-family: Segoe UI, Arial, sans-serif; font-size: 10pt; padding: 12px; }
-                code, pre { font-family: Consolas, 'Courier New', monospace; }
-                pre { background: #f6f8fa; padding: 10px; border-radius: 6px; overflow-x: auto; }
-                blockquote { border-left: 3px solid #d0d7de; margin: 0; padding-left: 12px; color: #57606a; }
-                table { border-collapse: collapse; }
-                th, td { border: 1px solid #d0d7de; padding: 6px 10px; }
-                """;
-
             browser.DocumentText = $"""
                 <!doctype html>
                 <html>
                 <head>
-                  <meta charset="utf-8">
+                  <meta charset=\"utf-8\">
                   <style>
-                {css}
+                {Css}
                   </style>
                 </head>
                 <body>
@@ -129,9 +117,10 @@ internal sealed partial class ConfigForm : Form
                 UpdatePreview();
         };
 
-        UpdatePreview();
-
+        if (tabs.SelectedTab == previewPage)
+            UpdatePreview();
     }
+
     private static Bitmap CreatePencilIcon()
     {
         var bmp = new Bitmap(16, 16);
@@ -226,4 +215,3 @@ internal sealed partial class ConfigForm : Form
         config.Save();
     }
 }
-
