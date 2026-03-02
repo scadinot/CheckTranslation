@@ -485,29 +485,22 @@ public partial class MainForm : Form
         var menuVerify = new ToolStripMenuItem("Vérifier la traduction");
         menuVerify.Click += MenuVerify_Click;
 
-        var menuTranslateSelection = new ToolStripMenuItem("Traduire la sélection");
-        menuTranslateSelection.Click += MenuTranslateSelection_Click;
-
-        var menuVerifySelection = new ToolStripMenuItem("Vérifier la sélection");
-        menuVerifySelection.Click += MenuVerifySelection_Click;
-
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(menuTranslate);
         contextMenu.Items.Add(menuVerify);
-        contextMenu.Items.Add(menuTranslateSelection);
-        contextMenu.Items.Add(menuVerifySelection);
 
         contextMenu.Opening += (_, _) =>
         {
             int count = dataGridView.SelectedRows.Count;
-            menuTranslate.Visible = count <= 1;
-            menuVerify.Visible = count <= 1;
-            menuTranslateSelection.Visible = count > 1;
-            menuVerifySelection.Visible = count > 1;
             if (count > 1)
             {
-                menuTranslateSelection.Text = $"Traduire la sélection ({count} lignes)";
-                menuVerifySelection.Text = $"Vérifier la sélection ({count} lignes)";
+                menuTranslate.Text = $"Traduire la sélection ({count} lignes)";
+                menuVerify.Text = $"Vérifier la sélection ({count} lignes)";
+            }
+            else
+            {
+                menuTranslate.Text = "Traduire";
+                menuVerify.Text = "Vérifier la traduction";
             }
         };
 
@@ -527,106 +520,76 @@ public partial class MainForm : Form
 
     private async void MenuTranslate_Click(object? sender, EventArgs e)
     {
-        if (_contextMenuRowIndex < 0) return;
-
-        var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
-        if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
-
-        var config = AppConfig.Current;
-        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        IReadOnlyList<TranslationRow> rows;
+        if (dataGridView.SelectedRows.Count > 1)
         {
-            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
-                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            rows = dataGridView.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as TranslationRow)
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
+                .Cast<TranslationRow>()
+                .ToList();
+        }
+        else
+        {
+            if (_contextMenuRowIndex < 0) return;
+
+            var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+            if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
+            rows = [row];
         }
 
-        var previousValue = row.Translation;
-        row.Translation = "Traduction en cours...";
-        dataGridView.Refresh();
-
-        try
-        {
-            var translation = await Translator.TranslateAsync(row.French, config, _currentLanguage.Name);
-            row.Translation = translation;
-        }
-        catch (Exception ex)
-        {
-            row.Translation = previousValue;
-            MessageBox.Show($"Erreur lors de la traduction :\n\n{ex.Message}",
-                "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally
-        {
-            dataGridView.Refresh();
-        }
+        await TranslateRowsAsync(rows);
     }
 
     private async void MenuVerify_Click(object? sender, EventArgs e)
     {
-        if (_contextMenuRowIndex < 0) return;
-
-        var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
-        if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
-
-        if (string.IsNullOrWhiteSpace(row.Translation))
+        IReadOnlyList<TranslationRow> rows;
+        if (dataGridView.SelectedRows.Count > 1)
         {
-            MessageBox.Show("Aucune traduction à vérifier pour cette ligne.",
-                "Vérification", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
+            rows = dataGridView.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as TranslationRow)
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French) && !string.IsNullOrWhiteSpace(r.Translation))
+                .Cast<TranslationRow>()
+                .ToList();
+        }
+        else
+        {
+            if (_contextMenuRowIndex < 0) return;
+
+            var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+            if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
+            rows = [row];
         }
 
-        var config = AppConfig.Current;
-        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
-        {
-            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
-                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        var previousComment = row.Comment;
-        row.Comment = "Vérification...";
-        dataGridView.Refresh();
-
-        statusRowCount.Text = "Vérification en cours...";
-        UseWaitCursor = true;
-
-        try
-        {
-            row.Comment = await Translator.VerifyAsync(row.French, row.Translation, _currentLanguage.Name, config);
-            dataGridView.Refresh();
-        }
-        catch (Exception ex)
-        {
-            row.Comment = previousComment;
-            dataGridView.Refresh();
-            MessageBox.Show($"Erreur lors de la vérification :\n\n{ex.Message}",
-                "Erreur de vérification", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally
-        {
-            statusRowCount.Text = "Prêt";
-            UseWaitCursor = false;
-        }
+        await VerifyRowsAsync(rows);
     }
 
-    private async void MenuTranslateSelection_Click(object? sender, EventArgs e)
+    private static bool HasApiConfig(AppConfig config)
+        => !string.IsNullOrWhiteSpace(config.Key) && !string.IsNullOrWhiteSpace(config.Url);
+
+    private void UpdateRowCountStatus()
     {
+        var total = _allRows?.Count ?? 0;
+        var visible = dataGridView.RowCount;
+        statusRowCount.Text = _filters.Count > 0
+            ? $"Lignes : {visible} / {total}"
+            : $"Lignes : {total}";
+    }
+
+    private async Task TranslateRowsAsync(IReadOnlyList<TranslationRow> rows)
+    {
+        if (rows.Count == 0)
+            return;
+
         var config = AppConfig.Current;
-        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        if (!HasApiConfig(config))
         {
             MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
                 "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-
-        var rows = dataGridView.SelectedRows
-            .Cast<DataGridViewRow>()
-            .Select(r => r.DataBoundItem as TranslationRow)
-            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
-            .Cast<TranslationRow>()
-            .ToList();
-
-        if (rows.Count == 0) return;
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
@@ -634,13 +597,16 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
+
+        var previousValues = rows.Select(r => r.Translation).ToList();
         foreach (var row in rows)
             row.Translation = "Traduction en cours...";
         dataGridView.Refresh();
 
         int errors = 0;
         var texts = rows.Select(r => r.French).ToList();
-        var previousValues = rows.Select(r => r.Translation).ToList();
         var progress = new Progress<int>(done =>
         {
             statusProgressBar.Value = done;
@@ -666,46 +632,47 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Erreur lors de la traduction par lot :\n\n{ex.Message}",
-                "Erreur de traduction par lot", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Translation == "Traduction en cours...")
                     rows[i].Translation = previousValues[i];
         }
+        finally
+        {
+            dataGridView.Refresh();
+            statusProgressBar.Visible = false;
+            btnOpen.Enabled = true;
+            btnSave.Enabled = _allRows is not null;
+            UpdateRowCountStatus();
 
-        dataGridView.Refresh();
-        statusProgressBar.Visible = false;
-        btnOpen.Enabled = true;
-        btnSave.Enabled = _allRows is not null;
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
 
-        var total = _allRows?.Count ?? 0;
-        var visible = dataGridView.RowCount;
-        statusRowCount.Text = _filters.Count > 0
-            ? $"Lignes : {visible} / {total}"
-            : $"Lignes : {total}";
-
-        if (errors > 0)
-            MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
-                "Erreur de traduction partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (errors > 0)
+                MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                    "Erreur de traduction partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
-    private async void MenuVerifySelection_Click(object? sender, EventArgs e)
+    private async Task VerifyRowsAsync(IReadOnlyList<TranslationRow> rows)
     {
+        if (rows.Count == 0)
+            return;
+
+        if (rows.Count == 1 && string.IsNullOrWhiteSpace(rows[0].Translation))
+        {
+            MessageBox.Show("Aucune traduction à vérifier pour cette ligne.",
+                "Vérification", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
         var config = AppConfig.Current;
-        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Url))
+        if (!HasApiConfig(config))
         {
             MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
                 "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-
-        var rows = dataGridView.SelectedRows
-            .Cast<DataGridViewRow>()
-            .Select(r => r.DataBoundItem as TranslationRow)
-            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French) && !string.IsNullOrWhiteSpace(r.Translation))
-            .Cast<TranslationRow>()
-            .ToList();
-
-        if (rows.Count == 0) return;
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
@@ -713,13 +680,17 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
+        var previousValues = rows.Select(r => r.Comment).ToList();
         foreach (var row in rows)
             row.Comment = "Vérification...";
         dataGridView.Refresh();
 
+        statusRowCount.Text = "Vérification en cours...";
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
+
         int errors = 0;
         var pairs = rows.Select(r => (r.French, r.Translation)).ToList();
-        var previousValues = rows.Select(r => r.Comment).ToList();
         var progress = new Progress<int>(done =>
         {
             statusProgressBar.Value = done;
@@ -750,21 +721,20 @@ public partial class MainForm : Form
                 if (rows[i].Comment == "Vérification...")
                     rows[i].Comment = previousValues[i];
         }
+        finally
+        {
+            dataGridView.Refresh();
+            statusProgressBar.Visible = false;
+            btnOpen.Enabled = true;
+            btnSave.Enabled = _allRows is not null;
+            UpdateRowCountStatus();
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
 
-        dataGridView.Refresh();
-        statusProgressBar.Visible = false;
-        btnOpen.Enabled = true;
-        btnSave.Enabled = _allRows is not null;
-
-        var total = _allRows?.Count ?? 0;
-        var visible = dataGridView.RowCount;
-        statusRowCount.Text = _filters.Count > 0
-            ? $"Lignes : {visible} / {total}"
-            : $"Lignes : {total}";
-
-        if (errors > 0)
-            MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
-                "Erreur de vérification partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (errors > 0)
+                MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                    "Erreur de vérification partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     // --- Icônes ---
