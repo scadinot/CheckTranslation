@@ -598,8 +598,7 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
-        UseWaitCursor = true;
-        Application.UseWaitCursor = true;
+        using var waitCursor = new WaitCursorScope(this);
 
         var previousValues = rows.Select(r => r.Translation).ToList();
         foreach (var row in rows)
@@ -646,9 +645,6 @@ public partial class MainForm : Form
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
 
-            UseWaitCursor = false;
-            Application.UseWaitCursor = false;
-
             if (errors > 0)
                 MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
                     "Erreur de traduction partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -687,8 +683,7 @@ public partial class MainForm : Form
         dataGridView.Refresh();
 
         statusRowCount.Text = "Vérification en cours...";
-        UseWaitCursor = true;
-        Application.UseWaitCursor = true;
+        using var waitCursor = new WaitCursorScope(this);
 
         int errors = 0;
         var pairs = rows.Select(r => (r.French, r.Translation)).ToList();
@@ -729,8 +724,6 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
-            UseWaitCursor = false;
-            Application.UseWaitCursor = false;
 
             if (errors > 0)
                 MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
