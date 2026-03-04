@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 
 namespace CheckTranslation;
 
@@ -33,6 +34,7 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        EnableDoubleBuffering(dataGridView);
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
         if (File.Exists(icoPath))
             Icon = new Icon(icoPath);
@@ -51,9 +53,84 @@ public partial class MainForm : Form
         dataGridView.CellPainting += DataGridView_CellPainting;
         dataGridView.CellMouseDown += DataGridView_CellMouseDown;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
+        dataGridView.CellFormatting += DataGridView_CellFormatting;
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
     }
+
+    private static void EnableDoubleBuffering(Control control)
+    {
+        try
+        {
+            var prop = control.GetType().GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            prop?.SetValue(control, true);
+        }
+        catch
+        {
+        }
+    }
+
+    private void DataGridView_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            return;
+
+        var col = dataGridView.Columns[e.ColumnIndex];
+        if (col.Name != "colTranslation")
+            return;
+
+        if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
+            return;
+
+        var comment = row.Comment;
+        if (TryGetVerificationScore(comment, out int score))
+        {
+            var foreColor = ScoreToTextColor(score);
+            e.CellStyle.ForeColor = foreColor;
+            e.CellStyle.SelectionForeColor = foreColor;
+            return;
+        }
+
+        // Non testé: noir (et reset pour éviter les "restes" en scroll/virtualization).
+        e.CellStyle.ForeColor = Color.Black;
+        e.CellStyle.SelectionForeColor = Color.Black;
+    }
+
+    private static bool TryGetVerificationScore(string? comment, out int score)
+    {
+        score = 0;
+        if (string.IsNullOrWhiteSpace(comment))
+            return false;
+
+        var m = VerificationScoreRegex().Match(comment);
+        if (!m.Success)
+            return false;
+
+        if (!int.TryParse(m.Groups[1].Value, out score))
+            return false;
+
+        score = Math.Clamp(score, 0, 100);
+        return true;
+    }
+
+    private static Color ScoreToTextColor(int score)
+    {
+        // Dégradé rouge -> vert (0 -> 100)
+        var t = score / 100f;
+
+        // Pour plus de contraste sur fond clair:
+        // - on évite le vert/rouge "fluos" trop clairs
+        // - on garde une luminance plus basse
+        const int minChannel = 30;
+        const int maxChannel = 200;
+
+        var r = (int)(maxChannel * (1f - t) + minChannel * t);
+        var g = (int)(minChannel * (1f - t) + maxChannel * t);
+        return Color.FromArgb(255, r, g, 0);
+    }
+
+    [GeneratedRegex(@"^\s*(\d{1,3})\s*[-–]")]
+    private static partial Regex VerificationScoreRegex();
 
     private void InitDetailsColumns()
     {
@@ -601,8 +678,12 @@ public partial class MainForm : Form
         using var waitCursor = new WaitCursorScope(this);
 
         var previousValues = rows.Select(r => r.Translation).ToList();
+        var previousComments = rows.Select(r => r.Comment).ToList();
         foreach (var row in rows)
+        {
             row.Translation = "Traduction en cours...";
+            row.Comment = string.Empty;
+        }
         dataGridView.Refresh();
 
         int errors = 0;
@@ -635,7 +716,10 @@ public partial class MainForm : Form
                 "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Translation == "Traduction en cours...")
+                {
                     rows[i].Translation = previousValues[i];
+                    rows[i].Comment = previousComments[i];
+                }
         }
         finally
         {

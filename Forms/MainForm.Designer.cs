@@ -51,6 +51,7 @@ partial class MainForm
         dataGridView.AllowUserToAddRows = false;
         dataGridView.AllowUserToDeleteRows = false;
         dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
+        dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         dataGridView.Columns.AddRange(new DataGridViewColumn[] { colFrench, colTranslation });
         dataGridView.Dock = DockStyle.Fill;
