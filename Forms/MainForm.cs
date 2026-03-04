@@ -54,8 +54,32 @@ public partial class MainForm : Form
         dataGridView.CellMouseDown += DataGridView_CellMouseDown;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
         dataGridView.CellFormatting += DataGridView_CellFormatting;
+        dataGridView.SelectionChanged += (_, _) => UpdateSelectionStatus();
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
+        UpdateProviderStatus();
+        UpdateSelectionStatus();
+    }
+
+    private void UpdateProviderStatus()
+    {
+        var provider = AppConfig.Current.Provider;
+        var providerText = provider switch
+        {
+            AiProvider.Anthropic => "IA : Anthropic (Claude)",
+            _ => "IA : OpenAI (ChatGPT)",
+        };
+
+        var model = AppConfig.Current.ModelName;
+        statusProvider.Text = string.IsNullOrWhiteSpace(model)
+            ? providerText
+            : $"{providerText} | Modèle : {model}";
+    }
+
+    private void UpdateSelectionStatus()
+    {
+        var count = dataGridView.SelectedRows.Count;
+        statusSelection.Text = count > 0 ? $"Sélection : {count}" : "Sélection : 0";
     }
 
     private static void EnableDoubleBuffering(Control control)
@@ -312,6 +336,7 @@ public partial class MainForm : Form
             _filters.Clear();
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             statusRowCount.Text = $"Lignes : {rows.Count}";
+            UpdateSelectionStatus();
             btnSave.Enabled = true;
         }
         catch (Exception ex)
@@ -539,6 +564,7 @@ public partial class MainForm : Form
         statusRowCount.Text = _filters.Count > 0
             ? $"Lignes : {list.Count} / {_allRows.Count}"
             : $"Lignes : {list.Count}";
+        UpdateSelectionStatus();
     }
 
     private void ClearSortGlyphs()
@@ -551,6 +577,7 @@ public partial class MainForm : Form
     {
         using var form = new ConfigForm();
         form.ShowDialog(this);
+        UpdateProviderStatus();
     }
 
     // --- Menu contextuel ---
@@ -687,9 +714,12 @@ public partial class MainForm : Form
         dataGridView.Refresh();
 
         int errors = 0;
+        bool running = true;
         var texts = rows.Select(r => r.French).ToList();
         var progress = new Progress<int>(done =>
         {
+            if (!running)
+                return;
             statusProgressBar.Value = done;
             statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
         });
@@ -723,11 +753,13 @@ public partial class MainForm : Form
         }
         finally
         {
+            running = false;
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
+            UpdateSelectionStatus();
 
             if (errors > 0)
                 MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
@@ -770,9 +802,12 @@ public partial class MainForm : Form
         using var waitCursor = new WaitCursorScope(this);
 
         int errors = 0;
+        bool running = true;
         var pairs = rows.Select(r => (r.French, r.Translation)).ToList();
         var progress = new Progress<int>(done =>
         {
+            if (!running)
+                return;
             statusProgressBar.Value = done;
             statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
         });
@@ -803,11 +838,13 @@ public partial class MainForm : Form
         }
         finally
         {
+            running = false;
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
+            UpdateSelectionStatus();
 
             if (errors > 0)
                 MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",

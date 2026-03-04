@@ -40,7 +40,9 @@ partial class MainForm
         statusProgressBar = new ToolStripProgressBar();
         statusFileName = new ToolStripStatusLabel();
         statusRowCount = new ToolStripStatusLabel();
+        statusSelection = new ToolStripStatusLabel();
         statusLanguage = new ToolStripStatusLabel();
+        statusProvider = new ToolStripStatusLabel();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
         toolStrip.SuspendLayout();
         statusStrip.SuspendLayout();
@@ -112,7 +114,7 @@ partial class MainForm
         // 
         // statusStrip
         // 
-        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusLanguage });
+        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusSelection, statusLanguage, statusProvider });
         statusStrip.Location = new Point(0, 628);
         statusStrip.Name = "statusStrip";
         statusStrip.Size = new Size(1200, 22);
@@ -140,6 +142,14 @@ partial class MainForm
         statusRowCount.Size = new Size(4, 17);
         statusRowCount.TextAlign = ContentAlignment.MiddleLeft;
         // 
+        // statusSelection
+        // 
+        statusSelection.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
+        statusSelection.BorderStyle = Border3DStyle.SunkenOuter;
+        statusSelection.Name = "statusSelection";
+        statusSelection.Size = new Size(4, 17);
+        statusSelection.TextAlign = ContentAlignment.MiddleLeft;
+        // 
         // statusLanguage
         // 
         statusLanguage.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
@@ -147,6 +157,14 @@ partial class MainForm
         statusLanguage.Name = "statusLanguage";
         statusLanguage.Size = new Size(4, 17);
         statusLanguage.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // statusProvider
+        // 
+        statusProvider.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
+        statusProvider.BorderStyle = Border3DStyle.SunkenOuter;
+        statusProvider.Name = "statusProvider";
+        statusProvider.Size = new Size(4, 17);
+        statusProvider.TextAlign = ContentAlignment.MiddleLeft;
         // 
         // MainForm
         // 
@@ -183,5 +201,7 @@ partial class MainForm
     private ToolStripProgressBar statusProgressBar;
     private ToolStripStatusLabel statusFileName;
     private ToolStripStatusLabel statusRowCount;
+    private ToolStripStatusLabel statusSelection;
     private ToolStripStatusLabel statusLanguage;
+    private ToolStripStatusLabel statusProvider;
 }
