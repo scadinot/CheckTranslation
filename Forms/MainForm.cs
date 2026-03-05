@@ -20,7 +20,6 @@ public partial class MainForm : Form
     private List<TranslationRow>? _allRows;
     private readonly Dictionary<string, string> _filters = new();
     private readonly Dictionary<string, TextBox> _filterTextBoxes = new();
-    private Panel? _filterPanel;
     private System.Windows.Forms.Timer? _filterDebounceTimer;
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
