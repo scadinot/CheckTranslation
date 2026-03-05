@@ -54,9 +54,12 @@ public partial class MainForm : Form
         dataGridView.ColumnWidthChanged += (_, _) => UpdateFilterPanelLayout();
         dataGridView.Scroll += (_, _) => UpdateFilterPanelLayout();
         dataGridView.ColumnDisplayIndexChanged += (_, _) => UpdateFilterPanelLayout();
+        dataGridView.SelectionChanged += (_, _) => UpdateSelectionStatus();
         InitFilterPanel();
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
+        UpdateSelectionStatus();
+        UpdateProviderStatus();
     }
 
     private void InitDetailsColumns()
@@ -558,6 +561,7 @@ public partial class MainForm : Form
         statusRowCount.Text = _filters.Count > 0
             ? $"Lignes : {list.Count} / {_allRows.Count}"
             : $"Lignes : {list.Count}";
+        UpdateSelectionStatus();
     }
 
     private void ClearSortGlyphs()
@@ -570,6 +574,27 @@ public partial class MainForm : Form
     {
         using var form = new ConfigForm();
         form.ShowDialog(this);
+        UpdateProviderStatus(); // Mettre à jour après modification de la config
+    }
+
+    private void UpdateSelectionStatus()
+    {
+        int count = dataGridView.SelectedRows.Count;
+        statusSelection.Text = count > 0 ? $"Sélection : {count}" : string.Empty;
+    }
+
+    private void UpdateProviderStatus()
+    {
+        var config = AppConfig.Current;
+        var providerName = config.Provider switch
+        {
+            AiProvider.Anthropic => "Anthropic",
+            _ => "OpenAI",
+        };
+        var modelName = config.ModelName;
+        statusProvider.Text = string.IsNullOrWhiteSpace(modelName)
+            ? $"IA : {providerName}"
+            : $"IA : {providerName} ({modelName})";
     }
 
     // --- Menu contextuel ---
@@ -741,6 +766,7 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
+            UpdateSelectionStatus();
 
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
@@ -825,6 +851,7 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
+            UpdateSelectionStatus();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
 
