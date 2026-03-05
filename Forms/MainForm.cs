@@ -1,10 +1,8 @@
 using System.ComponentModel;
-using System.Text.RegularExpressions;
 
 namespace CheckTranslation;
 
 public partial class MainForm : Form
-
 {
     private static readonly LanguageInfo[] Languages =
     [
@@ -21,7 +19,9 @@ public partial class MainForm : Form
     private LanguageInfo _currentLanguage = Languages[0];
     private List<TranslationRow>? _allRows;
     private readonly Dictionary<string, string> _filters = new();
-    private bool _filterIconClicked;
+    private readonly Dictionary<string, TextBox> _filterTextBoxes = new();
+    private Panel? _filterPanel;
+    private System.Windows.Forms.Timer? _filterDebounceTimer;
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
     private int _contextMenuRowIndex = -1;
@@ -34,7 +34,6 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
-        EnableDoubleBuffering(dataGridView);
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
         if (File.Exists(icoPath))
             Icon = new Icon(icoPath);
@@ -51,110 +50,14 @@ public partial class MainForm : Form
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
-        dataGridView.CellMouseDown += DataGridView_CellMouseDown;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
-        dataGridView.CellFormatting += DataGridView_CellFormatting;
-        dataGridView.SelectionChanged += (_, _) => UpdateSelectionStatus();
+        dataGridView.ColumnWidthChanged += (_, _) => UpdateFilterPanelLayout();
+        dataGridView.Scroll += (_, _) => UpdateFilterPanelLayout();
+        dataGridView.ColumnDisplayIndexChanged += (_, _) => UpdateFilterPanelLayout();
+        InitFilterPanel();
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
-        UpdateProviderStatus();
-        UpdateSelectionStatus();
     }
-
-    private void UpdateProviderStatus()
-    {
-        var provider = AppConfig.Current.Provider;
-        var providerText = provider switch
-        {
-            AiProvider.Anthropic => "IA : Anthropic (Claude)",
-            _ => "IA : OpenAI (ChatGPT)",
-        };
-
-        var model = AppConfig.Current.ModelName;
-        statusProvider.Text = string.IsNullOrWhiteSpace(model)
-            ? providerText
-            : $"{providerText} | Modèle : {model}";
-    }
-
-    private void UpdateSelectionStatus()
-    {
-        var count = dataGridView.SelectedRows.Count;
-        statusSelection.Text = count > 0 ? $"Sélection : {count}" : "Sélection : 0";
-    }
-
-    private static void EnableDoubleBuffering(Control control)
-    {
-        try
-        {
-            var prop = control.GetType().GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            prop?.SetValue(control, true);
-        }
-        catch
-        {
-        }
-    }
-
-    private void DataGridView_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
-    {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0)
-            return;
-
-        var col = dataGridView.Columns[e.ColumnIndex];
-        if (col.Name != "colTranslation")
-            return;
-
-        if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
-            return;
-
-        var comment = row.Comment;
-        if (TryGetVerificationScore(comment, out int score))
-        {
-            var foreColor = ScoreToTextColor(score);
-            e.CellStyle.ForeColor = foreColor;
-            e.CellStyle.SelectionForeColor = foreColor;
-            return;
-        }
-
-        // Non testé: noir (et reset pour éviter les "restes" en scroll/virtualization).
-        e.CellStyle.ForeColor = Color.Black;
-        e.CellStyle.SelectionForeColor = Color.Black;
-    }
-
-    private static bool TryGetVerificationScore(string? comment, out int score)
-    {
-        score = 0;
-        if (string.IsNullOrWhiteSpace(comment))
-            return false;
-
-        var m = VerificationScoreRegex().Match(comment);
-        if (!m.Success)
-            return false;
-
-        if (!int.TryParse(m.Groups[1].Value, out score))
-            return false;
-
-        score = Math.Clamp(score, 0, 100);
-        return true;
-    }
-
-    private static Color ScoreToTextColor(int score)
-    {
-        // Dégradé rouge -> vert (0 -> 100)
-        var t = score / 100f;
-
-        // Pour plus de contraste sur fond clair:
-        // - on évite le vert/rouge "fluos" trop clairs
-        // - on garde une luminance plus basse
-        const int minChannel = 30;
-        const int maxChannel = 200;
-
-        var r = (int)(maxChannel * (1f - t) + minChannel * t);
-        var g = (int)(minChannel * (1f - t) + maxChannel * t);
-        return Color.FromArgb(255, r, g, 0);
-    }
-
-    [GeneratedRegex(@"^\s*(\d{1,3})\s*[-–]")]
-    private static partial Regex VerificationScoreRegex();
 
     private void InitDetailsColumns()
     {
@@ -238,6 +141,7 @@ public partial class MainForm : Form
         colKey!.Visible = show;
         if (btnDetails is not null)
             btnDetails.Checked = show;
+        UpdateFilterPanelLayout();
     }
 
     private void InitLanguageButtons()
@@ -289,11 +193,14 @@ public partial class MainForm : Form
             foreach (var row in _allRows)
                 row.SwitchLanguage(oldCol, newCol);
 
-            _filters.Remove("Translation");
+            // Effacer le filtre Translation (les données ont changé)
+            if (_filterTextBoxes.TryGetValue("Translation", out var tb))
+                tb.Text = string.Empty;
             ApplyFilters();
         }
 
         SelectLanguage(lang);
+        UpdateFilterPanelLayout(); // Mettre à jour les placeholders
     }
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
@@ -336,7 +243,6 @@ public partial class MainForm : Form
             _filters.Clear();
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             statusRowCount.Text = $"Lignes : {rows.Count}";
-            UpdateSelectionStatus();
             btnSave.Enabled = true;
         }
         catch (Exception ex)
@@ -392,41 +298,140 @@ public partial class MainForm : Form
         }
     }
 
-    // --- Filtres ---
+    // --- Filtres (style ResX Resource Manager) ---
+
+    private void InitFilterPanel()
+    {
+        // Augmenter la hauteur des en-têtes pour contenir titre + filtre
+        dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        dataGridView.ColumnHeadersHeight = 50;
+
+        // Timer pour le debounce du filtrage
+        _filterDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+        _filterDebounceTimer.Tick += (_, _) =>
+        {
+            _filterDebounceTimer.Stop();
+            ApplyFilters();
+        };
+
+        // Créer les TextBox après que le formulaire soit affiché
+        Load += (_, _) => CreateFilterTextBoxes();
+    }
+
+    private void CreateFilterTextBoxes()
+    {
+        _filterTextBoxes.Clear();
+
+        foreach (DataGridViewColumn col in dataGridView.Columns)
+        {
+            var textBox = new TextBox
+            {
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font(dataGridView.Font.FontFamily, 8f),
+                Tag = col.DataPropertyName,
+                BackColor = Color.White,
+            };
+
+            textBox.TextChanged += FilterTextBox_TextChanged;
+            textBox.GotFocus += (s, _) =>
+            {
+                if (s is TextBox tb)
+                    tb.BackColor = Color.FromArgb(255, 255, 230); // Jaune pâle quand actif
+            };
+            textBox.LostFocus += (s, _) =>
+            {
+                if (s is TextBox tb)
+                    tb.BackColor = Color.White;
+            };
+            textBox.KeyDown += (s, args) =>
+            {
+                if (args.KeyCode == Keys.Escape && s is TextBox tb)
+                {
+                    tb.Text = string.Empty;
+                    dataGridView.Focus();
+                    args.SuppressKeyPress = true;
+                }
+            };
+
+            _filterTextBoxes[col.DataPropertyName] = textBox;
+            dataGridView.Controls.Add(textBox); // Ajouter directement dans le DataGridView
+        }
+
+        UpdateFilterPanelLayout();
+    }
+
+    private void FilterTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        _filterDebounceTimer?.Stop();
+        _filterDebounceTimer?.Start();
+    }
+
+    private void UpdateFilterPanelLayout()
+    {
+        foreach (DataGridViewColumn col in dataGridView.Columns)
+        {
+            if (!_filterTextBoxes.TryGetValue(col.DataPropertyName, out var textBox))
+                continue;
+
+            if (!col.Visible)
+            {
+                textBox.Visible = false;
+                continue;
+            }
+
+            var rect = dataGridView.GetColumnDisplayRectangle(col.Index, false);
+
+            // Si la colonne est hors de la vue, la cacher
+            if (rect.Width == 0)
+            {
+                textBox.Visible = false;
+                continue;
+            }
+
+            // Positionner le TextBox dans la partie basse de l'en-tête
+            textBox.Visible = true;
+            textBox.Location = new Point(rect.Left + 2, dataGridView.ColumnHeadersHeight - 22);
+            textBox.Width = rect.Width - 4;
+            textBox.Height = 18;
+        }
+    }
 
     private void DataGridView_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
     {
         if (e.RowIndex != -1 || e.ColumnIndex < 0 || e.Graphics is null)
             return;
 
-        e.Paint(e.CellBounds, DataGridViewPaintParts.All);
+        // Dessiner le fond de l'en-tête
+        e.Paint(e.CellBounds, DataGridViewPaintParts.Background | DataGridViewPaintParts.Border);
+
+        var column = dataGridView.Columns[e.ColumnIndex];
+
+        // Zone pour le titre (partie haute)
+        var titleRect = new Rectangle(
+            e.CellBounds.Left + 4,
+            e.CellBounds.Top + 2,
+            e.CellBounds.Width - 24, // Espace pour l'icône de tri
+            dataGridView.ColumnHeadersHeight - 26);
+
+        // Dessiner le titre de la colonne
+        using var titleBrush = new SolidBrush(dataGridView.ColumnHeadersDefaultCellStyle.ForeColor);
+        using var sf = new StringFormat
+        {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap,
+        };
+        e.Graphics.DrawString(column.HeaderText, dataGridView.ColumnHeadersDefaultCellStyle.Font ?? dataGridView.Font, titleBrush, titleRect, sf);
+
         e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-        // Icône de filtre (entonnoir) à droite
-        var column = dataGridView.Columns[e.ColumnIndex];
-        bool hasFilter = _filters.ContainsKey(column.DataPropertyName);
-
-        int fSize = 10;
-        int fx = e.CellBounds.Right - fSize - 8;
-        int fy = e.CellBounds.Top + (e.CellBounds.Height - fSize) / 2;
-
-        using var filterBrush = new SolidBrush(hasFilter ? Color.DodgerBlue : Color.Silver);
-        e.Graphics.FillPolygon(filterBrush, new PointF[]
-        {
-            new(fx, fy),
-            new(fx + fSize, fy),
-            new(fx + fSize * 0.6f, fy + fSize * 0.5f),
-            new(fx + fSize * 0.6f, fy + fSize),
-            new(fx + fSize * 0.4f, fy + fSize),
-            new(fx + fSize * 0.4f, fy + fSize * 0.5f),
-        });
-
-        // Indicateur de tri (triangle) à gauche du filtre
+        // Indicateur de tri (triangle) à droite du titre
         if (_sortColumnIndex == e.ColumnIndex)
         {
             int sSize = 8;
-            int sx = fx - sSize - 4;
-            int sy = e.CellBounds.Top + (e.CellBounds.Height - sSize / 2) / 2;
+            int sx = e.CellBounds.Right - sSize - 8;
+            int sy = e.CellBounds.Top + 10;
 
             using var sortBrush = new SolidBrush(Color.DimGray);
             if (_sortDirection == ListSortDirection.Ascending)
@@ -449,99 +454,40 @@ public partial class MainForm : Form
             }
         }
 
-        e.Handled = true;
-    }
+        // Indicateur visuel si un filtre est actif sur cette colonne
+        if (_filterTextBoxes.TryGetValue(column.DataPropertyName, out var tb) && !string.IsNullOrEmpty(tb.Text))
+        {
+            using var filterPen = new Pen(Color.DodgerBlue, 2);
+            e.Graphics.DrawLine(filterPen, e.CellBounds.Left + 2, e.CellBounds.Bottom - 1, e.CellBounds.Right - 2, e.CellBounds.Bottom - 1);
+        }
 
-    private void DataGridView_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
-    {
-        if (e.RowIndex != -1 || e.ColumnIndex < 0) return;
-        var cellRect = dataGridView.GetCellDisplayRectangle(e.ColumnIndex, -1, true);
-        _filterIconClicked = e.X > cellRect.Width - 22;
+        e.Handled = true;
     }
 
     private void DataGridView_ColumnHeaderMouseClick(object? sender, DataGridViewCellMouseEventArgs e)
     {
-        if (_filterIconClicked)
-        {
-            _filterIconClicked = false;
-            ShowFilterPopup(e.ColumnIndex);
-        }
-        else
-        {
-            var column = dataGridView.Columns[e.ColumnIndex];
-            var direction = (_sortColumnIndex == e.ColumnIndex && _sortDirection == ListSortDirection.Ascending)
-                ? ListSortDirection.Descending
-                : ListSortDirection.Ascending;
-            dataGridView.Sort(column, direction);
-            ClearSortGlyphs();
-            _sortColumnIndex = e.ColumnIndex;
-            _sortDirection = direction;
-        }
-    }
-
-    private void ShowFilterPopup(int columnIndex)
-    {
-        if (_allRows is null) return;
-
-        var column = dataGridView.Columns[columnIndex];
-        var cellRect = dataGridView.GetCellDisplayRectangle(columnIndex, -1, true);
-        var location = dataGridView.PointToScreen(new Point(cellRect.Left, cellRect.Bottom));
-
-        var popup = new Form
-        {
-            FormBorderStyle = FormBorderStyle.None,
-            StartPosition = FormStartPosition.Manual,
-            Location = location,
-            Size = new Size(Math.Max(cellRect.Width, 200), 26),
-            ShowInTaskbar = false,
-        };
-
-        var textBox = new TextBox
-        {
-            Dock = DockStyle.Fill,
-            Text = _filters.GetValueOrDefault(column.DataPropertyName, ""),
-            BorderStyle = BorderStyle.FixedSingle,
-        };
-
-        textBox.KeyDown += (s, args) =>
-        {
-            if (args.KeyCode == Keys.Enter)
-            {
-                SetFilter(column.DataPropertyName, textBox.Text);
-                popup.Close();
-                args.SuppressKeyPress = true;
-            }
-            else if (args.KeyCode == Keys.Escape)
-            {
-                popup.Close();
-                args.SuppressKeyPress = true;
-            }
-        };
-
-        popup.Controls.Add(textBox);
-        popup.Deactivate += (s, args) =>
-        {
-            SetFilter(column.DataPropertyName, textBox.Text);
-            popup.Close();
-        };
-        popup.Show(this);
-        textBox.Focus();
-        textBox.SelectAll();
-    }
-
-    private void SetFilter(string propertyName, string filterText)
-    {
-        filterText = filterText.Trim();
-        if (string.IsNullOrEmpty(filterText))
-            _filters.Remove(propertyName);
-        else
-            _filters[propertyName] = filterText;
-        ApplyFilters();
+        var column = dataGridView.Columns[e.ColumnIndex];
+        var direction = (_sortColumnIndex == e.ColumnIndex && _sortDirection == ListSortDirection.Ascending)
+            ? ListSortDirection.Descending
+            : ListSortDirection.Ascending;
+        dataGridView.Sort(column, direction);
+        ClearSortGlyphs();
+        _sortColumnIndex = e.ColumnIndex;
+        _sortDirection = direction;
     }
 
     private void ApplyFilters()
     {
         if (_allRows is null) return;
+
+        // Collecter les filtres depuis les TextBox
+        _filters.Clear();
+        foreach (var (prop, textBox) in _filterTextBoxes)
+        {
+            var text = textBox.Text.Trim();
+            if (!string.IsNullOrEmpty(text))
+                _filters[prop] = text;
+        }
 
         IEnumerable<TranslationRow> filtered = _allRows;
         foreach (var (prop, filter) in _filters)
@@ -564,7 +510,6 @@ public partial class MainForm : Form
         statusRowCount.Text = _filters.Count > 0
             ? $"Lignes : {list.Count} / {_allRows.Count}"
             : $"Lignes : {list.Count}";
-        UpdateSelectionStatus();
     }
 
     private void ClearSortGlyphs()
@@ -577,7 +522,6 @@ public partial class MainForm : Form
     {
         using var form = new ConfigForm();
         form.ShowDialog(this);
-        UpdateProviderStatus();
     }
 
     // --- Menu contextuel ---
@@ -702,24 +646,18 @@ public partial class MainForm : Form
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
 
-        using var waitCursor = new WaitCursorScope(this);
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
 
         var previousValues = rows.Select(r => r.Translation).ToList();
-        var previousComments = rows.Select(r => r.Comment).ToList();
         foreach (var row in rows)
-        {
             row.Translation = "Traduction en cours...";
-            row.Comment = string.Empty;
-        }
         dataGridView.Refresh();
 
         int errors = 0;
-        bool running = true;
         var texts = rows.Select(r => r.French).ToList();
         var progress = new Progress<int>(done =>
         {
-            if (!running)
-                return;
             statusProgressBar.Value = done;
             statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
         });
@@ -746,20 +684,18 @@ public partial class MainForm : Form
                 "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Translation == "Traduction en cours...")
-                {
                     rows[i].Translation = previousValues[i];
-                    rows[i].Comment = previousComments[i];
-                }
         }
         finally
         {
-            running = false;
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
-            UpdateSelectionStatus();
+
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
 
             if (errors > 0)
                 MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
@@ -799,15 +735,13 @@ public partial class MainForm : Form
         dataGridView.Refresh();
 
         statusRowCount.Text = "Vérification en cours...";
-        using var waitCursor = new WaitCursorScope(this);
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
 
         int errors = 0;
-        bool running = true;
         var pairs = rows.Select(r => (r.French, r.Translation)).ToList();
         var progress = new Progress<int>(done =>
         {
-            if (!running)
-                return;
             statusProgressBar.Value = done;
             statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
         });
@@ -838,13 +772,13 @@ public partial class MainForm : Form
         }
         finally
         {
-            running = false;
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             UpdateRowCountStatus();
-            UpdateSelectionStatus();
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
 
             if (errors > 0)
                 MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
