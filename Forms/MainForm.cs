@@ -302,6 +302,13 @@ public partial class MainForm : Form
 
     private void InitFilterPanel()
     {
+        // Désactiver le style visuel des en-têtes pour contrôler les couleurs
+        dataGridView.EnableHeadersVisualStyles = false;
+        dataGridView.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+        dataGridView.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+        dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+        dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = SystemColors.ControlText;
+
         // Augmenter la hauteur des en-têtes pour contenir titre + filtre
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         dataGridView.ColumnHeadersHeight = 50;
@@ -326,13 +333,13 @@ public partial class MainForm : Form
         {
             var textBox = new TextBox
             {
-                BorderStyle = BorderStyle.FixedSingle,
-                Font = new Font(dataGridView.Font.FontFamily, 8f),
+                BorderStyle = BorderStyle.None,
+                Font = new Font(dataGridView.Font.FontFamily, 8.5f),
                 Tag = col.DataPropertyName,
-                BackColor = Color.White,
             };
 
             textBox.TextChanged += FilterTextBox_TextChanged;
+            textBox.TextChanged += (_, _) => dataGridView.InvalidateColumn(col.Index); // Redessiner pour l'icône
             textBox.GotFocus += (s, _) =>
             {
                 if (s is TextBox tb)
@@ -341,7 +348,7 @@ public partial class MainForm : Form
             textBox.LostFocus += (s, _) =>
             {
                 if (s is TextBox tb)
-                    tb.BackColor = Color.White;
+                    UpdateTextBoxBackColor(tb);
             };
             textBox.KeyDown += (s, args) =>
             {
@@ -354,10 +361,27 @@ public partial class MainForm : Form
             };
 
             _filterTextBoxes[col.DataPropertyName] = textBox;
-            dataGridView.Controls.Add(textBox); // Ajouter directement dans le DataGridView
+            dataGridView.Controls.Add(textBox);
+            UpdateTextBoxBackColor(textBox);
         }
 
         UpdateFilterPanelLayout();
+    }
+
+    private void UpdateTextBoxBackColor(TextBox textBox)
+    {
+        // Utiliser la couleur de fond réelle de l'en-tête
+        // EnableHeadersVisualStyles = true utilise le thème Windows, sinon c'est la couleur définie
+        if (dataGridView.EnableHeadersVisualStyles)
+        {
+            // Couleur typique du thème Windows pour les en-têtes
+            textBox.BackColor = SystemColors.Control;
+        }
+        else
+        {
+            var backColor = dataGridView.ColumnHeadersDefaultCellStyle.BackColor;
+            textBox.BackColor = backColor == Color.Empty ? SystemColors.Control : backColor;
+        }
     }
 
     private void FilterTextBox_TextChanged(object? sender, EventArgs e)
@@ -388,11 +412,17 @@ public partial class MainForm : Form
                 continue;
             }
 
-            // Positionner le TextBox dans la partie basse de l'en-tête
+            // Positionner le TextBox avec un espace à gauche pour l'icône de filtre
+            const int filterHeight = 16;
+            const int bottomMargin = 5;
+            const int iconWidth = 18; // Espace pour l'icône 🔍
+
             textBox.Visible = true;
-            textBox.Location = new Point(rect.Left + 2, dataGridView.ColumnHeadersHeight - 22);
-            textBox.Width = rect.Width - 4;
-            textBox.Height = 18;
+            textBox.SetBounds(
+                rect.Left + iconWidth,
+                dataGridView.ColumnHeadersHeight - filterHeight - bottomMargin,
+                rect.Width - iconWidth - 2,
+                filterHeight);
         }
     }
 
@@ -406,12 +436,18 @@ public partial class MainForm : Form
 
         var column = dataGridView.Columns[e.ColumnIndex];
 
-        // Zone pour le titre (partie haute)
+        // Constantes pour le layout (synchronisées avec UpdateFilterPanelLayout)
+        const int filterHeight = 16;
+        const int bottomMargin = 5;
+        const int iconWidth = 18;
+        int titleAreaHeight = dataGridView.ColumnHeadersHeight - filterHeight - bottomMargin - 4;
+
+        // Zone pour le titre (partie haute, au-dessus du TextBox)
         var titleRect = new Rectangle(
             e.CellBounds.Left + 4,
             e.CellBounds.Top + 2,
-            e.CellBounds.Width - 24, // Espace pour l'icône de tri
-            dataGridView.ColumnHeadersHeight - 26);
+            e.CellBounds.Width - 20, // Espace pour l'icône de tri
+            titleAreaHeight);
 
         // Dessiner le titre de la colonne
         using var titleBrush = new SolidBrush(dataGridView.ColumnHeadersDefaultCellStyle.ForeColor);
@@ -430,8 +466,8 @@ public partial class MainForm : Form
         if (_sortColumnIndex == e.ColumnIndex)
         {
             int sSize = 8;
-            int sx = e.CellBounds.Right - sSize - 8;
-            int sy = e.CellBounds.Top + 10;
+            int sx = e.CellBounds.Right - sSize - 6;
+            int sy = e.CellBounds.Top + (titleAreaHeight / 2) - 2;
 
             using var sortBrush = new SolidBrush(Color.DimGray);
             if (_sortDirection == ListSortDirection.Ascending)
@@ -454,12 +490,24 @@ public partial class MainForm : Form
             }
         }
 
-        // Indicateur visuel si un filtre est actif sur cette colonne
-        if (_filterTextBoxes.TryGetValue(column.DataPropertyName, out var tb) && !string.IsNullOrEmpty(tb.Text))
+        // Dessiner l'icône de filtre (🔍) à gauche de la zone de filtre
+        int filterY = dataGridView.ColumnHeadersHeight - filterHeight - bottomMargin;
+        var iconRect = new RectangleF(
+            e.CellBounds.Left + 2,
+            filterY - 1,
+            iconWidth - 2,
+            filterHeight + 2);
+
+        // Couleur de l'icône : bleue si filtre actif, grise sinon
+        bool hasFilter = _filterTextBoxes.TryGetValue(column.DataPropertyName, out var tb) && !string.IsNullOrEmpty(tb?.Text);
+        using var iconBrush = new SolidBrush(hasFilter ? Color.DodgerBlue : Color.Gray);
+        using var iconFont = new Font("Segoe UI Emoji", 9f);
+        using var iconSf = new StringFormat
         {
-            using var filterPen = new Pen(Color.DodgerBlue, 2);
-            e.Graphics.DrawLine(filterPen, e.CellBounds.Left + 2, e.CellBounds.Bottom - 1, e.CellBounds.Right - 2, e.CellBounds.Bottom - 1);
-        }
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center,
+        };
+        e.Graphics.DrawString("🔍", iconFont, iconBrush, iconRect, iconSf);
 
         e.Handled = true;
     }
