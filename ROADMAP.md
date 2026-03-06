@@ -12,6 +12,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟡 | **Injection de dépendances** | Couplage direct aux clients API | Extraire des interfaces (`ITranslationService`, `IExcelService`) pour faciliter les tests et le mock |
 | 🟡 | **Séparation UI/Logic** | `MainForm.cs` contient la logique métier | Pattern MVVM/MVP light : extraire un `MainFormViewModel` |
 | 🟢 | **Configuration** | Prompts en dur dans `AppConfig.cs` | Externaliser les prompts dans des fichiers `.md` séparés (plus facile à éditer) |
+| 🔴 | **Hygiène WinForms Designer** | Risque d’édition manuelle / pollution dans les fichiers `.Designer.cs` | Interdire/éviter les modifications manuelles, supprimer tout champ/ligne non générée (ex: `testField`) et laisser Visual Studio régénérer |
 
 ---
 
@@ -36,6 +37,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Export** | Sauvegarde dans le fichier source uniquement | Permettre "Enregistrer sous" / Export vers un nouveau fichier |
 | 🟢 | **Thème sombre** | Non supporté | Détecter le thème Windows et adapter les couleurs |
 | 🟢 | **Raccourcis clavier** | Aucun | Ctrl+S (save), Ctrl+O (open), F5 (refresh), Ctrl+T (traduire sélection) |
+| 🟡 | **Chargement fichier : cohérence filtres** | Les filtres UI peuvent rester saisis mais ne pas être appliqués après ouverture | Après `Ouvrir`, vider les champs de filtre *ou* réappliquer `ApplyFilters()` pour refléter l’état des filtres |
 
 ---
 
@@ -48,6 +50,9 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Validation prompts** | Aucune | Vérifier que `{language}` est présent dans les prompts |
 | 🟡 | **Fichier verrouillé** | Exception si Excel est ouvert | Détecter le verrouillage et proposer une copie temporaire |
 | 🟢 | **Backup automatique** | Aucun | Créer un `.bak` avant chaque sauvegarde |
+| 🔴 | **Emplacement configuration** | Le fichier `CheckTranslation.config.json` est écrit dans le dossier de l’application | Déplacer vers `%AppData%` / `%LocalAppData%` pour éviter les problèmes de droits (Program Files) |
+| 🟡 | **Traduction partielle** | Si l’IA renvoie une entrée vide, la cellule peut rester sur un placeholder | En cas d’entrée vide/non parsée : restaurer l’ancienne valeur et remonter l’erreur de façon plus explicite |
+| 🟡 | **Persistance vérification** | Les résultats de vérification (score/commentaire) ne sont pas forcément sauvegardés dans Excel | Écrire aussi les colonnes commentaires associées lors de la sauvegarde (pas uniquement les traductions) |
 
 ---
 
