@@ -12,6 +12,8 @@ internal static class Program
         // see https://aka.ms/applicationconfiguration.
         AppConfig.Load();
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        IExcelService excelService = new ExcelService();
+        ITranslationService translationService = new TranslationService();
+        Application.Run(new MainForm(excelService, translationService));
     }
 }

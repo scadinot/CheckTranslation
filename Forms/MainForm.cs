@@ -5,6 +5,9 @@ namespace CheckTranslation;
 
 public partial class MainForm : Form
 {
+    private readonly IExcelService _excelService;
+    private readonly ITranslationService _translationService;
+
     private static readonly LanguageInfo[] Languages =
     [
         new("en-US", "Anglais",     9),
@@ -31,8 +34,15 @@ public partial class MainForm : Form
     private DataGridViewTextBoxColumn? colKey;
     private DataGridViewTextBoxColumn colComment = null!;
 
-    public MainForm()
+    public MainForm() : this(new ExcelService(), new TranslationService())
     {
+    }
+
+    internal MainForm(IExcelService excelService, ITranslationService translationService)
+    {
+        _excelService = excelService;
+        _translationService = translationService;
+
         InitializeComponent();
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
         if (File.Exists(icoPath))
@@ -319,7 +329,7 @@ public partial class MainForm : Form
             var allColumns = Languages.Select(l => l.Column).ToArray();
             var activeColumn = _currentLanguage.Column;
             var progress = new Progress<int>(percent => statusProgressBar.Value = percent);
-            var rows = await Task.Run(() => ExcelReader.Load(filePath, allColumns, activeColumn, progress));
+            var rows = await Task.Run(() => _excelService.Load(filePath, allColumns, activeColumn, progress));
 
             _allRows = rows;
             _filters.Clear();
@@ -360,7 +370,7 @@ public partial class MainForm : Form
         {
             var filePath = _currentFilePath;
             var column = _currentLanguage.Column;
-            await Task.Run(() => ExcelReader.Save(filePath, column, _allRows));
+            await Task.Run(() => _excelService.Save(filePath, column, _allRows));
             statusRowCount.Text = $"Lignes : {_allRows.Count} (sauvegardé)";
         }
         catch (Exception ex)
@@ -824,7 +834,7 @@ public partial class MainForm : Form
 
         try
         {
-            var batches = await Translator.TranslateInBatchesAsync(texts, config, _currentLanguage.Name, progress);
+            var batches = await _translationService.TranslateInBatchesAsync(texts, config, _currentLanguage.Name, progress);
 
             int rowIndex = 0;
             foreach (var batch in batches)
@@ -914,7 +924,7 @@ public partial class MainForm : Form
 
         try
         {
-            var batches = await Translator.VerifyInBatchesAsync(pairs, config, _currentLanguage.Name, progress);
+            var batches = await _translationService.VerifyInBatchesAsync(pairs, config, _currentLanguage.Name, progress);
 
             int rowIndex = 0;
             foreach (var batch in batches)
