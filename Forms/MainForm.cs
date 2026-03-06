@@ -87,15 +87,34 @@ public partial class MainForm : Form
 
     private static Color GetQualityBackColor(int score)
     {
+        // Dégradé (interpolation linéaire) entre les seuils.
         // Palette volontairement "pastel" pour conserver la lisibilité dans un DataGridView.
+        score = Math.Clamp(score, 0, 100);
+
+        var c0 = Color.FromArgb(255, 199, 206); // rouge
+        var c60 = Color.FromArgb(255, 217, 179); // orange clair
+        var c70 = Color.FromArgb(255, 242, 204); // jaune
+        var c80 = Color.FromArgb(226, 239, 218);
+        var c90 = Color.FromArgb(198, 239, 206); // vert
+        var c100 = Color.FromArgb(180, 230, 190); // vert un peu plus soutenu
+
         return score switch
         {
-            >= 90 => Color.FromArgb(198, 239, 206), // vert
-            >= 80 => Color.FromArgb(226, 239, 218),
-            >= 70 => Color.FromArgb(255, 242, 204), // jaune
-            >= 60 => Color.FromArgb(255, 217, 179), // orange clair
-            _ => Color.FromArgb(255, 199, 206),     // rouge
+            < 60 => LerpColor(c0, c60, score / 60f),
+            < 70 => LerpColor(c60, c70, (score - 60) / 10f),
+            < 80 => LerpColor(c70, c80, (score - 70) / 10f),
+            < 90 => LerpColor(c80, c90, (score - 80) / 10f),
+            _ => LerpColor(c90, c100, (score - 90) / 10f),
         };
+    }
+
+    private static Color LerpColor(Color a, Color b, float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        int r = (int)MathF.Round(a.R + (b.R - a.R) * t);
+        int g = (int)MathF.Round(a.G + (b.G - a.G) * t);
+        int bl = (int)MathF.Round(a.B + (b.B - a.B) * t);
+        return Color.FromArgb(255, r, g, bl);
     }
 
     private static bool TryParseQualityScore(string? comment, out int score)
