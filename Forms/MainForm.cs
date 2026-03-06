@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 
 namespace CheckTranslation;
 
@@ -49,6 +50,7 @@ public partial class MainForm : Form
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
+        dataGridView.CellFormatting += DataGridView_CellFormatting;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
         dataGridView.ColumnWidthChanged += (_, _) => UpdateFilterPanelLayout();
         dataGridView.Scroll += (_, _) => UpdateFilterPanelLayout();
@@ -60,6 +62,58 @@ public partial class MainForm : Form
         UpdateSelectionStatus();
         UpdateProviderStatus();
     }
+
+    private void DataGridView_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            return;
+
+        var colName = dataGridView.Columns[e.ColumnIndex].Name;
+        if (colName is not "colTranslation" and not "colComment")
+            return;
+
+        if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
+            return;
+
+        if (!TryParseQualityScore(row.Comment, out var score))
+            return;
+
+        var backColor = GetQualityBackColor(score);
+        e.CellStyle.BackColor = backColor;
+        e.CellStyle.SelectionBackColor = ControlPaint.Dark(backColor);
+        e.CellStyle.ForeColor = SystemColors.ControlText;
+        e.CellStyle.SelectionForeColor = SystemColors.ControlText;
+    }
+
+    private static Color GetQualityBackColor(int score)
+    {
+        // Palette volontairement "pastel" pour conserver la lisibilité dans un DataGridView.
+        return score switch
+        {
+            >= 90 => Color.FromArgb(198, 239, 206), // vert
+            >= 80 => Color.FromArgb(226, 239, 218),
+            >= 70 => Color.FromArgb(255, 242, 204), // jaune
+            >= 60 => Color.FromArgb(255, 217, 179), // orange clair
+            _ => Color.FromArgb(255, 199, 206),     // rouge
+        };
+    }
+
+    private static bool TryParseQualityScore(string? comment, out int score)
+    {
+        score = 0;
+        if (string.IsNullOrWhiteSpace(comment))
+            return false;
+
+        // Attendu : "XXX - ..." (cf. VerifyPrompt). On tolère les espaces et le tiret long.
+        var m = QualityScoreRegex().Match(comment);
+        if (!m.Success)
+            return false;
+
+        return int.TryParse(m.Groups[1].Value, out score) && score is >= 0 and <= 100;
+    }
+
+    [GeneratedRegex(@"^\s*(\d{3})\s*[-–]\s*", RegexOptions.CultureInvariant)]
+    private static partial Regex QualityScoreRegex();
 
     private void InitDetailsColumns()
     {
