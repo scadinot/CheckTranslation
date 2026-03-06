@@ -2,8 +2,6 @@ namespace CheckTranslation;
 
 partial class ConfigForm
 {
-    // This is a test designer patch
-    private string testField;
     private System.ComponentModel.IContainer components = null;
 
     protected override void Dispose(bool disposing)

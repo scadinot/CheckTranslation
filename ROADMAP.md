@@ -12,7 +12,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟡 | **Injection de dépendances** | Couplage direct aux clients API | Extraire des interfaces (`ITranslationService`, `IExcelService`) pour faciliter les tests et le mock |
 | 🟡 | **Séparation UI/Logic** | `MainForm.cs` contient la logique métier | Pattern MVVM/MVP light : extraire un `MainFormViewModel` |
 | 🟢 | **Configuration** | Prompts en dur dans `AppConfig.cs` | Externaliser les prompts dans des fichiers `.md` séparés (plus facile à éditer) |
-| 🔴 | **Hygiène WinForms Designer** | Risque d’édition manuelle / pollution dans les fichiers `.Designer.cs` | Interdire/éviter les modifications manuelles, supprimer tout champ/ligne non générée (ex: `testField`) et laisser Visual Studio régénérer |
+| 🟢 | **Hygiène WinForms Designer** | Corrigé : suppression d’un champ non généré (ex: `testField`) dans `ConfigForm.Designer.cs` | Maintenir la règle : ne pas modifier les fichiers `.Designer.cs` à la main, laisser Visual Studio régénérer |
 
 ---
 
@@ -111,6 +111,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | Date | Version | Changements |
 |------|---------|-------------|
 | 2025-01-XX | 1.0 | Version initiale |
+| 2026-03-06 | 1.0 | Hygiène WinForms Designer : nettoyage de `ConfigForm.Designer.cs` (suppression de code non généré) |
 
 ---
 
