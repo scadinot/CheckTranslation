@@ -9,7 +9,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | Priorité | Axe | État actuel | Amélioration suggérée |
 |:--------:|-----|-------------|----------------------|
 | 🔴 | **Tests** | Aucun test unitaire | Ajouter un projet `CheckTranslation.Tests` (xUnit/NUnit) pour `Translator`, `ExcelReader`, `AppConfig` |
-| 🟡 | **Injection de dépendances** | Traité : `ITranslationService`/`IExcelService` + injection dans `MainForm` (incl. factory `ConfigForm`) | Optionnel : introduire un conteneur DI si le nombre de services/écrans augmente |
+| 🟢 | **Injection de dépendances** | Traité : `ITranslationService`/`IExcelService` + conteneur DI (`Microsoft.Extensions.DependencyInjection`) + injection dans `MainForm` | Étendre progressivement l’injection aux autres écrans/services si besoin |
 | 🟡 | **Séparation UI/Logic** | `MainForm.cs` contient la logique métier | Pattern MVVM/MVP light : extraire un `MainFormViewModel` |
 | 🟢 | **Configuration** | Prompts en dur dans `AppConfig.cs` | Externaliser les prompts dans des fichiers `.md` séparés (plus facile à éditer) |
 | 🟢 | **Hygiène WinForms Designer** | Corrigé : suppression d’un champ non généré (ex: `testField`) dans `ConfigForm.Designer.cs` | Maintenir la règle : ne pas modifier les fichiers `.Designer.cs` à la main, laisser Visual Studio régénérer |
@@ -113,6 +113,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2025-01-XX | 1.0 | Version initiale |
 | 2026-03-06 | 1.0 | Hygiène WinForms Designer : nettoyage de `ConfigForm.Designer.cs` (suppression de code non généré) |
 | 2026-03-06 | 1.0 | Injection de dépendances : ajout de `IExcelService`/`ITranslationService` et injection dans `MainForm` |
+| 2026-03-06 | 1.0 | Séparation UI/Logic : extraction du filtrage et du calcul de score qualité hors de `MainForm.cs` |
 
 ---
 

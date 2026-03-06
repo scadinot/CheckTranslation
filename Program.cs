@@ -1,5 +1,7 @@
 namespace CheckTranslation;
 
+using Microsoft.Extensions.DependencyInjection;
+
 internal static class Program
 {
     /// <summary>
@@ -12,9 +14,20 @@ internal static class Program
         // see https://aka.ms/applicationconfiguration.
         AppConfig.Load();
         ApplicationConfiguration.Initialize();
-        IExcelService excelService = new ExcelService();
-        ITranslationService translationService = new TranslationService();
-        Func<ConfigForm> configFormFactory = () => new ConfigForm();
-        Application.Run(new MainForm(excelService, translationService, configFormFactory));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IExcelService, ExcelService>();
+        services.AddSingleton<ITranslationService, TranslationService>();
+
+        services.AddTransient<ConfigForm>();
+        services.AddTransient<Func<ConfigForm>>(sp => () => sp.GetRequiredService<ConfigForm>());
+
+        services.AddTransient<MainForm>(sp => new MainForm(
+            sp.GetRequiredService<IExcelService>(),
+            sp.GetRequiredService<ITranslationService>(),
+            sp.GetRequiredService<Func<ConfigForm>>()));
+
+        using var serviceProvider = services.BuildServiceProvider();
+        Application.Run(serviceProvider.GetRequiredService<MainForm>());
     }
 }

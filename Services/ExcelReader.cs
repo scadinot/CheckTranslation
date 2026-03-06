@@ -14,7 +14,7 @@ internal static class ExcelReader
     private const int ColComment = 4;  // D
     private const int ColFrench  = 5;  // E (langue par defaut, sans en-tete)
 
-    public static List<TranslationRow> Load(string filePath, int[] translationColumns, int activeColumn, IProgress<int>? progress = null)
+    public static List<TranslationRow> Load(string filePath, int[] translationColumns, int activeColumn, IProgress<ExcelLoadProgress>? progress = null)
     {
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
@@ -22,7 +22,8 @@ internal static class ExcelReader
         var rows = new List<TranslationRow>();
         int lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
         int totalRows = lastRow - 1;
-        int lastPercent = 0;
+        if (totalRows > 0)
+            progress?.Report(new ExcelLoadProgress(0, totalRows));
 
         for (int r = 2; r <= lastRow; r++)
         {
@@ -49,12 +50,11 @@ internal static class ExcelReader
             row.Comment = row.Comments.GetValueOrDefault(activeColumn, string.Empty);
             rows.Add(row);
 
-            int percent = (r - 1) * 100 / totalRows;
-            if (percent > lastPercent)
-            {
-                lastPercent = percent;
-                progress?.Report(percent);
-            }
+            // Progression en "lignes lues" (pas en %). On limite un peu la fréquence
+            // des updates UI pour éviter de saturer le thread UI sur les gros fichiers.
+            int done = r - 1;
+            if (done == 1 || done == totalRows || done % 10 == 0)
+                progress?.Report(new ExcelLoadProgress(done, totalRows));
         }
 
         return rows;

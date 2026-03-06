@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.RegularExpressions;
 
 namespace CheckTranslation;
 
@@ -92,66 +91,15 @@ public partial class MainForm : Form
         if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
             return;
 
-        if (!TryParseQualityScore(row.Comment, out var score))
+        if (!QualityScore.TryParse(row.Comment, out var score))
             return;
 
-        var backColor = GetQualityBackColor(score);
+        var backColor = QualityScore.GetBackColor(score);
         e.CellStyle.BackColor = backColor;
         e.CellStyle.SelectionBackColor = ControlPaint.Dark(backColor);
         e.CellStyle.ForeColor = SystemColors.ControlText;
         e.CellStyle.SelectionForeColor = SystemColors.ControlText;
     }
-
-    private static Color GetQualityBackColor(int score)
-    {
-        // Dégradé (interpolation linéaire) entre les seuils.
-        // Palette volontairement "pastel" pour conserver la lisibilité dans un DataGridView.
-        // Seuils utilisés (ancrages) : 0 -> 60 -> 70 -> 80 -> 90 -> 100.
-        score = Math.Clamp(score, 0, 100);
-
-        var c0 = Color.FromArgb(255, 199, 206); // rouge
-        var c60 = Color.FromArgb(255, 217, 179); // orange clair
-        var c70 = Color.FromArgb(255, 242, 204); // jaune
-        var c80 = Color.FromArgb(226, 239, 218);
-        var c90 = Color.FromArgb(198, 239, 206); // vert
-        var c100 = Color.FromArgb(180, 230, 190); // vert un peu plus soutenu
-
-        return score switch
-        {
-            < 60 => LerpColor(c0, c60, score / 60f),
-            < 70 => LerpColor(c60, c70, (score - 60) / 10f),
-            < 80 => LerpColor(c70, c80, (score - 70) / 10f),
-            < 90 => LerpColor(c80, c90, (score - 80) / 10f),
-            _ => LerpColor(c90, c100, (score - 90) / 10f),
-        };
-    }
-
-    private static Color LerpColor(Color a, Color b, float t)
-    {
-        t = Math.Clamp(t, 0f, 1f);
-        int r = (int)MathF.Round(a.R + (b.R - a.R) * t);
-        int g = (int)MathF.Round(a.G + (b.G - a.G) * t);
-        int bl = (int)MathF.Round(a.B + (b.B - a.B) * t);
-        return Color.FromArgb(255, r, g, bl);
-    }
-
-    private static bool TryParseQualityScore(string? comment, out int score)
-    {
-        score = 0;
-        if (string.IsNullOrWhiteSpace(comment))
-            return false;
-
-        // Attendu : "XXX - ..." (cf. VerifyPrompt). On tolère les espaces et le tiret long.
-        // Exemple : "085 - Traduction correcte, légère nuance manquante".
-        var m = QualityScoreRegex().Match(comment);
-        if (!m.Success)
-            return false;
-
-        return int.TryParse(m.Groups[1].Value, out score) && score is >= 0 and <= 100;
-    }
-
-    [GeneratedRegex(@"^\s*(\d{3})\s*[-–]\s*", RegexOptions.CultureInvariant)]
-    private static partial Regex QualityScoreRegex();
 
     private void InitDetailsColumns()
     {
@@ -631,22 +579,7 @@ public partial class MainForm : Form
                 _filters[prop] = text;
         }
 
-        IEnumerable<TranslationRow> filtered = _allRows;
-        foreach (var (prop, filter) in _filters)
-        {
-            filtered = prop switch
-            {
-                "Project"     => filtered.Where(r => r.Project.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "File"        => filtered.Where(r => r.File.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "Key"         => filtered.Where(r => r.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "French"      => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "Translation" => filtered.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "Comment"     => filtered.Where(r => r.Comment.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                _ => filtered,
-            };
-        }
-
-        var list = filtered.ToList();
+        var list = TranslationRowFiltering.Filter(_allRows, _filters);
         dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
         ClearSortGlyphs();
         statusRowCount.Text = _filters.Count > 0
