@@ -775,9 +775,15 @@ public partial class MainForm : Form
         UseWaitCursor = true;
         Application.UseWaitCursor = true;
 
-        var previousValues = rows.Select(r => r.Translation).ToList();
+        var previousTranslations = rows.Select(r => r.Translation).ToList();
+        var previousComments = rows.Select(r => r.Comment).ToList();
+
         foreach (var row in rows)
+        {
+            // La traduction change => la vérification n'est plus valable.
+            row.Comment = string.Empty;
             row.Translation = "Traduction en cours...";
+        }
         dataGridView.Refresh();
 
         int errors = 0;
@@ -810,7 +816,10 @@ public partial class MainForm : Form
                 "Erreur de traduction", MessageBoxButtons.OK, MessageBoxIcon.Error);
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Translation == "Traduction en cours...")
-                    rows[i].Translation = previousValues[i];
+                {
+                    rows[i].Translation = previousTranslations[i];
+                    rows[i].Comment = previousComments[i];
+                }
         }
         finally
         {
