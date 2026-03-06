@@ -795,10 +795,6 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
-
-        // Sauvegarder le texte courant (ex: "Lignes : X / Y" en cas de filtre),
-        // puis le restaurer à la fin pour revenir exactement à l'affichage précédent.
-        var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -860,9 +856,9 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
 
-            // Revenir à l'état d'affichage initial (avant la progression).
-            statusRowCount.Text = previousRowCountText;
-            UpdateSelectionStatus();
+            // Même rafraîchissement que lors d'un changement de langue :
+            // réappliquer les filtres pour recalculer l'affichage (et le compteur de lignes).
+            ApplyFilters();
 
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
@@ -895,9 +891,6 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
-
-        // Sauvegarder puis restaurer l'état d'affichage du compteur de lignes.
-        var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -950,9 +943,8 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
 
-            // Revenir à l'état d'affichage initial (avant la progression).
-            statusRowCount.Text = previousRowCountText;
-            UpdateSelectionStatus();
+            // Même rafraîchissement que lors d'un changement de langue.
+            ApplyFilters();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
 
