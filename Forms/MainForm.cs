@@ -772,6 +772,7 @@ public partial class MainForm : Form
             : $"Lignes : {total}";
     }
 
+
     private async Task TranslateRowsAsync(IReadOnlyList<TranslationRow> rows)
     {
         if (rows.Count == 0)
@@ -787,6 +788,7 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
+        var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -846,7 +848,7 @@ public partial class MainForm : Form
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
-            UpdateRowCountStatus();
+            statusRowCount.Text = previousRowCountText;
             UpdateSelectionStatus();
 
             UseWaitCursor = false;
@@ -880,6 +882,7 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
+        var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -931,7 +934,7 @@ public partial class MainForm : Form
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
-            UpdateRowCountStatus();
+            statusRowCount.Text = previousRowCountText;
             UpdateSelectionStatus();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
