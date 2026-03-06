@@ -653,6 +653,93 @@ public partial class MainForm : Form
         UpdateSelectionStatus();
     }
 
+    private void ApplyFiltersPreservingSelection()
+    {
+        int firstDisplayedRowIndex = -1;
+        int firstDisplayedColumnIndex = -1;
+        int horizontalScrollingOffset = 0;
+
+        try
+        {
+            firstDisplayedRowIndex = dataGridView.FirstDisplayedScrollingRowIndex;
+            firstDisplayedColumnIndex = dataGridView.FirstDisplayedScrollingColumnIndex;
+            horizontalScrollingOffset = dataGridView.HorizontalScrollingOffset;
+        }
+        catch
+        {
+            // best effort
+        }
+
+        var selectedItems = dataGridView.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(r => r.DataBoundItem as TranslationRow)
+            .Where(r => r is not null)
+            .Cast<TranslationRow>()
+            .ToHashSet();
+
+        var currentItem = dataGridView.CurrentRow?.DataBoundItem as TranslationRow;
+        var currentColumnIndex = dataGridView.CurrentCell?.ColumnIndex ?? 0;
+
+        ApplyFilters();
+
+        if (selectedItems.Count == 0 && currentItem is null)
+            return;
+
+        dataGridView.ClearSelection();
+
+        DataGridViewRow? currentRow = null;
+        DataGridViewRow? firstSelectedRow = null;
+
+        foreach (DataGridViewRow row in dataGridView.Rows)
+        {
+            if (row.DataBoundItem is not TranslationRow item)
+                continue;
+
+            if (currentItem is not null && ReferenceEquals(item, currentItem))
+                currentRow = row;
+
+            if (selectedItems.Contains(item))
+                firstSelectedRow ??= row;
+        }
+
+        // Important : définir la cellule courante AVANT de restaurer les sélections.
+        // Sur WinForms, assigner `CurrentCell` peut modifier la sélection courante.
+        var anchorRow = currentRow ?? firstSelectedRow;
+        if (anchorRow is not null)
+        {
+            var colIndex = Math.Clamp(currentColumnIndex, 0, dataGridView.ColumnCount - 1);
+            dataGridView.CurrentCell = anchorRow.Cells[colIndex];
+        }
+
+        foreach (DataGridViewRow row in dataGridView.Rows)
+        {
+            if (row.DataBoundItem is not TranslationRow item)
+                continue;
+
+            if (selectedItems.Contains(item) || (currentItem is not null && ReferenceEquals(item, currentItem)))
+                row.Selected = true;
+        }
+
+        // Restaurer la position de scroll (best effort). Le rebind du DataSource remet la vue en haut.
+        try
+        {
+            if (dataGridView.RowCount > 0 && firstDisplayedRowIndex >= 0)
+                dataGridView.FirstDisplayedScrollingRowIndex = Math.Clamp(firstDisplayedRowIndex, 0, dataGridView.RowCount - 1);
+
+            if (dataGridView.ColumnCount > 0 && firstDisplayedColumnIndex >= 0)
+                dataGridView.FirstDisplayedScrollingColumnIndex = Math.Clamp(firstDisplayedColumnIndex, 0, dataGridView.ColumnCount - 1);
+
+            if (horizontalScrollingOffset >= 0)
+                dataGridView.HorizontalScrollingOffset = horizontalScrollingOffset;
+        }
+        catch
+        {
+            // best effort
+        }
+
+        UpdateSelectionStatus();
+    }
+
     private void ClearSortGlyphs()
     {
         foreach (DataGridViewColumn col in dataGridView.Columns)
@@ -868,7 +955,7 @@ public partial class MainForm : Form
 
             // Même rafraîchissement que lors d'un changement de langue :
             // réappliquer les filtres pour recalculer l'affichage (et le compteur de lignes).
-            ApplyFilters();
+            ApplyFiltersPreservingSelection();
 
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
@@ -954,7 +1041,7 @@ public partial class MainForm : Form
             btnSave.Enabled = _allRows is not null;
 
             // Même rafraîchissement que lors d'un changement de langue.
-            ApplyFilters();
+            ApplyFiltersPreservingSelection();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
 
