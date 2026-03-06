@@ -63,6 +63,11 @@ public partial class MainForm : Form
         UpdateProviderStatus();
     }
 
+    // --- Indicateur de qualité (couleur) ---
+    // La vérification IA écrit dans `Comment` un score au format "XXX - ...".
+    // On s'appuie sur ce score pour colorer les cellules, afin de visualiser rapidement
+    // la qualité de la traduction (dégradé rouge -> vert).
+
     private void DataGridView_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || e.ColumnIndex < 0)
@@ -89,6 +94,7 @@ public partial class MainForm : Form
     {
         // Dégradé (interpolation linéaire) entre les seuils.
         // Palette volontairement "pastel" pour conserver la lisibilité dans un DataGridView.
+        // Seuils utilisés (ancrages) : 0 -> 60 -> 70 -> 80 -> 90 -> 100.
         score = Math.Clamp(score, 0, 100);
 
         var c0 = Color.FromArgb(255, 199, 206); // rouge
@@ -124,6 +130,7 @@ public partial class MainForm : Form
             return false;
 
         // Attendu : "XXX - ..." (cf. VerifyPrompt). On tolère les espaces et le tiret long.
+        // Exemple : "085 - Traduction correcte, légère nuance manquante".
         var m = QualityScoreRegex().Match(comment);
         if (!m.Success)
             return false;
@@ -788,6 +795,9 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
+
+        // Sauvegarder le texte courant (ex: "Lignes : X / Y" en cas de filtre),
+        // puis le restaurer à la fin pour revenir exactement à l'affichage précédent.
         var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
@@ -802,6 +812,7 @@ public partial class MainForm : Form
         foreach (var row in rows)
         {
             // La traduction change => la vérification n'est plus valable.
+            // On vide donc le résultat de vérification avant de lancer l'appel IA.
             row.Comment = string.Empty;
             row.Translation = "Traduction en cours...";
         }
@@ -848,6 +859,8 @@ public partial class MainForm : Form
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
+
+            // Revenir à l'état d'affichage initial (avant la progression).
             statusRowCount.Text = previousRowCountText;
             UpdateSelectionStatus();
 
@@ -882,6 +895,8 @@ public partial class MainForm : Form
 
         btnOpen.Enabled = false;
         btnSave.Enabled = false;
+
+        // Sauvegarder puis restaurer l'état d'affichage du compteur de lignes.
         var previousRowCountText = statusRowCount.Text;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
@@ -934,6 +949,8 @@ public partial class MainForm : Form
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
+
+            // Revenir à l'état d'affichage initial (avant la progression).
             statusRowCount.Text = previousRowCountText;
             UpdateSelectionStatus();
             UseWaitCursor = false;
