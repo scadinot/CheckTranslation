@@ -14,6 +14,7 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         IExcelService excelService = new ExcelService();
         ITranslationService translationService = new TranslationService();
-        Application.Run(new MainForm(excelService, translationService));
+        Func<ConfigForm> configFormFactory = () => new ConfigForm();
+        Application.Run(new MainForm(excelService, translationService, configFormFactory));
     }
 }

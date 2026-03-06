@@ -7,6 +7,7 @@ public partial class MainForm : Form
 {
     private readonly IExcelService _excelService;
     private readonly ITranslationService _translationService;
+    private readonly Func<ConfigForm> _configFormFactory;
 
     private static readonly LanguageInfo[] Languages =
     [
@@ -34,14 +35,15 @@ public partial class MainForm : Form
     private DataGridViewTextBoxColumn? colKey;
     private DataGridViewTextBoxColumn colComment = null!;
 
-    public MainForm() : this(new ExcelService(), new TranslationService())
+    public MainForm() : this(new ExcelService(), new TranslationService(), () => new ConfigForm())
     {
     }
 
-    internal MainForm(IExcelService excelService, ITranslationService translationService)
+    internal MainForm(IExcelService excelService, ITranslationService translationService, Func<ConfigForm> configFormFactory)
     {
         _excelService = excelService;
         _translationService = translationService;
+        _configFormFactory = configFormFactory;
 
         InitializeComponent();
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
@@ -748,7 +750,7 @@ public partial class MainForm : Form
 
     private void BtnConfig_Click(object? sender, EventArgs e)
     {
-        using var form = new ConfigForm();
+        using var form = _configFormFactory();
         form.ShowDialog(this);
         UpdateProviderStatus(); // Mettre à jour après modification de la config
     }

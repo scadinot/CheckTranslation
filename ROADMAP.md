@@ -9,7 +9,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | Priorité | Axe | État actuel | Amélioration suggérée |
 |:--------:|-----|-------------|----------------------|
 | 🔴 | **Tests** | Aucun test unitaire | Ajouter un projet `CheckTranslation.Tests` (xUnit/NUnit) pour `Translator`, `ExcelReader`, `AppConfig` |
-| 🟡 | **Injection de dépendances** | Partiellement traité : introduction de `ITranslationService`/`IExcelService` + injection manuelle dans `MainForm` | Étendre à la configuration et, si besoin, introduire un conteneur DI pour faciliter les tests |
+| 🟡 | **Injection de dépendances** | Traité : `ITranslationService`/`IExcelService` + injection dans `MainForm` (incl. factory `ConfigForm`) | Optionnel : introduire un conteneur DI si le nombre de services/écrans augmente |
 | 🟡 | **Séparation UI/Logic** | `MainForm.cs` contient la logique métier | Pattern MVVM/MVP light : extraire un `MainFormViewModel` |
 | 🟢 | **Configuration** | Prompts en dur dans `AppConfig.cs` | Externaliser les prompts dans des fichiers `.md` séparés (plus facile à éditer) |
 | 🟢 | **Hygiène WinForms Designer** | Corrigé : suppression d’un champ non généré (ex: `testField`) dans `ConfigForm.Designer.cs` | Maintenir la règle : ne pas modifier les fichiers `.Designer.cs` à la main, laisser Visual Studio régénérer |
