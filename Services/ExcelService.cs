@@ -15,6 +15,9 @@ internal sealed class ExcelService : IExcelService
         return ExcelReader.Load(filePath, translationColumns, activeColumn, adapted);
     }
 
+    public List<TranslationRow> LoadWithRowProgress(string filePath, int[] translationColumns, int activeColumn, IProgress<ExcelLoadProgress>? progress = null)
+        => ExcelReader.Load(filePath, translationColumns, activeColumn, progress);
+
     public void Save(string filePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
         => ExcelReader.Save(filePath, activeColumn, rows);
 }

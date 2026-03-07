@@ -266,7 +266,7 @@ public partial class MainForm : Form
     {
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Blocks;
-        statusProgressBar.Maximum = 100;
+        statusProgressBar.Maximum = 1;
         statusProgressBar.Value = 0;
         statusRowCount.Text = "Chargement...";
         dataGridView.AutoGenerateColumns = false;
@@ -278,8 +278,20 @@ public partial class MainForm : Form
         {
             var allColumns = Languages.Select(l => l.Column).ToArray();
             var activeColumn = _currentLanguage.Column;
-            var progress = new Progress<int>(percent => statusProgressBar.Value = percent);
-            var rows = await Task.Run(() => _excelService.Load(filePath, allColumns, activeColumn, progress));
+
+            var progress = new Progress<ExcelLoadProgress>(p =>
+            {
+                if (p.Total > 0)
+                    statusProgressBar.Maximum = p.Total;
+
+                statusProgressBar.Value = Math.Clamp(p.Done, 0, statusProgressBar.Maximum);
+
+                statusRowCount.Text = p.Total > 0
+                    ? $"Chargement : {p.Done} / {p.Total}"
+                    : $"Chargement : {p.Done}";
+            });
+
+            var rows = await Task.Run(() => _excelService.LoadWithRowProgress(filePath, allColumns, activeColumn, progress));
 
             _allRows = rows;
             _filters.Clear();
@@ -712,6 +724,9 @@ public partial class MainForm : Form
 
     private void InitContextMenu()
     {
+        var menuAutoTranslate = new ToolStripMenuItem("Auto-traduire (copie existante)");
+        menuAutoTranslate.Click += MenuAutoTranslate_Click;
+
         var menuTranslate = new ToolStripMenuItem("Traduire");
         menuTranslate.Click += MenuTranslate_Click;
 
@@ -719,6 +734,8 @@ public partial class MainForm : Form
         menuVerify.Click += MenuVerify_Click;
 
         var contextMenu = new ContextMenuStrip();
+        contextMenu.Items.Add(menuAutoTranslate);
+        contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(menuTranslate);
         contextMenu.Items.Add(menuVerify);
 
@@ -727,11 +744,13 @@ public partial class MainForm : Form
             int count = dataGridView.SelectedRows.Count;
             if (count > 1)
             {
+                menuAutoTranslate.Text = $"Auto-traduire la sélection ({count} lignes)";
                 menuTranslate.Text = $"Traduire la sélection ({count} lignes)";
                 menuVerify.Text = $"Vérifier la sélection ({count} lignes)";
             }
             else
             {
+                menuAutoTranslate.Text = "Auto-traduire (copie existante)";
                 menuTranslate.Text = "Traduire";
                 menuVerify.Text = "Vérifier la traduction";
             }
@@ -749,6 +768,87 @@ public partial class MainForm : Form
             var cellRect = dataGridView.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
             contextMenu.Show(dataGridView, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
         };
+    }
+
+    private void MenuAutoTranslate_Click(object? sender, EventArgs e)
+    {
+        if (_allRows is null)
+            return;
+
+        IReadOnlyList<TranslationRow> rows;
+        if (dataGridView.SelectedRows.Count > 1)
+        {
+            rows = dataGridView.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as TranslationRow)
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
+                .Cast<TranslationRow>()
+                .ToList();
+        }
+        else
+        {
+            if (_contextMenuRowIndex < 0)
+                return;
+
+            var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+            if (row is null || string.IsNullOrWhiteSpace(row.French))
+                return;
+
+            rows = [row];
+        }
+
+        int filled = AutoTranslateFromExistingRows(rows);
+        dataGridView.Refresh();
+        ApplyFiltersPreservingSelection();
+
+        statusRowCount.Text = filled > 0
+            ? $"Auto-traduction : {filled} ligne(s) mise(s) à jour"
+            : "Auto-traduction : aucune correspondance";
+    }
+
+    private int AutoTranslateFromExistingRows(IReadOnlyList<TranslationRow> targetRows)
+    {
+        if (_allRows is null || targetRows.Count == 0)
+            return 0;
+
+        static string Normalize(string s)
+            => s.Trim().Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        var knownTranslations = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var row in _allRows)
+        {
+            if (string.IsNullOrWhiteSpace(row.French) || string.IsNullOrWhiteSpace(row.Translation))
+                continue;
+
+            if (row.Translation is "Traduction en cours..." or "Vérification...")
+                continue;
+
+            var key = Normalize(row.French);
+            if (!knownTranslations.ContainsKey(key))
+                knownTranslations.Add(key, row.Translation.Trim());
+        }
+
+        int filled = 0;
+
+        foreach (var row in targetRows)
+        {
+            if (string.IsNullOrWhiteSpace(row.French))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(row.Translation) && row.Translation is not "Traduction en cours...")
+                continue;
+
+            var key = Normalize(row.French);
+            if (!knownTranslations.TryGetValue(key, out var translation))
+                continue;
+
+            row.Comment = string.Empty;
+            row.Translation = translation;
+            filled++;
+        }
+
+        return filled;
     }
 
     private async void MenuTranslate_Click(object? sender, EventArgs e)
