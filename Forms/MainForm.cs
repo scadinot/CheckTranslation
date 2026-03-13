@@ -294,6 +294,9 @@ public partial class MainForm : Form
             var rows = await Task.Run(() => _excelService.LoadWithRowProgress(filePath, allColumns, activeColumn, progress));
 
             _allRows = rows;
+            foreach (var textBox in _filterTextBoxes.Values)
+                textBox.Text = string.Empty;
+
             _filters.Clear();
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             statusRowCount.Text = $"Lignes : {rows.Count}";

@@ -37,7 +37,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Export** | Sauvegarde dans le fichier source uniquement | Permettre "Enregistrer sous" / Export vers un nouveau fichier |
 | 🟢 | **Thème sombre** | Non supporté | Détecter le thème Windows et adapter les couleurs |
 | 🟢 | **Raccourcis clavier** | Aucun | Ctrl+S (save), Ctrl+O (open), F5 (refresh), Ctrl+T (traduire sélection) |
-| 🟡 | **Chargement fichier : cohérence filtres** | Les filtres UI peuvent rester saisis mais ne pas être appliqués après ouverture | Après `Ouvrir`, vider les champs de filtre *ou* réappliquer `ApplyFilters()` pour refléter l’état des filtres |
+| 🟢 | **Chargement fichier : cohérence filtres** | Traité : les champs de filtre sont réinitialisés après `Ouvrir` pour repartir sur une vue non filtrée | Conserver ce comportement ou proposer plus tard une option utilisateur pour restaurer les filtres |
 
 ---
 
@@ -116,6 +116,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2026-03-06 | 1.0 | Séparation UI/Logic : extraction du filtrage et du calcul de score qualité hors de `MainForm.cs` |
 | 2026-03-07 | 1.0 | Chargement Excel : progress bar en lignes lues (API `ExcelLoadProgress` + `LoadWithRowProgress`) |
 | 2026-03-07 | 1.0 | Auto-traduction (sans IA) : copie des traductions déjà présentes sur d’autres lignes (menu contextuel) |
+| 2026-03-13 | 1.0 | Chargement fichier : réinitialisation des champs de filtre après `Ouvrir` pour garder une vue cohérente |
 
 ---
 
