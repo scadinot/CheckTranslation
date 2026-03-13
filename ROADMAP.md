@@ -45,7 +45,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 
 | Priorité | Axe | État actuel | Amélioration suggérée |
 |:--------:|-----|-------------|----------------------|
-| 🔴 | **Retry API** | Aucun retry automatique | Implémenter un retry avec backoff exponentiel (Polly) |
+| 🟢 | **Retry API** | Traité : retry automatique avec backoff exponentiel sur erreurs transitoires (`Polly`) | Ajuster finement les statuts/temporisations selon les limites réelles des providers |
 | 🟡 | **Timeout** | Pas de timeout explicite | Ajouter un timeout configurable sur les appels API |
 | 🟢 | **Validation prompts** | Aucune | Vérifier que `{language}` est présent dans les prompts |
 | 🟡 | **Fichier verrouillé** | Exception si Excel est ouvert | Détecter le verrouillage et proposer une copie temporaire |

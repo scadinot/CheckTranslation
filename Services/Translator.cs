@@ -7,6 +7,8 @@ using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using OpenAI;
 using OpenAI.Chat;
+using Polly;
+using Polly.Retry;
 
 namespace CheckTranslation;
 
@@ -15,6 +17,7 @@ internal static partial class Translator
     private const int BatchSize = 20;
     private const float Temperature = 0.1f;
     private const long AnthropicMaxTokens = 2048;
+    private const int RetryCount = 3;
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
@@ -80,12 +83,17 @@ internal static partial class Translator
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
-        return config.Provider switch
+        var retryPolicy = CreateRetryPolicy();
+
+        return await retryPolicy.ExecuteAsync(async _ =>
         {
-            AiProvider.OpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
-            AiProvider.Anthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
-            _ => throw new NotSupportedException($"Provider '{config.Provider}' not supported."),
-        };
+            return config.Provider switch
+            {
+                AiProvider.OpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
+                AiProvider.Anthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
+                _ => throw new NotSupportedException($"Provider '{config.Provider}' not supported."),
+            };
+        }, CancellationToken.None);
     }
 
     private static async Task<string> CallOpenAiAsync(string systemPrompt, string userMessage, AppConfig config)
@@ -149,6 +157,49 @@ internal static partial class Translator
         {
             throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.", ex);
         }
+    }
+
+    private static ResiliencePipeline<string> CreateRetryPolicy()
+    {
+        return new ResiliencePipelineBuilder<string>()
+            .AddRetry(new RetryStrategyOptions<string>
+            {
+                MaxRetryAttempts = RetryCount,
+                Delay = TimeSpan.FromSeconds(1),
+                BackoffType = DelayBackoffType.Exponential,
+                UseJitter = true,
+                ShouldHandle = new PredicateBuilder<string>()
+                    .Handle<HttpRequestException>(IsTransientHttpException)
+                    .Handle<TimeoutException>()
+                    .Handle<TaskCanceledException>()
+                    .Handle<ClientResultException>(IsTransientClientResultException),
+                OnRetry = args =>
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Translator] Retry {args.AttemptNumber + 1}/{RetryCount} après erreur transitoire.");
+                    return ValueTask.CompletedTask;
+                },
+            })
+            .Build();
+    }
+
+    private static bool IsTransientHttpException(HttpRequestException ex)
+    {
+        return ex.StatusCode is null
+            or HttpStatusCode.RequestTimeout
+            or HttpStatusCode.TooManyRequests
+            or HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout
+            or HttpStatusCode.InternalServerError;
+    }
+
+    private static bool IsTransientClientResultException(ClientResultException ex)
+    {
+        return ex.Status switch
+        {
+            408 or 429 or 500 or 502 or 503 or 504 => true,
+            _ => false,
+        };
     }
 
     private static string NormalizeAnthropicEndpoint(string url)
