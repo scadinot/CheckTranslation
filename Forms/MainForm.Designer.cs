@@ -41,6 +41,7 @@ partial class MainForm
         statusFileName = new ToolStripStatusLabel();
         statusRowCount = new ToolStripStatusLabel();
         statusSelection = new ToolStripStatusLabel();
+        statusCacheCount = new ToolStripStatusLabel();
         statusLanguage = new ToolStripStatusLabel();
         statusProvider = new ToolStripStatusLabel();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
@@ -114,7 +115,7 @@ partial class MainForm
         // 
         // statusStrip
         // 
-        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusSelection, statusLanguage, statusProvider });
+        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusSelection, statusCacheCount, statusLanguage, statusProvider });
         statusStrip.Location = new Point(0, 628);
         statusStrip.Name = "statusStrip";
         statusStrip.Size = new Size(1200, 22);
@@ -149,6 +150,14 @@ partial class MainForm
         statusSelection.Name = "statusSelection";
         statusSelection.Size = new Size(4, 17);
         statusSelection.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // statusCacheCount
+        // 
+        statusCacheCount.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
+        statusCacheCount.BorderStyle = Border3DStyle.SunkenOuter;
+        statusCacheCount.Name = "statusCacheCount";
+        statusCacheCount.Size = new Size(4, 17);
+        statusCacheCount.TextAlign = ContentAlignment.MiddleLeft;
         // 
         // statusLanguage
         // 
@@ -202,6 +211,7 @@ partial class MainForm
     private ToolStripStatusLabel statusFileName;
     private ToolStripStatusLabel statusRowCount;
     private ToolStripStatusLabel statusSelection;
+    private ToolStripStatusLabel statusCacheCount;
     private ToolStripStatusLabel statusLanguage;
     private ToolStripStatusLabel statusProvider;
 }

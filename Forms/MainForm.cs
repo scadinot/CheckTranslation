@@ -72,6 +72,7 @@ public partial class MainForm : Form
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
         UpdateSelectionStatus();
+        UpdateCacheCountStatus();
         UpdateProviderStatus();
     }
 
@@ -594,6 +595,7 @@ public partial class MainForm : Form
             return;
 
         _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name);
+        UpdateCacheCountStatus();
     }
 
     private void ApplyFilters()
@@ -724,6 +726,11 @@ public partial class MainForm : Form
         statusSelection.Text = count > 0 ? $"Sélection : {count}" : string.Empty;
     }
 
+    private void UpdateCacheCountStatus()
+    {
+        statusCacheCount.Text = $"Cache : {_translationService.GetTranslationCacheCount()}";
+    }
+
     private void UpdateProviderStatus()
     {
         var config = AppConfig.Current;
@@ -736,6 +743,14 @@ public partial class MainForm : Form
         statusProvider.Text = string.IsNullOrWhiteSpace(modelName)
             ? $"IA : {providerName}"
             : $"IA : {providerName} ({modelName})";
+    }
+
+    private void RestoreStatusBar()
+    {
+        UpdateRowCountStatus();
+        UpdateSelectionStatus();
+        UpdateCacheCountStatus();
+        UpdateProviderStatus();
     }
 
     // --- Menu contextuel ---
@@ -818,6 +833,7 @@ public partial class MainForm : Form
         int filled = AutoTranslateFromExistingRows(rows);
         dataGridView.Refresh();
         ApplyFiltersPreservingSelection();
+        UpdateCacheCountStatus();
 
         statusRowCount.Text = filled > 0
             ? $"Auto-traduction : {filled} ligne(s) mise(s) à jour"
@@ -1009,6 +1025,7 @@ public partial class MainForm : Form
             // Même rafraîchissement que lors d'un changement de langue :
             // réappliquer les filtres pour recalculer l'affichage (et le compteur de lignes).
             ApplyFiltersPreservingSelection();
+            RestoreStatusBar();
 
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
@@ -1095,6 +1112,7 @@ public partial class MainForm : Form
 
             // Même rafraîchissement que lors d'un changement de langue.
             ApplyFiltersPreservingSelection();
+            RestoreStatusBar();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
 

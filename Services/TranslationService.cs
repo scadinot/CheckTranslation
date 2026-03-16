@@ -5,6 +5,12 @@ internal sealed class TranslationService : ITranslationService
     private readonly Dictionary<string, string> _translationCache = new(StringComparer.Ordinal);
     private readonly object _cacheLock = new();
 
+    public int GetTranslationCacheCount()
+    {
+        lock (_cacheLock)
+            return _translationCache.Count;
+    }
+
     public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage)
     {
         if (string.IsNullOrWhiteSpace(frenchText))
