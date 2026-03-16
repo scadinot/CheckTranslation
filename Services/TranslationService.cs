@@ -5,10 +5,10 @@ internal sealed class TranslationService : ITranslationService
     private readonly Dictionary<string, string> _translationCache = new(StringComparer.Ordinal);
     private readonly object _cacheLock = new();
 
-    public int GetTranslationCacheCount()
+    public int GetTranslationCacheCount(AppConfig config, string targetLanguage)
     {
         lock (_cacheLock)
-            return _translationCache.Count;
+            return _translationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
     }
 
     public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage)
@@ -97,6 +97,12 @@ internal sealed class TranslationService : ITranslationService
 
     private static string BuildCacheKey(string text, AppConfig config, string targetLanguage)
         => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, text);
+
+    private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage)
+    {
+        var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage) + "\u001F";
+        return cacheKey.StartsWith(prefix, StringComparison.Ordinal);
+    }
 
     private static IReadOnlyList<string[]> ChunkResults(IReadOnlyList<string> results)
     {

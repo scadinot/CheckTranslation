@@ -244,6 +244,7 @@ public partial class MainForm : Form
         }
 
         SelectLanguage(lang);
+        UpdateCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders
     }
 
@@ -728,7 +729,7 @@ public partial class MainForm : Form
 
     private void UpdateCacheCountStatus()
     {
-        statusCacheCount.Text = $"Cache : {_translationService.GetTranslationCacheCount()}";
+        statusCacheCount.Text = $"Cache : {_translationService.GetTranslationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
     }
 
     private void UpdateProviderStatus()
