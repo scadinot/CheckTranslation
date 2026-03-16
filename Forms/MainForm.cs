@@ -62,6 +62,7 @@ public partial class MainForm : Form
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
         dataGridView.CellFormatting += DataGridView_CellFormatting;
+        dataGridView.CellEndEdit += DataGridView_CellEndEdit;
         dataGridView.ColumnHeaderMouseClick += DataGridView_ColumnHeaderMouseClick;
         dataGridView.ColumnWidthChanged += (_, _) => UpdateFilterPanelLayout();
         dataGridView.Scroll += (_, _) => UpdateFilterPanelLayout();
@@ -579,6 +580,20 @@ public partial class MainForm : Form
         ClearSortGlyphs();
         _sortColumnIndex = e.ColumnIndex;
         _sortDirection = direction;
+    }
+
+    private void DataGridView_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            return;
+
+        if (dataGridView.Columns[e.ColumnIndex].Name != "colTranslation")
+            return;
+
+        if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
+            return;
+
+        _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name);
     }
 
     private void ApplyFilters()
