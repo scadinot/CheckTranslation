@@ -72,7 +72,8 @@ public partial class MainForm : Form
         InitContextMenu();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
         UpdateSelectionStatus();
-        UpdateCacheCountStatus();
+        UpdateTranslationCacheCountStatus();
+        UpdateVerificationCacheCountStatus();
         UpdateProviderStatus();
     }
 
@@ -244,7 +245,8 @@ public partial class MainForm : Form
         }
 
         SelectLanguage(lang);
-        UpdateCacheCountStatus();
+        UpdateTranslationCacheCountStatus();
+        UpdateVerificationCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders
     }
 
@@ -596,7 +598,7 @@ public partial class MainForm : Form
             return;
 
         _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name);
-        UpdateCacheCountStatus();
+        UpdateTranslationCacheCountStatus();
     }
 
     private void ApplyFilters()
@@ -727,9 +729,14 @@ public partial class MainForm : Form
         statusSelection.Text = count > 0 ? $"Sélection : {count}" : string.Empty;
     }
 
-    private void UpdateCacheCountStatus()
+    private void UpdateTranslationCacheCountStatus()
     {
-        statusCacheCount.Text = $"Cache : {_translationService.GetTranslationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
+        statusTranslationCacheCount.Text = $"Cache trad. : {_translationService.GetTranslationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
+    }
+
+    private void UpdateVerificationCacheCountStatus()
+    {
+        statusVerificationCacheCount.Text = $"Cache Vérif. : {_translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
     }
 
     private void UpdateProviderStatus()
@@ -750,7 +757,8 @@ public partial class MainForm : Form
     {
         UpdateRowCountStatus();
         UpdateSelectionStatus();
-        UpdateCacheCountStatus();
+        UpdateTranslationCacheCountStatus();
+        UpdateVerificationCacheCountStatus();
         UpdateProviderStatus();
     }
 
@@ -834,7 +842,7 @@ public partial class MainForm : Form
         int filled = AutoTranslateFromExistingRows(rows);
         dataGridView.Refresh();
         ApplyFiltersPreservingSelection();
-        UpdateCacheCountStatus();
+        UpdateTranslationCacheCountStatus();
 
         statusRowCount.Text = filled > 0
             ? $"Auto-traduction : {filled} ligne(s) mise(s) à jour"
@@ -1090,7 +1098,10 @@ public partial class MainForm : Form
                 for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
                 {
                     if (!string.IsNullOrEmpty(batch[i]))
+                    {
                         rows[rowIndex].Comment = batch[i];
+                        _translationService.UpdateVerificationCache(rows[rowIndex].French, rows[rowIndex].Translation, batch[i], config, _currentLanguage.Name);
+                    }
                     else
                         errors++;
                 }

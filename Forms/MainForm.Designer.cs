@@ -41,7 +41,8 @@ partial class MainForm
         statusFileName = new ToolStripStatusLabel();
         statusRowCount = new ToolStripStatusLabel();
         statusSelection = new ToolStripStatusLabel();
-        statusCacheCount = new ToolStripStatusLabel();
+        statusTranslationCacheCount = new ToolStripStatusLabel();
+        statusVerificationCacheCount = new ToolStripStatusLabel();
         statusLanguage = new ToolStripStatusLabel();
         statusProvider = new ToolStripStatusLabel();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
@@ -53,8 +54,8 @@ partial class MainForm
         // 
         dataGridView.AllowUserToAddRows = false;
         dataGridView.AllowUserToDeleteRows = false;
-        dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
         dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        dataGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         dataGridView.Columns.AddRange(new DataGridViewColumn[] { colFrench, colTranslation });
         dataGridView.Dock = DockStyle.Fill;
@@ -62,7 +63,7 @@ partial class MainForm
         dataGridView.Name = "dataGridView";
         dataGridView.RowHeadersVisible = false;
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        dataGridView.Size = new Size(1200, 603);
+        dataGridView.Size = new Size(1351, 801);
         dataGridView.TabIndex = 0;
         // 
         // colFrench
@@ -88,7 +89,7 @@ partial class MainForm
         toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, btnConfig });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
-        toolStrip.Size = new Size(1200, 25);
+        toolStrip.Size = new Size(1351, 25);
         toolStrip.TabIndex = 2;
         // 
         // btnOpen
@@ -115,10 +116,10 @@ partial class MainForm
         // 
         // statusStrip
         // 
-        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusSelection, statusCacheCount, statusLanguage, statusProvider });
-        statusStrip.Location = new Point(0, 628);
+        statusStrip.Items.AddRange(new ToolStripItem[] { statusProgressBar, statusFileName, statusRowCount, statusSelection, statusTranslationCacheCount, statusVerificationCacheCount, statusLanguage, statusProvider });
+        statusStrip.Location = new Point(0, 826);
         statusStrip.Name = "statusStrip";
-        statusStrip.Size = new Size(1200, 22);
+        statusStrip.Size = new Size(1351, 22);
         statusStrip.TabIndex = 1;
         // 
         // statusProgressBar
@@ -151,13 +152,21 @@ partial class MainForm
         statusSelection.Size = new Size(4, 17);
         statusSelection.TextAlign = ContentAlignment.MiddleLeft;
         // 
-        // statusCacheCount
+        // statusTranslationCacheCount
         // 
-        statusCacheCount.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
-        statusCacheCount.BorderStyle = Border3DStyle.SunkenOuter;
-        statusCacheCount.Name = "statusCacheCount";
-        statusCacheCount.Size = new Size(4, 17);
-        statusCacheCount.TextAlign = ContentAlignment.MiddleLeft;
+        statusTranslationCacheCount.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
+        statusTranslationCacheCount.BorderStyle = Border3DStyle.SunkenOuter;
+        statusTranslationCacheCount.Name = "statusTranslationCacheCount";
+        statusTranslationCacheCount.Size = new Size(4, 17);
+        statusTranslationCacheCount.TextAlign = ContentAlignment.MiddleLeft;
+        // 
+        // statusVerificationCacheCount
+        // 
+        statusVerificationCacheCount.BorderSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
+        statusVerificationCacheCount.BorderStyle = Border3DStyle.SunkenOuter;
+        statusVerificationCacheCount.Name = "statusVerificationCacheCount";
+        statusVerificationCacheCount.Size = new Size(4, 17);
+        statusVerificationCacheCount.TextAlign = ContentAlignment.MiddleLeft;
         // 
         // statusLanguage
         // 
@@ -179,7 +188,7 @@ partial class MainForm
         // 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(1200, 650);
+        ClientSize = new Size(1351, 848);
         Controls.Add(dataGridView);
         Controls.Add(statusStrip);
         Controls.Add(toolStrip);
@@ -211,7 +220,8 @@ partial class MainForm
     private ToolStripStatusLabel statusFileName;
     private ToolStripStatusLabel statusRowCount;
     private ToolStripStatusLabel statusSelection;
-    private ToolStripStatusLabel statusCacheCount;
+    private ToolStripStatusLabel statusTranslationCacheCount;
+    private ToolStripStatusLabel statusVerificationCacheCount;
     private ToolStripStatusLabel statusLanguage;
     private ToolStripStatusLabel statusProvider;
 }

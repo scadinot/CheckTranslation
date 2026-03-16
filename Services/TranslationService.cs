@@ -3,12 +3,19 @@ namespace CheckTranslation;
 internal sealed class TranslationService : ITranslationService
 {
     private readonly Dictionary<string, string> _translationCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _verificationCache = new(StringComparer.Ordinal);
     private readonly object _cacheLock = new();
 
     public int GetTranslationCacheCount(AppConfig config, string targetLanguage)
     {
         lock (_cacheLock)
             return _translationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
+    }
+
+    public int GetVerificationCacheCount(AppConfig config, string targetLanguage)
+    {
+        lock (_cacheLock)
+            return _verificationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
     }
 
     public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage)
@@ -24,6 +31,22 @@ internal sealed class TranslationService : ITranslationService
                 _translationCache.Remove(cacheKey);
             else
                 _translationCache[cacheKey] = translation;
+        }
+    }
+
+    public void UpdateVerificationCache(string frenchText, string translation, string verification, AppConfig config, string targetLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(frenchText) || string.IsNullOrWhiteSpace(translation))
+            return;
+
+        var cacheKey = BuildVerificationCacheKey(frenchText, translation, config, targetLanguage);
+
+        lock (_cacheLock)
+        {
+            if (string.IsNullOrWhiteSpace(verification))
+                _verificationCache.Remove(cacheKey);
+            else
+                _verificationCache[cacheKey] = verification;
         }
     }
 
@@ -92,11 +115,76 @@ internal sealed class TranslationService : ITranslationService
         return ChunkResults(results);
     }
 
-    public Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
-        => Translator.VerifyInBatchesAsync(pairs, config, targetLanguage, progress);
+    public async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+    {
+        var results = new string[pairs.Count];
+        var pendingByPair = new Dictionary<(string French, string Translation), List<int>>();
+        int completed = 0;
+
+        for (int i = 0; i < pairs.Count; i++)
+        {
+            var pair = pairs[i];
+            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
+
+            string? cachedVerification;
+            lock (_cacheLock)
+                _verificationCache.TryGetValue(cacheKey, out cachedVerification);
+
+            if (!string.IsNullOrEmpty(cachedVerification))
+            {
+                results[i] = cachedVerification;
+                completed++;
+                continue;
+            }
+
+            if (!pendingByPair.TryGetValue(pair, out var indexes))
+            {
+                indexes = [];
+                pendingByPair[pair] = indexes;
+            }
+
+            indexes.Add(i);
+        }
+
+        progress?.Report(completed);
+
+        if (pendingByPair.Count > 0)
+        {
+            var uniquePairs = pendingByPair.Keys.ToList();
+            var verifiedBatches = await Translator.VerifyInBatchesAsync(uniquePairs, config, targetLanguage, null);
+
+            int verifiedCount = 0;
+            foreach (var batch in verifiedBatches)
+            {
+                for (int i = 0; i < batch.Length && verifiedCount < uniquePairs.Count; i++, verifiedCount++)
+                {
+                    var pair = uniquePairs[verifiedCount];
+                    var verification = batch[i];
+
+                    if (!string.IsNullOrEmpty(verification))
+                    {
+                        var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
+                        lock (_cacheLock)
+                            _verificationCache[cacheKey] = verification;
+                    }
+
+                    foreach (var index in pendingByPair[pair])
+                        results[index] = verification;
+
+                    completed += pendingByPair[pair].Count;
+                    progress?.Report(completed);
+                }
+            }
+        }
+
+        return ChunkResults(results);
+    }
 
     private static string BuildCacheKey(string text, AppConfig config, string targetLanguage)
         => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, text);
+
+    private static string BuildVerificationCacheKey(string frenchText, string translation, AppConfig config, string targetLanguage)
+        => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, frenchText, translation);
 
     private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage)
     {
