@@ -1,11 +1,15 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace CheckTranslation;
 
 internal sealed class AppConfig
 {
-    private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "CheckTranslation.config.json");
+    private static readonly string ConfigDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "CheckTranslation");
+    private static readonly string FilePath = Path.Combine(ConfigDirectory, "CheckTranslation.config.json");
+    private static readonly string LegacyFilePath = Path.Combine(AppContext.BaseDirectory, "CheckTranslation.config.json");
 
     private const string DefaultOpenAiUrl = "https://api.openai.com/v1";
     private const string DefaultOpenAiModelName = "gpt-5.2";
@@ -179,6 +183,8 @@ internal sealed class AppConfig
 
     public void Save()
     {
+        Directory.CreateDirectory(ConfigDirectory);
+
         var dto = new ConfigDto
         {
             TranslatePrompt = TranslatePrompt,
@@ -202,13 +208,17 @@ internal sealed class AppConfig
 
     public static AppConfig Load()
     {
-        if (!File.Exists(FilePath))
+        var path = File.Exists(FilePath)
+            ? FilePath
+            : LegacyFilePath;
+
+        if (!File.Exists(path))
             return new AppConfig();
 
         ConfigDto? dto;
         try
         {
-            var json = File.ReadAllText(FilePath);
+            var json = File.ReadAllText(path);
             dto = JsonSerializer.Deserialize<ConfigDto>(json);
         }
         catch

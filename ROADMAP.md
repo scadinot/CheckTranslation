@@ -50,7 +50,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Validation prompts** | Aucune | Vérifier que `{language}` est présent dans les prompts |
 | 🟡 | **Fichier verrouillé** | Exception si Excel est ouvert | Détecter le verrouillage et proposer une copie temporaire |
 | 🟢 | **Backup automatique** | Aucun | Créer un `.bak` avant chaque sauvegarde |
-| 🔴 | **Emplacement configuration** | Le fichier `CheckTranslation.config.json` est écrit dans le dossier de l’application | Déplacer vers `%AppData%` / `%LocalAppData%` pour éviter les problèmes de droits (Program Files) |
+| 🟢 | **Emplacement configuration** | Traité : le fichier `CheckTranslation.config.json` est désormais enregistré dans `%LocalAppData%\CheckTranslation`, avec lecture de l’ancien emplacement pour compatibilité | Conserver cette stratégie ou prévoir plus tard une migration/suppression automatique de l’ancien fichier |
 | 🟡 | **Traduction partielle** | Si l’IA renvoie une entrée vide, la cellule peut rester sur un placeholder | En cas d’entrée vide/non parsée : restaurer l’ancienne valeur et remonter l’erreur de façon plus explicite |
 | 🟡 | **Persistance vérification** | Les résultats de vérification (score/commentaire) ne sont pas forcément sauvegardés dans Excel | Écrire aussi les colonnes commentaires associées lors de la sauvegarde (pas uniquement les traductions) |
 
@@ -118,6 +118,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2026-03-07 | 1.0 | Auto-traduction (sans IA) : copie des traductions déjà présentes sur d’autres lignes (menu contextuel) |
 | 2026-03-13 | 1.0 | Chargement fichier : réinitialisation des champs de filtre après `Ouvrir` pour garder une vue cohérente |
 | 2026-03-13 | 1.0 | Cache des traductions IA : ajout d’un cache mémoire par texte/langue/configuration, conservé pendant la session, avec déduplication des doublons et mise à jour lors d’une modification manuelle |
+| 2026-03-13 | 1.0 | Emplacement configuration : déplacement de `CheckTranslation.config.json` vers `%LocalAppData%\CheckTranslation` avec compatibilité de lecture de l’ancien emplacement |
 
 ---
 
