@@ -241,6 +241,7 @@ public partial class MainForm : Form
             // Effacer le filtre Translation (les données ont changé)
             if (_filterTextBoxes.TryGetValue("Translation", out var tb))
                 tb.Text = string.Empty;
+            ResetSpecialFilters();
             ApplyFilters();
         }
 
@@ -301,6 +302,7 @@ public partial class MainForm : Form
             _allRows = rows;
             foreach (var textBox in _filterTextBoxes.Values)
                 textBox.Text = string.Empty;
+            ResetSpecialFilters();
 
             _filters.Clear();
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
@@ -390,9 +392,13 @@ public partial class MainForm : Form
     private void CreateFilterTextBoxes()
     {
         _filterTextBoxes.Clear();
+        _filterComboBoxes.Clear();
 
         foreach (DataGridViewColumn col in dataGridView.Columns)
         {
+            if (TryCreateSpecialFilterControl(col))
+                continue;
+
             var textBox = new TextBox
             {
                 BorderStyle = BorderStyle.None,
@@ -456,6 +462,9 @@ public partial class MainForm : Form
     {
         foreach (DataGridViewColumn col in dataGridView.Columns)
         {
+            if (TryLayoutSpecialFilterControl(col))
+                continue;
+
             if (!_filterTextBoxes.TryGetValue(col.DataPropertyName, out var textBox))
                 continue;
 
@@ -561,7 +570,7 @@ public partial class MainForm : Form
             filterHeight + 2);
 
         // Couleur de l'icône : bleue si filtre actif, grise sinon
-        bool hasFilter = _filterTextBoxes.TryGetValue(column.DataPropertyName, out var tb) && !string.IsNullOrEmpty(tb?.Text);
+        bool hasFilter = HasFilter(column.DataPropertyName);
         using var iconBrush = new SolidBrush(hasFilter ? Color.DodgerBlue : Color.Gray);
         using var iconFont = new Font("Segoe UI Emoji", 9f);
         using var iconSf = new StringFormat
@@ -613,6 +622,8 @@ public partial class MainForm : Form
             if (!string.IsNullOrEmpty(text))
                 _filters[prop] = text;
         }
+
+        CollectSpecialFilters(_filters);
 
         var list = TranslationRowFiltering.Filter(_allRows, _filters);
         dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
