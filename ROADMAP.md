@@ -22,7 +22,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 |:--------:|-----|-------------|----------------------|
 | 🟡 | **Appels API parallèles** | Les batches sont traités séquentiellement | Paralléliser avec `Task.WhenAll` (attention au rate limiting) |
 | 🟢 | **Chargement Excel** | Traité : progress bar basée sur les lignes lues (`Done/Total`) pendant `LoadFileAsync` | Optionnel : optimiser encore (lecture streaming / `VirtualMode`) pour très gros fichiers |
-| 🟢 | **Cache des traductions** | Traité : cache mémoire conservé pendant la session, alimenté par les traductions IA, avec déduplication par texte + langue + configuration, et mise à jour si une traduction est modifiée manuellement | Envisager plus tard une persistance disque du cache entre sessions si nécessaire |
+| 🟢 | **Cache des traductions** | Traité : cache mémoire conservé pendant la session, alimenté par les traductions IA, avec déduplication par texte + langue + configuration, et mise à jour si une traduction est modifiée manuellement ; un cache distinct existe aussi pour les vérifications | Envisager plus tard une persistance disque du cache entre sessions si nécessaire |
 | 🟢 | **DataGridView** | Double-buffering activé | Utiliser la virtualisation (`VirtualMode`) pour les très gros fichiers (>50k lignes) |
 
 ---
@@ -52,7 +52,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Backup automatique** | Aucun | Créer un `.bak` avant chaque sauvegarde |
 | 🟢 | **Emplacement configuration** | Traité : le fichier `CheckTranslation.config.json` est désormais enregistré dans `%LocalAppData%\CheckTranslation`, avec lecture de l’ancien emplacement pour compatibilité | Conserver cette stratégie ou prévoir plus tard une migration/suppression automatique de l’ancien fichier |
 | 🟡 | **Traduction partielle** | Si l’IA renvoie une entrée vide, la cellule peut rester sur un placeholder | En cas d’entrée vide/non parsée : restaurer l’ancienne valeur et remonter l’erreur de façon plus explicite |
-| 🟡 | **Persistance vérification** | Les résultats de vérification (score/commentaire) ne sont pas forcément sauvegardés dans Excel | Écrire aussi les colonnes commentaires associées lors de la sauvegarde (pas uniquement les traductions) |
+| 🟢 | **Persistance vérification** | Traité : les résultats de vérification (score/commentaire) sont aussi sauvegardés dans les colonnes commentaires associées | Conserver ce comportement et éventuellement ajouter plus tard une validation explicite des colonnes de destination |
 
 ---
 
@@ -119,6 +119,8 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2026-03-13 | 1.0 | Chargement fichier : réinitialisation des champs de filtre après `Ouvrir` pour garder une vue cohérente |
 | 2026-03-13 | 1.0 | Cache des traductions IA : ajout d’un cache mémoire par texte/langue/configuration, conservé pendant la session, avec déduplication des doublons et mise à jour lors d’une modification manuelle |
 | 2026-03-13 | 1.0 | Emplacement configuration : déplacement de `CheckTranslation.config.json` vers `%LocalAppData%\CheckTranslation` avec compatibilité de lecture de l’ancien emplacement |
+| 2026-03-13 | 1.0 | Cache des vérifications IA : ajout d’un cache mémoire distinct par source/traduction/langue/configuration, avec compteur dédié dans la barre d’état |
+| 2026-03-13 | 1.0 | Persistance vérification : sauvegarde des commentaires de vérification dans les colonnes Excel associées |
 
 ---
 

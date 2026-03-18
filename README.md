@@ -1,6 +1,6 @@
 # CheckTranslation
 
-Application de bureau Windows Forms (.NET 10.0) destinee au controle et a la traduction des ressources d'un logiciel. Elle lit un fichier Excel exporte par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification et edition.
+Application de bureau Windows Forms (.NET 8.0) destinee au controle, a la traduction et a la verification des ressources d'un logiciel. Elle lit un fichier Excel exporte par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification et edition.
 
 ## Fonctionnalites
 
@@ -12,12 +12,14 @@ Application de bureau Windows Forms (.NET 10.0) destinee au controle et a la tra
 - **Filtres par colonne** : icone entonnoir dans les en-tetes, saisie de texte pour filtrer (toutes colonnes)
 - **Tri par colonne** : clic sur l'en-tete pour trier (ascendant/descendant)
 - **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API (OpenAI / Anthropic)
-- **Sauvegarde** : ecriture des modifications dans le fichier Excel d'origine
+- **Verification IA** : controle qualitatif des traductions avec score/commentaire par langue
+- **Caches en session** : cache memoire des traductions et des verifications IA, avec deduplication et compteurs dans la barre d'etat
+- **Sauvegarde** : ecriture des traductions et des commentaires associes dans le fichier Excel d'origine
 - **Configuration** : prompts (avec apercu), choix du fournisseur IA, cles API (chiffrees via DPAPI), URLs et modeles configurables (liste des modeles chargee via l'API)
 
 ## Prerequis
 
-- SDK .NET 10.0
+- SDK .NET 8.0
 - Windows (application WinForms)
 
 ## Build et execution
@@ -46,6 +48,9 @@ Au premier lancement, cliquer sur l'icone de configuration pour definir :
 Pour **OpenAI** et **Anthropic**, la liste des modeles est recuperee automatiquement depuis l'API au moment ou vous ouvrez la liste deroulante **Model** (la saisie manuelle reste possible).
 
 Les cles API sont chiffrees via DPAPI (scope utilisateur) dans `CheckTranslation.config.json`.
+
+Le fichier de configuration est enregistre dans `%LocalAppData%\CheckTranslation\CheckTranslation.config.json`.
+L'ancien emplacement dans le dossier de l'application reste lu pour compatibilite.
 
 ## Dependances
 

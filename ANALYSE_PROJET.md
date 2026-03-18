@@ -1,12 +1,12 @@
 # Analyse détaillée — projet `CheckTranslation`
 
 ## 1) Résumé
-`CheckTranslation` est une application de bureau **Windows Forms** en **C# / .NET 10** (`net10.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources (type `.resx`) à partir d’un **export Excel** généré par ResX Resource Manager. L’application charge un fichier `.xlsx`, affiche les entrées dans un `DataGridView`, permet l’édition de la traduction dans une langue cible, puis sauvegarde les modifications dans le fichier Excel. Elle peut aussi appeler une API **OpenAI-compatible** (via le package `OpenAI`) pour traduire et vérifier des traductions en lot.
+`CheckTranslation` est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources (type `.resx`) à partir d’un **export Excel** généré par ResX Resource Manager. L’application charge un fichier `.xlsx`, affiche les entrées dans un `DataGridView`, permet l’édition de la traduction dans une langue cible, puis sauvegarde les modifications dans le fichier Excel. Elle peut aussi appeler des API **OpenAI** et **Anthropic** pour traduire et vérifier des traductions en lot, avec cache mémoire pendant la session.
 
 ## 2) Périmètre technique
 
 ### Cible et runtime
-- Framework cible : `.NET 10` Windows (`net10.0-windows`)
+- Framework cible : `.NET 8` Windows (`net8.0-windows`)
 - Type d’application : `WinExe`
 - UI : `Windows Forms`
 - Options : `Nullable=enable`, `ImplicitUsings=enable`
@@ -31,7 +31,7 @@
 ## 4) Flux fonctionnel de bout en bout
 
 1. **Démarrage**
-   - `AppConfig.Load()` charge `CheckTranslation.config.json` (si présent) et alimente `AppConfig.Current`.
+   - `AppConfig.Load()` charge `CheckTranslation.config.json` depuis `%LocalAppData%\CheckTranslation` (ou l’ancien emplacement si présent) et alimente `AppConfig.Current`.
    - L’application WinForms démarre avec `MainForm`.
 
 2. **Ouverture d’un Excel**
@@ -56,7 +56,7 @@
      - Vérifier la sélection (batch)
 
 6. **Sauvegarde**
-   - `ExcelReader.Save(filePath, activeColumn, rows)` réécrit les traductions dans les colonnes attendues et sauvegarde le workbook.
+   - `ExcelReader.Save(filePath, activeColumn, rows)` réécrit les traductions **et les commentaires associés** dans les colonnes attendues et sauvegarde le workbook.
 
 ## 5) Modèle de données
 
@@ -101,16 +101,18 @@ Les colonnes de traduction varient selon les langues, et sont passées à `Excel
 
 ### `ExcelReader.Save(...)`
 - Synchronise `Translation` -> `Translations[activeColumn]`.
+- Synchronise `Comment` -> `Comments[activeColumn]`.
 - Réécrit toutes les traductions stockées dans `row.Translations` dans la feuille.
+- Réécrit aussi les commentaires stockés dans `row.Comments` dans les colonnes de commentaires associées.
 - Sauvegarde le fichier.
-
-Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de commentaires (`Comments`).
 
 ## 7) Configuration (`AppConfig`)
 
 ### Stockage
-- Fichier : `CheckTranslation.config.json` dans `AppContext.BaseDirectory`.
+- Fichier : `CheckTranslation.config.json` dans `%LocalAppData%\CheckTranslation`.
 - Contenu : prompts + choix du fournisseur IA (`Provider`) + paramètres par fournisseur (clé/endpoint/modèle) + préférence UI `ShowDetails`.
+
+Compatibilité : l’ancien emplacement dans `AppContext.BaseDirectory` reste lu si le nouveau fichier n’existe pas encore.
 
 ### Sécurité clé API
 - Les clés API sont chiffrées via DPAPI (`ProtectedData.Protect`) avec `DataProtectionScope.CurrentUser`.
@@ -171,6 +173,13 @@ Note : la sauvegarde actuelle réécrit les traductions, pas les colonnes de com
 ### Traitement par lots
 - Taille de lot : `BatchSize = 20`.
 - `TranslateInBatchesAsync` et `VerifyInBatchesAsync` découpent la requête, appellent les batchs, et reportent la progression en *nombre d’items traités*.
+
+### Cache mémoire en session
+- Les **traductions** sont mises en cache par texte source + langue cible + configuration IA.
+- Les **vérifications** sont mises en cache par paire `(source, traduction)` + langue cible + configuration IA.
+- Les doublons dans un même lot sont dédupliqués avant appel API.
+- Les modifications manuelles de traduction mettent à jour le cache de traduction.
+- La barre d’état affiche des compteurs distincts pour le cache de traduction et le cache de vérification, liés à la langue active.
 
 ### Parsing des réponses batch
 - `ParseNumberedList(content, expectedCount)` parse une réponse de liste numérotée (regex `^\s*(\d+)[.)]\s*(.+)$`).

@@ -64,7 +64,10 @@ internal static class ExcelReader
     {
         // Synchroniser la langue active dans le dictionnaire avant de sauvegarder
         foreach (var row in rows)
+        {
             row.Translations[activeColumn] = row.Translation;
+            row.Comments[activeColumn] = row.Comment;
+        }
 
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
@@ -73,6 +76,9 @@ internal static class ExcelReader
         {
             foreach (var (col, value) in row.Translations)
                 worksheet.Cell(row.RowNumber, col).Value = value;
+
+            foreach (var (col, value) in row.Comments)
+                worksheet.Cell(row.RowNumber, col - 1).Value = value;
         }
 
         workbook.Save();
