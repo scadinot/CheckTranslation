@@ -75,12 +75,22 @@ internal static class ExcelReader
         foreach (var row in rows)
         {
             foreach (var (col, value) in row.Translations)
-                worksheet.Cell(row.RowNumber, col).Value = value;
+                WriteCellValue(worksheet.Cell(row.RowNumber, col), value);
 
             foreach (var (col, value) in row.Comments)
-                worksheet.Cell(row.RowNumber, col - 1).Value = value;
+                WriteCellValue(worksheet.Cell(row.RowNumber, col - 1), value);
         }
 
         workbook.Save();
+    }
+
+    private static void WriteCellValue(IXLCell cell, string? value)
+    {
+        var text = value ?? string.Empty;
+
+        if (text.StartsWith('\''))
+            text = "'" + text;
+
+        cell.Value = text;
     }
 }
