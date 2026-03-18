@@ -20,7 +20,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 
 | Priorité | Axe | État actuel | Amélioration suggérée |
 |:--------:|-----|-------------|----------------------|
-| 🟡 | **Appels API parallèles** | Les batches sont traités séquentiellement | Paralléliser avec `Task.WhenAll` (attention au rate limiting) |
+| 🟢 | **Appels API parallèles** | Traité : les batches de traduction/vérification sont parallélisés avec `Task.WhenAll`, avec limitation de concurrence pour réduire le rate limiting | Ajuster plus tard finement le niveau de parallélisme selon les providers et quotas réels |
 | 🟢 | **Chargement Excel** | Traité : progress bar basée sur les lignes lues (`Done/Total`) pendant `LoadFileAsync` | Optionnel : optimiser encore (lecture streaming / `VirtualMode`) pour très gros fichiers |
 | 🟢 | **Cache des traductions** | Traité : cache mémoire conservé pendant la session, alimenté par les traductions IA, avec déduplication par texte + langue + configuration, et mise à jour si une traduction est modifiée manuellement ; un cache distinct existe aussi pour les vérifications | Envisager plus tard une persistance disque du cache entre sessions si nécessaire |
 | 🟢 | **DataGridView** | Double-buffering activé | Utiliser la virtualisation (`VirtualMode`) pour les très gros fichiers (>50k lignes) |
@@ -121,6 +121,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2026-03-13 | 1.0 | Emplacement configuration : déplacement de `CheckTranslation.config.json` vers `%LocalAppData%\CheckTranslation` avec compatibilité de lecture de l’ancien emplacement |
 | 2026-03-13 | 1.0 | Cache des vérifications IA : ajout d’un cache mémoire distinct par source/traduction/langue/configuration, avec compteur dédié dans la barre d’état |
 | 2026-03-13 | 1.0 | Persistance vérification : sauvegarde des commentaires de vérification dans les colonnes Excel associées |
+| 2026-03-13 | 1.0 | Appels API parallèles : traitement des batchs avec `Task.WhenAll` et limitation de concurrence pour limiter le rate limiting |
 
 ---
 

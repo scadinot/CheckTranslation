@@ -18,6 +18,7 @@ internal static partial class Translator
     private const float Temperature = 0.1f;
     private const long AnthropicMaxTokens = 2048;
     private const int RetryCount = 3;
+    private const int FixedParallelBatchRequests = 4;
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
     {
@@ -47,38 +48,49 @@ internal static partial class Translator
         return ParseNumberedList(content, pairs.Count);
     }
 
-    public static async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+    public static Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+        => ProcessBatchesAsync(pairs, batch => VerifyBatchAsync(batch, config, targetLanguage), progress);
+
+    public static Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+        => ProcessBatchesAsync(texts, batch => TranslateBatchAsync(batch, config, targetLanguage), progress);
+
+    private static async Task<IReadOnlyList<string[]>> ProcessBatchesAsync<T>(IReadOnlyList<T> items, Func<IReadOnlyList<T>, Task<string[]>> processBatchAsync, IProgress<int>? progress)
     {
-        var results = new List<string[]>();
+        var batches = Chunk(items);
+        var results = new string[batches.Count][];
+        int maxParallelRequests = FixedParallelBatchRequests;
+        using var throttler = new SemaphoreSlim(maxParallelRequests);
         int done = 0;
 
-        for (int i = 0; i < pairs.Count; i += BatchSize)
+        var tasks = batches.Select(async batchInfo =>
         {
-            var batch = pairs.Skip(i).Take(BatchSize).ToList();
-            var verified = await VerifyBatchAsync(batch, config, targetLanguage);
-            results.Add(verified);
-            done += batch.Count;
-            progress?.Report(done);
-        }
+            await throttler.WaitAsync();
+            try
+            {
+                var result = await processBatchAsync(batchInfo.Items);
+                results[batchInfo.Index] = result;
 
+                var completed = Interlocked.Add(ref done, batchInfo.Items.Count);
+                progress?.Report(completed);
+            }
+            finally
+            {
+                throttler.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
         return results;
     }
 
-    public static async Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+    private static List<(int Index, IReadOnlyList<T> Items)> Chunk<T>(IReadOnlyList<T> items)
     {
-        var results = new List<string[]>();
-        int done = 0;
+        var batches = new List<(int Index, IReadOnlyList<T> Items)>();
 
-        for (int i = 0; i < texts.Count; i += BatchSize)
-        {
-            var batch = texts.Skip(i).Take(BatchSize).ToList();
-            var translated = await TranslateBatchAsync(batch, config, targetLanguage);
-            results.Add(translated);
-            done += batch.Count;
-            progress?.Report(done);
-        }
+        for (int i = 0; i < items.Count; i += BatchSize)
+            batches.Add((batches.Count, items.Skip(i).Take(BatchSize).ToArray()));
 
-        return results;
+        return batches;
     }
 
     private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
@@ -156,6 +168,10 @@ internal static partial class Translator
         catch (AnthropicRateLimitException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
             throw new HttpRequestException("Quota API atteint (429 Too Many Requests). Vérifiez votre plan ou attendez le reset du quota.", ex);
+        }
+        catch (AnthropicIOException ex)
+        {
+            throw new HttpRequestException("Erreur d'entrée/sortie lors de l'appel Anthropic. Réessayez avec moins de requêtes parallèles ou vérifiez la stabilité réseau.", ex);
         }
     }
 
@@ -252,3 +268,4 @@ internal static partial class Translator
     [GeneratedRegex(@"^\s*(\d+)[.)]\s*(.+)$")]
     private static partial Regex NumberedLineRegex();
 }
+
