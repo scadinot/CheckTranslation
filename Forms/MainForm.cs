@@ -208,7 +208,10 @@ public partial class MainForm : Form
         }
 
         toolStrip.Items.Insert(insertIndex, new ToolStripSeparator());
-        SelectLanguage(Languages[0]);
+
+        var selectedLanguage = Languages.FirstOrDefault(l => string.Equals(l.Code, AppConfig.Current.SelectedLanguageCode, StringComparison.OrdinalIgnoreCase))
+            ?? Languages[0];
+        SelectLanguage(selectedLanguage);
     }
 
     private void SelectLanguage(LanguageInfo lang)
@@ -246,6 +249,8 @@ public partial class MainForm : Form
         }
 
         SelectLanguage(lang);
+        AppConfig.Current.SelectedLanguageCode = lang.Code;
+        AppConfig.Current.Save();
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders

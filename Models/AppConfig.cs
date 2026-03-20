@@ -18,6 +18,7 @@ internal sealed class AppConfig
     private const string DefaultAnthropicModelName = "claude-sonnet-4-6";
 
     private const bool DefaultShowDetails = true;
+    private const string DefaultSelectedLanguageCode = "en-US";
 
     internal static string GetDefaultUrl(AiProvider provider)
         => provider == AiProvider.Anthropic ? DefaultAnthropicUrl : DefaultOpenAiUrl;
@@ -176,6 +177,7 @@ internal sealed class AppConfig
 
     public AiProvider Provider { get; set; } = AiProvider.OpenAI;
     public bool ShowDetails { get; set; } = DefaultShowDetails;
+    public string SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
 
     public string Key => Provider == AiProvider.Anthropic ? AnthropicKey : OpenAiKey;
     public string Url => Provider == AiProvider.Anthropic ? AnthropicUrl : OpenAiUrl;
@@ -200,6 +202,7 @@ internal sealed class AppConfig
 
             Provider = Provider.ToString(),
             ShowDetails = ShowDetails,
+            SelectedLanguageCode = SelectedLanguageCode,
         };
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(FilePath, json);
@@ -248,6 +251,7 @@ internal sealed class AppConfig
 
             Provider = provider,
             ShowDetails = dto.ShowDetails ?? DefaultShowDetails,
+            SelectedLanguageCode = string.IsNullOrWhiteSpace(dto.SelectedLanguageCode) ? DefaultSelectedLanguageCode : dto.SelectedLanguageCode,
         };
 
         // Si un des champs a été laissé vide, on applique les valeurs par défaut du provider sélectionné.
@@ -315,6 +319,7 @@ internal sealed class AppConfig
 
         public string? Provider { get; set; } = nameof(AiProvider.OpenAI);
         public bool? ShowDetails { get; set; } = DefaultShowDetails;
+        public string? SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
     }
 }
 
