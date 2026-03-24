@@ -2,7 +2,7 @@ namespace CheckTranslation;
 
 public partial class MainForm
 {
-    private const string VerificationScoreFilterPrefix = "score<=";
+    private const string VerificationScoreFilterPrefix = "score<";
     private readonly Dictionary<string, ComboBox> _filterComboBoxes = new();
 
     private bool TryCreateSpecialFilterControl(DataGridViewColumn col)

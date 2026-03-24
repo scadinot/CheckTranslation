@@ -25,7 +25,7 @@ internal static class TranslationRowFiltering
 
     private static IEnumerable<TranslationRow> ApplyCommentFilter(IEnumerable<TranslationRow> rows, string filter)
     {
-        const string scorePrefix = "score<=";
+        const string scorePrefix = "score<";
         const string scoreMinPrefix = "score>=";
         const string scoreNone = "score:none";
 
@@ -35,7 +35,7 @@ internal static class TranslationRowFiltering
         if (filter.StartsWith(scorePrefix, StringComparison.OrdinalIgnoreCase)
             && int.TryParse(filter[scorePrefix.Length..], out var threshold))
         {
-            return rows.Where(r => QualityScore.TryParse(r.Comment, out var score) && score <= threshold);
+            return rows.Where(r => !QualityScore.TryParse(r.Comment, out var score) || score < threshold);
         }
 
         if (filter.StartsWith(scoreMinPrefix, StringComparison.OrdinalIgnoreCase)
