@@ -57,6 +57,7 @@ public partial class MainForm : Form
         InitDetailsColumns();
         InitCommentColumn();
         InitDetailsButton();
+        InitRefreshButton();
         InitLanguageButtons();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
@@ -311,6 +312,7 @@ public partial class MainForm : Form
 
             _filters.Clear();
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
+            SetViewRefreshPending(false);
             statusRowCount.Text = $"Lignes : {rows.Count}";
             btnSave.Enabled = true;
         }
@@ -619,7 +621,6 @@ public partial class MainForm : Form
     {
         if (_allRows is null) return;
 
-        // Collecter les filtres depuis les TextBox
         _filters.Clear();
         foreach (var (prop, textBox) in _filterTextBoxes)
         {
@@ -632,6 +633,11 @@ public partial class MainForm : Form
 
         var list = TranslationRowFiltering.Filter(_allRows, _filters);
         dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
+
+        if (_sortColumnIndex >= 0 && _sortColumnIndex < dataGridView.Columns.Count)
+            dataGridView.Sort(dataGridView.Columns[_sortColumnIndex], _sortDirection);
+
+        SetViewRefreshPending(false);
         ClearSortGlyphs();
         statusRowCount.Text = _filters.Count > 0
             ? $"Lignes : {list.Count} / {_allRows.Count}"
@@ -912,7 +918,7 @@ public partial class MainForm : Form
 
         int filled = AutoTranslateFromExistingRows(rows);
         dataGridView.Refresh();
-        ApplyFiltersPreservingSelection();
+        MarkViewRefreshPendingIfNeeded();
         UpdateTranslationCacheCountStatus();
 
         statusRowCount.Text = filled > 0
@@ -1053,8 +1059,6 @@ public partial class MainForm : Form
 
         foreach (var row in rows)
         {
-            // La traduction change => la vérification n'est plus valable.
-            // On vide donc le résultat de vérification avant de lancer l'appel IA.
             row.Comment = string.Empty;
             row.Translation = "Traduction en cours...";
         }
@@ -1102,9 +1106,7 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
 
-            // Même rafraîchissement que lors d'un changement de langue :
-            // réappliquer les filtres pour recalculer l'affichage (et le compteur de lignes).
-            ApplyFiltersPreservingSelection();
+            MarkViewRefreshPendingIfNeeded();
             RestoreStatusBar();
 
             UseWaitCursor = false;
@@ -1193,8 +1195,7 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
 
-            // Même rafraîchissement que lors d'un changement de langue.
-            ApplyFiltersPreservingSelection();
+            MarkViewRefreshPendingIfNeeded();
             RestoreStatusBar();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
