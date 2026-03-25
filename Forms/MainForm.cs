@@ -791,11 +791,17 @@ public partial class MainForm : Form
         var menuVerify = new ToolStripMenuItem("Vérifier la traduction");
         menuVerify.Click += MenuVerify_Click;
 
+        var menuCopyFrench = new ToolStripMenuItem("Copier le français");
+        menuCopyFrench.Click += MenuCopyFrench_Click;
+
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(menuAutoTranslate);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(menuTranslate);
         contextMenu.Items.Add(menuVerify);
+
+        var frenchContextMenu = new ContextMenuStrip();
+        frenchContextMenu.Items.Add(menuCopyFrench);
 
         contextMenu.Opening += (_, _) =>
         {
@@ -814,18 +820,67 @@ public partial class MainForm : Form
             }
         };
 
+        frenchContextMenu.Opening += (_, _) =>
+        {
+            int count = dataGridView.SelectedRows.Count;
+            menuCopyFrench.Text = count > 1
+                ? $"Copier les textes français sélectionnés ({count} lignes)"
+                : "Copier le texte français";
+        };
+
         dataGridView.CellMouseClick += (_, e) =>
         {
             if (e.Button != MouseButtons.Right || e.RowIndex < 0)
                 return;
 
-            if (dataGridView.Columns[e.ColumnIndex].Name != "colTranslation")
+            var columnName = dataGridView.Columns[e.ColumnIndex].Name;
+            if (columnName is not "colTranslation" and not "colFrench")
                 return;
 
             _contextMenuRowIndex = e.RowIndex;
             var cellRect = dataGridView.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
-            contextMenu.Show(dataGridView, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
+            var location = new Point(cellRect.Left + e.X, cellRect.Top + e.Y);
+
+            if (columnName == "colFrench")
+                frenchContextMenu.Show(dataGridView, location);
+            else
+                contextMenu.Show(dataGridView, location);
         };
+    }
+
+    private void MenuCopyFrench_Click(object? sender, EventArgs e)
+    {
+        IReadOnlyList<TranslationRow> rows;
+        if (dataGridView.SelectedRows.Count > 1)
+        {
+            rows = dataGridView.SelectedRows
+                .Cast<DataGridViewRow>()
+                .OrderBy(r => r.Index)
+                .Select(r => r.DataBoundItem as TranslationRow)
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
+                .Cast<TranslationRow>()
+                .ToList();
+        }
+        else
+        {
+            if (_contextMenuRowIndex < 0)
+                return;
+
+            var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+            if (row is null || string.IsNullOrWhiteSpace(row.French))
+                return;
+
+            rows = [row];
+        }
+
+        var text = string.Join(Environment.NewLine, rows.Select(r => r.French));
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        Clipboard.SetText(text);
+        statusRowCount.Text = rows.Count > 1
+            ? $"Copie : {rows.Count} textes français"
+            : "Copie : texte français";
     }
 
     private void MenuAutoTranslate_Click(object? sender, EventArgs e)
