@@ -1,4 +1,4 @@
-﻿using Markdig;
+using Markdig;
 using System.ClientModel;
 using Anthropic;
 using Anthropic.Models.Models;
@@ -8,11 +8,14 @@ namespace CheckTranslation;
 
 internal sealed partial class ConfigForm : Form
 {
+    private readonly ITranslationService _translationService;
     private bool _isLoading;
     private bool _isUpdatingProvider;
     private bool _openAiModelsLoaded;
     private bool _anthropicModelsLoaded;
     private bool _isLoadingModels;
+    private Button? btnClearTranslationCache;
+    private Button? btnClearVerificationCache;
 
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -27,14 +30,109 @@ internal sealed partial class ConfigForm : Form
         th, td { border: 1px solid #d0d7de; padding: 6px 10px; }
         """;
 
-    public ConfigForm()
+    public ConfigForm() : this(new TranslationService())
     {
+    }
+
+    public ConfigForm(ITranslationService translationService)
+    {
+        _translationService = translationService;
         InitializeComponent();
         InitModelSelectors();
         InitProviderUi();
         InitMarkdownEditors();
+        InitCacheButtons();
         btnOk.Click += (_, _) => SaveConfig();
         LoadConfig();
+    }
+
+    private void InitCacheButtons()
+    {
+        btnClearTranslationCache = new Button
+        {
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+            Location = new Point(11, 997),
+            Name = nameof(btnClearTranslationCache),
+            Size = new Size(150, 28),
+            TabIndex = 2,
+            Text = "Vider cache trad.",
+            UseVisualStyleBackColor = true,
+        };
+        btnClearTranslationCache.Click += BtnClearTranslationCache_Click;
+
+        btnClearVerificationCache = new Button
+        {
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+            Location = new Point(172, 997),
+            Name = nameof(btnClearVerificationCache),
+            Size = new Size(150, 28),
+            TabIndex = 3,
+            Text = "Vider cache vérif.",
+            UseVisualStyleBackColor = true,
+        };
+        btnClearVerificationCache.Click += BtnClearVerificationCache_Click;
+
+        Controls.Add(btnClearTranslationCache);
+        Controls.Add(btnClearVerificationCache);
+    }
+
+    private void BtnClearTranslationCache_Click(object? sender, EventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Voulez-vous vider le cache de traduction pour la configuration courante ?",
+                "Confirmation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
+        var removed = _translationService.ClearTranslationCache(BuildCurrentConfig());
+        MessageBox.Show(this,
+            removed > 0
+                ? $"{removed} entrée(s) supprimée(s) du cache de traduction."
+                : "Aucune entrée à supprimer dans le cache de traduction.",
+            "Cache de traduction",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    private void BtnClearVerificationCache_Click(object? sender, EventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Voulez-vous vider le cache de vérification pour la configuration courante ?",
+                "Confirmation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
+        var removed = _translationService.ClearVerificationCache(BuildCurrentConfig());
+        MessageBox.Show(this,
+            removed > 0
+                ? $"{removed} entrée(s) supprimée(s) du cache de vérification."
+                : "Aucune entrée à supprimer dans le cache de vérification.",
+            "Cache de vérification",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    private AppConfig BuildCurrentConfig()
+    {
+        return new AppConfig
+        {
+            TranslatePrompt = txtTranslatePrompt.Text.Trim(),
+            VerifyPrompt = txtVerifyPrompt.Text.Trim(),
+
+            OpenAiKey = txtOpenAiKey.Text.Trim(),
+            OpenAiUrl = txtOpenAiUrl.Text.Trim(),
+            OpenAiModelName = txtOpenAiModelName.Text.Trim(),
+
+            AnthropicKey = txtAnthropicKey.Text.Trim(),
+            AnthropicUrl = txtAnthropicUrl.Text.Trim(),
+            AnthropicModelName = txtAnthropicModelName.Text.Trim(),
+
+            Provider = rbAnthropic.Checked ? AiProvider.Anthropic : AiProvider.OpenAI,
+            ShowDetails = AppConfig.Current.ShowDetails,
+            SelectedLanguageCode = AppConfig.Current.SelectedLanguageCode,
+        };
     }
 
         private void InitModelSelectors()
@@ -521,22 +619,7 @@ internal sealed partial class ConfigForm : Form
 
     private void SaveConfig()
     {
-        var config = new AppConfig
-        {
-            TranslatePrompt = txtTranslatePrompt.Text.Trim(),
-            VerifyPrompt = txtVerifyPrompt.Text.Trim(),
-
-            OpenAiKey = txtOpenAiKey.Text.Trim(),
-            OpenAiUrl = txtOpenAiUrl.Text.Trim(),
-            OpenAiModelName = txtOpenAiModelName.Text.Trim(),
-
-            AnthropicKey = txtAnthropicKey.Text.Trim(),
-            AnthropicUrl = txtAnthropicUrl.Text.Trim(),
-            AnthropicModelName = txtAnthropicModelName.Text.Trim(),
-
-            Provider = rbAnthropic.Checked ? AiProvider.Anthropic : AiProvider.OpenAI,
-            ShowDetails = AppConfig.Current.ShowDetails,
-        };
+        var config = BuildCurrentConfig();
         config.Save();
     }
 }

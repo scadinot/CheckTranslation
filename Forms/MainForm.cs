@@ -743,6 +743,8 @@ public partial class MainForm : Form
         using var form = _configFormFactory();
         form.ShowDialog(this);
         UpdateProviderStatus(); // Mettre à jour après modification de la config
+        UpdateTranslationCacheCountStatus();
+        UpdateVerificationCacheCountStatus();
     }
 
     private void UpdateSelectionStatus()

@@ -12,10 +12,40 @@ internal sealed class TranslationService : ITranslationService
             return _translationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
     }
 
+    public int ClearTranslationCache(AppConfig config)
+    {
+        lock (_cacheLock)
+        {
+            var keysToRemove = _translationCache.Keys
+                .Where(key => IsCacheKeyMatch(key, config))
+                .ToList();
+
+            foreach (var key in keysToRemove)
+                _translationCache.Remove(key);
+
+            return keysToRemove.Count;
+        }
+    }
+
     public int GetVerificationCacheCount(AppConfig config, string targetLanguage)
     {
         lock (_cacheLock)
             return _verificationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
+    }
+
+    public int ClearVerificationCache(AppConfig config)
+    {
+        lock (_cacheLock)
+        {
+            var keysToRemove = _verificationCache.Keys
+                .Where(key => IsCacheKeyMatch(key, config))
+                .ToList();
+
+            foreach (var key in keysToRemove)
+                _verificationCache.Remove(key);
+
+            return keysToRemove.Count;
+        }
     }
 
     public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage)
@@ -189,6 +219,12 @@ internal sealed class TranslationService : ITranslationService
     private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage)
     {
         var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage) + "\u001F";
+        return cacheKey.StartsWith(prefix, StringComparison.Ordinal);
+    }
+
+    private static bool IsCacheKeyMatch(string cacheKey, AppConfig config)
+    {
+        var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName) + "\u001F";
         return cacheKey.StartsWith(prefix, StringComparison.Ordinal);
     }
 
