@@ -95,7 +95,17 @@ internal sealed class AppConfig
         Tu dois analyser la qualité technique et linguistique de chaque traduction.
 
         ---
-
+                
+        ## Principe fondamental
+        Tu évalues la traduction FOURNIE. Tu ne la retraduis pas.
+        Le doute bénéficie TOUJOURS à la traduction évaluée.
+        Une traduction est ACCEPTABLE si elle est techniquement correcte et linguistiquement
+        valide dans {language}, même si tu aurais choisi une formulation différente.
+        Ne pénalise PAS une variante grammaticale, stylistique ou contextuelle valide.
+        Toute ambiguïté grammaticale, stylistique ou contextuelle → ACCEPTABLE.
+        Ne pénalise QUE les erreurs certaines et indiscutables : contresens, terme faux,
+        élément manquant, règle ci-dessous violée.
+        
         ## Critères d'évaluation
 
         ### 1) Exactitude technique — 40 points
@@ -107,7 +117,11 @@ internal sealed class AppConfig
 
         ### 2) Qualité linguistique — 10 points
         - Phrase compréhensible et naturelle dans {language}.
-        - Pas d'erreur grammaticale.
+        - Pas d'erreur grammaticale avérée et indiscutable.
+        - En cas d'ambiguïté grammaticale (accord, déclinaison, genre selon contexte),
+          considérer la traduction comme ACCEPTABLE et ne pas pénaliser.
+        - Ne signaler une erreur grammaticale QUE si elle est universellement incorrecte
+          dans {language}, indépendamment du contexte.
         - Formulation idiomatique acceptable dans {language}.
 
         ### 3) Respect strict des abréviations — 10 points
