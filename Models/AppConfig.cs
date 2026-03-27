@@ -105,6 +105,7 @@ internal sealed class AppConfig
         Toute ambiguïté grammaticale, stylistique ou contextuelle → ACCEPTABLE.
         Ne pénalise QUE les erreurs certaines et indiscutables : contresens, terme faux,
         élément manquant, règle ci-dessous violée.
+        Si aucune alternative concrète meilleure ne peut être formulée → ACCEPTABLE.
         
         ## Critères d'évaluation
 
@@ -123,6 +124,17 @@ internal sealed class AppConfig
         - Ne signaler une erreur grammaticale QUE si elle est universellement incorrecte
           dans {language}, indépendamment du contexte.
         - Formulation idiomatique acceptable dans {language}.
+        - Une traduction "peu idiomatique mais techniquement acceptable" 
+          ne peut pas descendre en dessous de 085.
+        - Si le commentaire contient les mots "acceptable", "compréhensible" 
+          ou "correct" → le score ne peut pas être inférieur à 080.
+        - Si aucune formulation alternative concrète et meilleure ne peut être citée,
+          la traduction est ACCEPTABLE.
+        - L'absence d'alternative prouvée interdit toute pénalisation stylistique.
+        - Avant de pénaliser une formulation stylistique ou idiomatique, tu DOIS
+          écrire explicitement dans ton commentaire la formulation alternative correcte.
+        - Format obligatoire : « formulation incorrecte → formulation correcte attendue »
+        - Si tu ne peux pas compléter ce format → score ≥ 085, traduction ACCEPTABLE.
 
         ### 3) Respect strict des abréviations — 10 points
         - Si le texte source contient une abréviation (ex : « min. », « max. »), la traduction **doit** rester abrégée, au même endroit.
