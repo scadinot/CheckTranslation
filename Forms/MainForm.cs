@@ -50,15 +50,18 @@ public partial class MainForm : Form
             Icon = new Icon(icoPath);
         btnOpen.Image = LoadIcon("open.png", 24);
         btnSave.Image = LoadIcon("save.png", 24);
+        btnMerge.Image = LoadIcon("merge.png", 24);
         btnConfig.Image = LoadIcon("config.png", 24);
         btnOpen.Click += BtnOpen_Click;
         btnSave.Click += BtnSave_Click;
+        btnMerge.Click += BtnMerge_Click;
         btnConfig.Click += BtnConfig_Click;
         InitDetailsColumns();
         InitCommentColumn();
         InitDetailsButton();
         InitRefreshButton();
         InitLanguageButtons();
+        ArrangeToolStripItems();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
@@ -168,7 +171,29 @@ public partial class MainForm : Form
             ToolTipText = "Afficher/Masquer Projet, Fichier, Clé",
         };
         btnDetails.Click += BtnDetails_Click;
-        toolStrip.Items.Insert(2, btnDetails);
+    }
+
+    private void ArrangeToolStripItems()
+    {
+        if (btnDetails is null || btnRefresh is null)
+            return;
+
+        toolStrip.Items.Clear();
+        toolStrip.Items.Add(btnOpen);
+        toolStrip.Items.Add(btnSave);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnMerge);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnDetails);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnConfig);
+        toolStrip.Items.Add(new ToolStripSeparator());
+
+        foreach (var btn in _languageButtons)
+            toolStrip.Items.Add(btn);
+
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnRefresh);
     }
 
     private void BtnDetails_Click(object? sender, EventArgs e)
@@ -195,8 +220,6 @@ public partial class MainForm : Form
 
     private void InitLanguageButtons()
     {
-        int insertIndex = toolStrip.Items.IndexOf(btnConfig);
-
         foreach (var lang in Languages)
         {
             var btn = new ToolStripButton
@@ -208,10 +231,7 @@ public partial class MainForm : Form
             };
             btn.Click += LanguageButton_Click;
             _languageButtons.Add(btn);
-            toolStrip.Items.Insert(insertIndex++, btn);
         }
-
-        toolStrip.Items.Insert(insertIndex, new ToolStripSeparator());
 
         var selectedLanguage = Languages.FirstOrDefault(l => string.Equals(l.Code, AppConfig.Current.SelectedLanguageCode, StringComparison.OrdinalIgnoreCase))
             ?? Languages[0];
@@ -288,6 +308,7 @@ public partial class MainForm : Form
         btnOpen.Enabled = false;
 
         btnSave.Enabled = false;
+        btnMerge.Enabled = false;
 
         try
         {
@@ -318,6 +339,7 @@ public partial class MainForm : Form
             SetViewRefreshPending(false);
             statusRowCount.Text = $"Lignes : {rows.Count}";
             btnSave.Enabled = true;
+            btnMerge.Enabled = true;
         }
         catch (Exception ex)
         {
@@ -332,6 +354,7 @@ public partial class MainForm : Form
         {
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
+            btnMerge.Enabled = _allRows is not null;
         }
     }
 
@@ -371,6 +394,100 @@ public partial class MainForm : Form
             btnOpen.Enabled = true;
         }
     }
+
+    private async void BtnMerge_Click(object? sender, EventArgs e)
+    {
+        if (_allRows is null || _allRows.Count == 0)
+            return;
+
+        dataGridView.EndEdit();
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Sélectionner le fichier Excel destination",
+            Filter = "Fichiers Excel (*.xlsx)|*.xlsx",
+            RestoreDirectory = true,
+            CheckFileExists = true,
+        };
+
+        if (!string.IsNullOrWhiteSpace(_currentFilePath))
+            dialog.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
+
+        if (dialog.ShowDialog() != DialogResult.OK)
+            return;
+
+        btnOpen.Enabled = false;
+        btnSave.Enabled = false;
+        btnMerge.Enabled = false;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Style = ProgressBarStyle.Marquee;
+
+        try
+        {
+            var sourceDifferences = await Task.Run(() => _excelService.GetMergeSourceDifferences(dialog.FileName, _currentLanguage.Column, _allRows));
+            var mergeDecision = ConfirmMergeDifferences(sourceDifferences);
+            if (mergeDecision.Cancelled)
+            {
+                statusRowCount.Text = "Fusion annulée";
+                return;
+            }
+
+            statusProgressBar.Visible = true;
+            statusProgressBar.Style = ProgressBarStyle.Marquee;
+
+            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
+            int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.UpdateFrenchAndComment || r.Value.UpdateTranslationAndComment);
+
+            statusRowCount.Text = sourceDifferences.Count > 0
+                ? $"Fusion : {mergedCount} ligne(s) reportée(s), {ignoredCount} ignorée(s)"
+                : $"Fusion : {mergedCount} ligne(s) reportée(s)";
+            MessageBox.Show(
+                sourceDifferences.Count > 0
+                    ? $"Fusion terminée.\n\n{mergedCount} ligne(s) mise(s) à jour dans le fichier destination.\n{ignoredCount} ligne(s) ont été ignorée(s) car le français ou le commentaire source diffère."
+                    : $"Fusion terminée.\n\n{mergedCount} ligne(s) mise(s) à jour dans le fichier destination.",
+                "Fusion réussie",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Impossible de fusionner vers le fichier Excel :\n\n{ex.Message}",
+                "Erreur",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            statusProgressBar.Style = ProgressBarStyle.Blocks;
+            statusProgressBar.Visible = false;
+            btnOpen.Enabled = true;
+            btnSave.Enabled = _allRows is not null;
+            btnMerge.Enabled = _allRows is not null;
+        }
+    }
+
+    private MergeDecision ConfirmMergeDifferences(IReadOnlyList<MergeDifference> differences)
+    {
+        var resolutions = new Dictionary<string, MergeDifferenceResolution>(StringComparer.OrdinalIgnoreCase);
+        if (differences.Count == 0)
+            return new MergeDecision(resolutions, false);
+
+        statusProgressBar.Visible = false;
+
+        foreach (var difference in differences)
+        {
+            var result = MergeDifferenceForm.ShowDialog(this, difference);
+            if (result is null)
+                return new MergeDecision(resolutions, true);
+
+            resolutions[difference.SyncKey] = result;
+        }
+
+        return new MergeDecision(resolutions, false);
+    }
+
+    private sealed record MergeDecision(IReadOnlyDictionary<string, MergeDifferenceResolution> Resolutions, bool Cancelled);
 
     // --- Filtres (style ResX Resource Manager) ---
 

@@ -20,4 +20,13 @@ internal sealed class ExcelService : IExcelService
 
     public void Save(string filePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
         => ExcelReader.Save(filePath, activeColumn, rows);
+
+    public int Merge(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
+        => ExcelReader.Merge(destinationFilePath, activeColumn, rows);
+
+    public List<MergeDifference> GetMergeSourceDifferences(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
+        => ExcelReader.GetMergeSourceDifferences(destinationFilePath, activeColumn, rows);
+
+    public int Merge(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows, IReadOnlyDictionary<string, MergeDifferenceResolution> sourceDifferenceResolutions)
+        => ExcelReader.Merge(destinationFilePath, activeColumn, rows, sourceDifferenceResolutions);
 }

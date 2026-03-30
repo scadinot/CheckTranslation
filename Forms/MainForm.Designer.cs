@@ -33,9 +33,6 @@ partial class MainForm
         colFrench = new DataGridViewTextBoxColumn();
         colTranslation = new DataGridViewTextBoxColumn();
         toolStrip = new ToolStrip();
-        btnOpen = new ToolStripButton();
-        btnSave = new ToolStripButton();
-        btnConfig = new ToolStripButton();
         statusStrip = new StatusStrip();
         statusProgressBar = new ToolStripProgressBar();
         statusFileName = new ToolStripStatusLabel();
@@ -45,6 +42,10 @@ partial class MainForm
         statusVerificationCacheCount = new ToolStripStatusLabel();
         statusLanguage = new ToolStripStatusLabel();
         statusProvider = new ToolStripStatusLabel();
+        btnConfig = new ToolStripButton();
+        btnMerge = new ToolStripButton();
+        btnSave = new ToolStripButton();
+        btnOpen = new ToolStripButton();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
         toolStrip.SuspendLayout();
         statusStrip.SuspendLayout();
@@ -86,33 +87,10 @@ partial class MainForm
         // toolStrip
         // 
         toolStrip.ImageScalingSize = new Size(24, 24);
-        toolStrip.Items.AddRange(new ToolStripItem[] { btnOpen, btnSave, btnConfig });
         toolStrip.Location = new Point(0, 0);
         toolStrip.Name = "toolStrip";
         toolStrip.Size = new Size(1351, 25);
         toolStrip.TabIndex = 2;
-        // 
-        // btnOpen
-        // 
-        btnOpen.DisplayStyle = ToolStripItemDisplayStyle.Image;
-        btnOpen.Name = "btnOpen";
-        btnOpen.Size = new Size(23, 22);
-        btnOpen.ToolTipText = "Ouvrir";
-        // 
-        // btnSave
-        // 
-        btnSave.DisplayStyle = ToolStripItemDisplayStyle.Image;
-        btnSave.Enabled = false;
-        btnSave.Name = "btnSave";
-        btnSave.Size = new Size(23, 22);
-        btnSave.ToolTipText = "Sauvegarder";
-        // 
-        // btnConfig
-        // 
-        btnConfig.DisplayStyle = ToolStripItemDisplayStyle.Image;
-        btnConfig.Name = "btnConfig";
-        btnConfig.Size = new Size(23, 22);
-        btnConfig.ToolTipText = "Configuration";
         // 
         // statusStrip
         // 
@@ -184,6 +162,36 @@ partial class MainForm
         statusProvider.Size = new Size(4, 17);
         statusProvider.TextAlign = ContentAlignment.MiddleLeft;
         // 
+        // btnConfig
+        // 
+        btnConfig.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnConfig.Name = "btnConfig";
+        btnConfig.Size = new Size(23, 22);
+        btnConfig.ToolTipText = "Configuration";
+        // 
+        // btnMerge
+        // 
+        btnMerge.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnMerge.Enabled = false;
+        btnMerge.Name = "btnMerge";
+        btnMerge.Size = new Size(23, 22);
+        btnMerge.ToolTipText = "Fusionner vers un fichier Excel";
+        // 
+        // btnSave
+        // 
+        btnSave.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnSave.Enabled = false;
+        btnSave.Name = "btnSave";
+        btnSave.Size = new Size(23, 22);
+        btnSave.ToolTipText = "Sauvegarder";
+        // 
+        // btnOpen
+        // 
+        btnOpen.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        btnOpen.Name = "btnOpen";
+        btnOpen.Size = new Size(23, 22);
+        btnOpen.ToolTipText = "Ouvrir";
+        // 
         // MainForm
         // 
         AutoScaleDimensions = new SizeF(7F, 15F);
@@ -211,10 +219,7 @@ partial class MainForm
     private DataGridViewTextBoxColumn colFrench;
     private DataGridViewTextBoxColumn colTranslation;
     private ToolStrip toolStrip;
-    private ToolStripButton btnOpen;
-    private ToolStripButton btnSave;
     private readonly List<ToolStripButton> _languageButtons = new();
-    private ToolStripButton btnConfig;
     private StatusStrip statusStrip;
     private ToolStripProgressBar statusProgressBar;
     private ToolStripStatusLabel statusFileName;
@@ -224,4 +229,8 @@ partial class MainForm
     private ToolStripStatusLabel statusVerificationCacheCount;
     private ToolStripStatusLabel statusLanguage;
     private ToolStripStatusLabel statusProvider;
+    private ToolStripButton btnOpen;
+    private ToolStripButton btnSave;
+    private ToolStripButton btnMerge;
+    private ToolStripButton btnConfig;
 }
