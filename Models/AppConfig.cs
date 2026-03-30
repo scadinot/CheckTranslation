@@ -19,6 +19,7 @@ internal sealed class AppConfig
 
     private const bool DefaultShowDetails = true;
     private const string DefaultSelectedLanguageCode = "en-US";
+    private static readonly Dictionary<string, float> EmptyColumnWidths = new(StringComparer.Ordinal);
 
     internal static string GetDefaultUrl(AiProvider provider)
         => provider == AiProvider.Anthropic ? DefaultAnthropicUrl : DefaultOpenAiUrl;
@@ -204,6 +205,10 @@ internal sealed class AppConfig
     public AiProvider Provider { get; set; } = AiProvider.OpenAI;
     public bool ShowDetails { get; set; } = DefaultShowDetails;
     public string SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
+    public int WindowWidth { get; set; }
+    public int WindowHeight { get; set; }
+    public Dictionary<string, float> ColumnFillWeightsWithDetails { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, float> ColumnFillWeightsWithoutDetails { get; set; } = new(StringComparer.Ordinal);
 
     public string Key => Provider == AiProvider.Anthropic ? AnthropicKey : OpenAiKey;
     public string Url => Provider == AiProvider.Anthropic ? AnthropicUrl : OpenAiUrl;
@@ -229,6 +234,10 @@ internal sealed class AppConfig
             Provider = Provider.ToString(),
             ShowDetails = ShowDetails,
             SelectedLanguageCode = SelectedLanguageCode,
+            WindowWidth = WindowWidth,
+            WindowHeight = WindowHeight,
+            ColumnFillWeightsWithDetails = ColumnFillWeightsWithDetails,
+            ColumnFillWeightsWithoutDetails = ColumnFillWeightsWithoutDetails,
         };
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(FilePath, json);
@@ -278,6 +287,14 @@ internal sealed class AppConfig
             Provider = provider,
             ShowDetails = dto.ShowDetails ?? DefaultShowDetails,
             SelectedLanguageCode = string.IsNullOrWhiteSpace(dto.SelectedLanguageCode) ? DefaultSelectedLanguageCode : dto.SelectedLanguageCode,
+            WindowWidth = dto.WindowWidth ?? 0,
+            WindowHeight = dto.WindowHeight ?? 0,
+            ColumnFillWeightsWithDetails = dto.ColumnFillWeightsWithDetails is null
+                ? new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal)
+                : new Dictionary<string, float>(dto.ColumnFillWeightsWithDetails, StringComparer.Ordinal),
+            ColumnFillWeightsWithoutDetails = dto.ColumnFillWeightsWithoutDetails is null
+                ? new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal)
+                : new Dictionary<string, float>(dto.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
         };
 
         // Si un des champs a été laissé vide, on applique les valeurs par défaut du provider sélectionné.
@@ -346,6 +363,10 @@ internal sealed class AppConfig
         public string? Provider { get; set; } = nameof(AiProvider.OpenAI);
         public bool? ShowDetails { get; set; } = DefaultShowDetails;
         public string? SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
+        public int? WindowWidth { get; set; }
+        public int? WindowHeight { get; set; }
+        public Dictionary<string, float>? ColumnFillWeightsWithDetails { get; set; }
+        public Dictionary<string, float>? ColumnFillWeightsWithoutDetails { get; set; }
     }
 }
 

@@ -71,6 +71,7 @@ public partial class MainForm : Form
         dataGridView.SelectionChanged += (_, _) => UpdateSelectionStatus();
         InitFilterPanel();
         InitContextMenu();
+        InitLayoutPersistence();
         ApplyShowDetails(AppConfig.Current.ShowDetails);
         UpdateSelectionStatus();
         UpdateTranslationCacheCountStatus();
@@ -176,6 +177,7 @@ public partial class MainForm : Form
         ApplyShowDetails(show);
         var config = AppConfig.Current;
         config.ShowDetails = show;
+        SaveColumnWidths();
         config.Save();
     }
 
@@ -187,6 +189,7 @@ public partial class MainForm : Form
         colKey!.Visible = show;
         if (btnDetails is not null)
             btnDetails.Checked = show;
+        RestoreColumnWidths();
         UpdateFilterPanelLayout();
     }
 
