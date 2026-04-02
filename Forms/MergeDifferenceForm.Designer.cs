@@ -60,6 +60,7 @@ partial class MergeDifferenceForm
         dataGridView.AllowUserToAddRows = false;
         dataGridView.AllowUserToDeleteRows = false;
         dataGridView.AllowUserToResizeRows = false;
+        dataGridView.AutoGenerateColumns = false;
         dataGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         dataGridView.BackgroundColor = SystemColors.Window;
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
@@ -69,6 +70,7 @@ partial class MergeDifferenceForm
         dataGridView.MultiSelect = false;
         dataGridView.Name = "dataGridView";
         dataGridView.ReadOnly = true;
+        dataGridView.RowHeadersVisible = true;
         dataGridView.RowHeadersWidth = 110;
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         dataGridView.Size = new Size(1152, 87);
@@ -77,6 +79,7 @@ partial class MergeDifferenceForm
         // colProject
         // 
         colProject.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colProject.DataPropertyName = "Project";
         colProject.FillWeight = 10F;
         colProject.HeaderText = "Projet";
         colProject.MinimumWidth = 6;
@@ -87,6 +90,7 @@ partial class MergeDifferenceForm
         // colFile
         // 
         colFile.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colFile.DataPropertyName = "File";
         colFile.FillWeight = 16F;
         colFile.HeaderText = "Fichier";
         colFile.MinimumWidth = 6;
@@ -97,6 +101,7 @@ partial class MergeDifferenceForm
         // colKey
         // 
         colKey.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colKey.DataPropertyName = "Key";
         colKey.FillWeight = 16F;
         colKey.HeaderText = "Clé";
         colKey.MinimumWidth = 6;
@@ -107,6 +112,7 @@ partial class MergeDifferenceForm
         // colFrench
         // 
         colFrench.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colFrench.DataPropertyName = "French";
         colFrench.FillWeight = 18F;
         colFrench.HeaderText = "Français";
         colFrench.MinimumWidth = 6;
@@ -117,8 +123,9 @@ partial class MergeDifferenceForm
         // colFrenchComment
         // 
         colFrenchComment.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colFrenchComment.DataPropertyName = "FrenchComment";
         colFrenchComment.FillWeight = 18F;
-        colFrenchComment.HeaderText = "Commentaire";
+        colFrenchComment.HeaderText = "Commentaire FR";
         colFrenchComment.MinimumWidth = 6;
         colFrenchComment.Name = "colFrenchComment";
         colFrenchComment.ReadOnly = true;
@@ -127,6 +134,7 @@ partial class MergeDifferenceForm
         // colTranslation
         // 
         colTranslation.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+        colTranslation.DataPropertyName = "Translation";
         colTranslation.FillWeight = 18F;
         colTranslation.HeaderText = "Traduction";
         colTranslation.MinimumWidth = 6;
@@ -137,8 +145,9 @@ partial class MergeDifferenceForm
         // colTranslationComment
         // 
         colTranslationComment.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        colTranslationComment.DataPropertyName = "TranslationComment";
         colTranslationComment.FillWeight = 18F;
-        colTranslationComment.HeaderText = "Commentaire";
+        colTranslationComment.HeaderText = "Commentaire Traduction";
         colTranslationComment.MinimumWidth = 6;
         colTranslationComment.Name = "colTranslationComment";
         colTranslationComment.ReadOnly = true;

@@ -1,37 +1,25 @@
+using System.ComponentModel;
+
 namespace CheckTranslation;
 
 internal sealed partial class MergeDifferenceForm : Form
 {
+    private readonly BindingList<MergeDifferenceDisplayRow> _rows = [];
+
     public MergeDifferenceResolution? Resolution { get; private set; }
 
     public MergeDifferenceForm(MergeDifference difference)
     {
         InitializeComponent();
 
-        dataGridView.Rows.Clear();
-        dataGridView.Rows.Add(
-            difference.Project,
-            difference.File,
-            difference.Key,
-            difference.DestinationFrench,
-            difference.DestinationFrenchComment,
-            difference.DestinationTranslation,
-            difference.DestinationTranslationComment);
-        dataGridView.Rows.Add(
-            difference.Project,
-            difference.File,
-            difference.Key,
-            difference.SourceFrench,
-            difference.SourceFrenchComment,
-            difference.SourceTranslation,
-            difference.SourceTranslationComment);
+        _rows.Add(new MergeDifferenceDisplayRow("Destination", difference.Destination));
+        _rows.Add(new MergeDifferenceDisplayRow("Source", difference.Source));
+        dataGridView.DataSource = _rows;
 
-        if (dataGridView.Rows.Count >= 2)
-        {
-            dataGridView.Rows[0].HeaderCell.Value = "Destination";
-            dataGridView.Rows[1].HeaderCell.Value = "Source";
-        }
+        for (int i = 0; i < dataGridView.Rows.Count && i < _rows.Count; i++)
+            dataGridView.Rows[i].HeaderCell.Value = _rows[i].Origin;
 
+        dataGridView.CurrentCell = null;
         dataGridView.ClearSelection();
     }
 
@@ -55,5 +43,29 @@ internal sealed partial class MergeDifferenceForm : Form
         Resolution = null;
         DialogResult = DialogResult.Cancel;
         Close();
+    }
+
+    private sealed class MergeDifferenceDisplayRow
+    {
+        public MergeDifferenceDisplayRow(string origin, MergeRowSnapshot snapshot)
+        {
+            Origin = origin;
+            Project = snapshot.Project;
+            File = snapshot.File;
+            Key = snapshot.Key;
+            French = snapshot.French;
+            FrenchComment = snapshot.FrenchComment;
+            Translation = snapshot.Translation;
+            TranslationComment = snapshot.TranslationComment;
+        }
+
+        public string Origin { get; }
+        public string Project { get; }
+        public string File { get; }
+        public string Key { get; }
+        public string French { get; }
+        public string FrenchComment { get; }
+        public string Translation { get; }
+        public string TranslationComment { get; }
     }
 }

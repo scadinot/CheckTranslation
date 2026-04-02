@@ -436,7 +436,7 @@ public partial class MainForm : Form
             statusProgressBar.Style = ProgressBarStyle.Marquee;
 
             var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
-            int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.UpdateFrenchAndComment || r.Value.UpdateTranslationAndComment);
+            int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.HasAnyChange);
 
             statusRowCount.Text = sourceDifferences.Count > 0
                 ? $"Fusion : {mergedCount} ligne(s) reportée(s), {ignoredCount} ignorée(s)"

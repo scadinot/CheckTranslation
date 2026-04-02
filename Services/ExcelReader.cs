@@ -124,35 +124,22 @@ internal static class ExcelReader
             bool sourceDiffers = !string.Equals(destinationFrench, sourceRow.French, StringComparison.Ordinal)
                 || !string.Equals(comment, sourceRow.FrenchComment, StringComparison.Ordinal);
 
-            if (sourceDiffers)
-            {
-                if (!sourceDifferenceResolutions.TryGetValue(syncKey, out var resolution))
-                    continue;
-
-                bool hasAnyUpdate = resolution.UpdateFrenchAndComment || resolution.UpdateTranslationAndComment;
-                if (!hasAnyUpdate)
-                    continue;
-
-                if (resolution.UpdateFrenchAndComment)
-                {
-                    WriteCellValue(worksheet.Cell(r, ColFrench), sourceRow.French);
-                    WriteCellValue(worksheet.Cell(r, ColComment), sourceRow.FrenchComment);
-                }
-
-                if (resolution.UpdateTranslationAndComment)
-                {
-                    WriteCellValue(worksheet.Cell(r, activeColumn), sourceRow.Translations.GetValueOrDefault(activeColumn, sourceRow.Translation));
-                    WriteCellValue(worksheet.Cell(r, activeColumn - 1), sourceRow.Comments.GetValueOrDefault(activeColumn, sourceRow.Comment));
-                    mergedCount++;
-                    continue;
-                }
-
-                mergedCount++;
+            var resolution = GetMergeResolution(sourceDiffers, syncKey, sourceDifferenceResolutions);
+            if (resolution is null || !resolution.HasAnyChange)
                 continue;
+
+            if (resolution.UpdateFrenchAndComment)
+            {
+                WriteCellValue(worksheet.Cell(r, ColFrench), sourceRow.French);
+                WriteCellValue(worksheet.Cell(r, ColComment), sourceRow.FrenchComment);
             }
 
-            WriteCellValue(worksheet.Cell(r, activeColumn), sourceRow.Translations.GetValueOrDefault(activeColumn, sourceRow.Translation));
-            WriteCellValue(worksheet.Cell(r, activeColumn - 1), sourceRow.Comments.GetValueOrDefault(activeColumn, sourceRow.Comment));
+            if (resolution.UpdateTranslationAndComment)
+            {
+                WriteCellValue(worksheet.Cell(r, activeColumn), sourceRow.Translations.GetValueOrDefault(activeColumn, sourceRow.Translation));
+                WriteCellValue(worksheet.Cell(r, activeColumn - 1), sourceRow.Comments.GetValueOrDefault(activeColumn, sourceRow.Comment));
+            }
+
             mergedCount++;
         }
 
@@ -187,29 +174,48 @@ internal static class ExcelReader
                 continue;
 
             var destinationFrench = worksheet.Cell(r, ColFrench).GetString();
-            var destinationTranslation = worksheet.Cell(r, activeColumn).GetString();
-            var destinationTranslationComment = worksheet.Cell(r, activeColumn - 1).GetString();
             if (!string.Equals(destinationFrench, sourceRow.French, StringComparison.Ordinal)
                 || !string.Equals(comment, sourceRow.FrenchComment, StringComparison.Ordinal))
             {
                 differences.Add(new MergeDifference(
                     syncKey,
-                    sourceRow.Project,
-                    sourceRow.File,
-                    sourceRow.Key,
-                    sourceRow.French,
-                    destinationFrench,
-                    sourceRow.FrenchComment,
-                    comment,
-                    sourceRow.Translation,
-                    destinationTranslation,
-                    sourceRow.Comment,
-                    destinationTranslationComment));
+                    CreateSnapshot(sourceRow),
+                    CreateSnapshot(worksheet, r, activeColumn)));
             }
         }
 
         return differences;
     }
+
+    private static MergeDifferenceResolution? GetMergeResolution(bool sourceDiffers, string syncKey, IReadOnlyDictionary<string, MergeDifferenceResolution> sourceDifferenceResolutions)
+    {
+        if (!sourceDiffers)
+            return new MergeDifferenceResolution(UpdateFrenchAndComment: false, UpdateTranslationAndComment: true);
+
+        return sourceDifferenceResolutions.TryGetValue(syncKey, out var resolution)
+            ? resolution
+            : null;
+    }
+
+    private static MergeRowSnapshot CreateSnapshot(TranslationRow row)
+        => new(
+            row.Project,
+            row.File,
+            row.Key,
+            row.French,
+            row.FrenchComment,
+            row.Translation,
+            row.Comment);
+
+    private static MergeRowSnapshot CreateSnapshot(IXLWorksheet worksheet, int rowNumber, int activeColumn)
+        => new(
+            worksheet.Cell(rowNumber, ColProject).GetString(),
+            worksheet.Cell(rowNumber, ColFile).GetString(),
+            worksheet.Cell(rowNumber, ColKey).GetString(),
+            worksheet.Cell(rowNumber, ColFrench).GetString(),
+            worksheet.Cell(rowNumber, ColComment).GetString(),
+            worksheet.Cell(rowNumber, activeColumn).GetString(),
+            worksheet.Cell(rowNumber, activeColumn - 1).GetString());
 
     private static string BuildSyncKey(string project, string file, string key)
         => string.Join("\u001F", project.Trim(), file.Trim(), key.Trim());
