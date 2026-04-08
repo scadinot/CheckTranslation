@@ -6,9 +6,12 @@ public partial class MainForm : Form
 {
     private readonly IExcelService _excelService;
     private readonly ITranslationService _translationService;
+    private readonly IGlossaryService _glossaryService;
     private readonly Func<ConfigForm> _configFormFactory;
+    private readonly Func<GlossaryForm> _glossaryFormFactory;
+    private readonly Func<GlossaryExtractionDialog> _extractionDialogFactory;
 
-    private static readonly LanguageInfo[] Languages =
+    internal static readonly LanguageInfo[] Languages =
     [
         new("en-US", "Anglais",     9),
         new("de-DE", "Allemand",    7),
@@ -29,20 +32,36 @@ public partial class MainForm : Form
     private ListSortDirection _sortDirection;
     private int _contextMenuRowIndex = -1;
     private ToolStripButton? btnDetails;
+    private ToolStripButton? btnGlossary;
     private DataGridViewTextBoxColumn? colProject;
     private DataGridViewTextBoxColumn? colFile;
     private DataGridViewTextBoxColumn? colKey;
     private DataGridViewTextBoxColumn colComment = null!;
 
-    public MainForm() : this(new ExcelService(), new TranslationService(), () => new ConfigForm())
+    public MainForm() : this(
+        new ExcelService(),
+        new TranslationService(),
+        new GlossaryService(),
+        () => new ConfigForm(),
+        () => new GlossaryForm(),
+        () => new GlossaryExtractionDialog())
     {
     }
 
-    internal MainForm(IExcelService excelService, ITranslationService translationService, Func<ConfigForm> configFormFactory)
+    internal MainForm(
+        IExcelService excelService,
+        ITranslationService translationService,
+        IGlossaryService glossaryService,
+        Func<ConfigForm> configFormFactory,
+        Func<GlossaryForm> glossaryFormFactory,
+        Func<GlossaryExtractionDialog> extractionDialogFactory)
     {
         _excelService = excelService;
         _translationService = translationService;
+        _glossaryService = glossaryService;
         _configFormFactory = configFormFactory;
+        _glossaryFormFactory = glossaryFormFactory;
+        _extractionDialogFactory = extractionDialogFactory;
 
         InitializeComponent();
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
@@ -59,6 +78,7 @@ public partial class MainForm : Form
         InitDetailsColumns();
         InitCommentColumn();
         InitDetailsButton();
+        InitGlossaryButton();
         InitRefreshButton();
         InitLanguageButtons();
         ArrangeToolStripItems();
@@ -173,9 +193,35 @@ public partial class MainForm : Form
         btnDetails.Click += BtnDetails_Click;
     }
 
+    private void InitGlossaryButton()
+    {
+        btnGlossary = new ToolStripButton
+        {
+            Image = LoadGlossaryIcon(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            ToolTipText = "Éditer le glossaire métier",
+        };
+        btnGlossary.Click += BtnGlossary_Click;
+    }
+
+    private static Bitmap LoadGlossaryIcon()
+    {
+        var customPath = Path.Combine(ResourceDir, "glossary.png");
+        if (File.Exists(customPath))
+            return LoadIcon("glossary.png", 24);
+        return LoadIcon("config.png", 24);
+    }
+
+    private void BtnGlossary_Click(object? sender, EventArgs e)
+    {
+        using var form = _glossaryFormFactory();
+        form.SelectLanguage(_currentLanguage.Code);
+        form.ShowDialog(this);
+    }
+
     private void ArrangeToolStripItems()
     {
-        if (btnDetails is null || btnRefresh is null)
+        if (btnDetails is null || btnRefresh is null || btnGlossary is null)
             return;
 
         toolStrip.Items.Clear();
@@ -185,6 +231,8 @@ public partial class MainForm : Form
         toolStrip.Items.Add(btnMerge);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnDetails);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnGlossary);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnConfig);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -733,7 +781,8 @@ public partial class MainForm : Form
         if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
             return;
 
-        _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name);
+        var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
+        _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name, fingerprint);
         UpdateTranslationCacheCountStatus();
     }
 
@@ -919,6 +968,9 @@ public partial class MainForm : Form
         var menuVerify = new ToolStripMenuItem("Vérifier la traduction");
         menuVerify.Click += MenuVerify_Click;
 
+        var menuExtractTerms = new ToolStripMenuItem("Extraire les termes métier…");
+        menuExtractTerms.Click += MenuExtractTerms_Click;
+
         var menuCopyFrench = new ToolStripMenuItem("Copier le français");
         menuCopyFrench.Click += MenuCopyFrench_Click;
 
@@ -927,6 +979,8 @@ public partial class MainForm : Form
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(menuTranslate);
         contextMenu.Items.Add(menuVerify);
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(menuExtractTerms);
 
         var frenchContextMenu = new ContextMenuStrip();
         frenchContextMenu.Items.Add(menuCopyFrench);
@@ -939,12 +993,14 @@ public partial class MainForm : Form
                 menuAutoTranslate.Text = $"Auto-traduire la sélection ({count} lignes)";
                 menuTranslate.Text = $"Traduire la sélection ({count} lignes)";
                 menuVerify.Text = $"Vérifier la sélection ({count} lignes)";
+                menuExtractTerms.Text = $"Extraire les termes métier de la sélection ({count} lignes)…";
             }
             else
             {
                 menuAutoTranslate.Text = "Auto-traduire (copie existante)";
                 menuTranslate.Text = "Traduire";
                 menuVerify.Text = "Vérifier la traduction";
+                menuExtractTerms.Text = "Extraire les termes métier…";
             }
         };
 
@@ -1194,9 +1250,12 @@ public partial class MainForm : Form
             statusRowCount.Text = $"Traduction : {done} / {rows.Count}";
         });
 
+        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name);
+        var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
+
         try
         {
-            var batches = await _translationService.TranslateInBatchesAsync(texts, config, _currentLanguage.Name, progress);
+            var batches = await _translationService.TranslateInBatchesAsync(texts, config, _currentLanguage.Name, glossarySection, glossaryFingerprint, progress);
 
             int rowIndex = 0;
             foreach (var batch in batches)
@@ -1283,9 +1342,12 @@ public partial class MainForm : Form
             statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
         });
 
+        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name);
+        var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
+
         try
         {
-            var batches = await _translationService.VerifyInBatchesAsync(pairs, config, _currentLanguage.Name, progress);
+            var batches = await _translationService.VerifyInBatchesAsync(pairs, config, _currentLanguage.Name, glossarySection, glossaryFingerprint, progress);
 
             int rowIndex = 0;
             foreach (var batch in batches)
@@ -1295,7 +1357,7 @@ public partial class MainForm : Form
                     if (!string.IsNullOrEmpty(batch[i]))
                     {
                         rows[rowIndex].Comment = batch[i];
-                        _translationService.UpdateVerificationCache(rows[rowIndex].French, rows[rowIndex].Translation, batch[i], config, _currentLanguage.Name);
+                        _translationService.UpdateVerificationCache(rows[rowIndex].French, rows[rowIndex].Translation, batch[i], config, _currentLanguage.Name, glossaryFingerprint);
                     }
                     else
                         errors++;
@@ -1326,6 +1388,138 @@ public partial class MainForm : Form
                 MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
                     "Erreur de vérification partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
+    }
+
+    private async void MenuExtractTerms_Click(object? sender, EventArgs e)
+    {
+        IReadOnlyList<TranslationRow> rows;
+        if (dataGridView.SelectedRows.Count > 1)
+        {
+            rows = dataGridView.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as TranslationRow)
+                .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.French))
+                .Cast<TranslationRow>()
+                .ToList();
+        }
+        else
+        {
+            if (_contextMenuRowIndex < 0) return;
+
+            var row = dataGridView.Rows[_contextMenuRowIndex].DataBoundItem as TranslationRow;
+            if (row is null || string.IsNullOrWhiteSpace(row.French)) return;
+            rows = [row];
+        }
+
+        await ExtractTermsRowsAsync(rows);
+    }
+
+    private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows)
+    {
+        if (rows.Count == 0)
+            return;
+
+        var config = AppConfig.Current;
+        if (!HasApiConfig(config))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var texts = rows.Select(r => r.French).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+        if (texts.Count == 0)
+            return;
+
+        btnOpen.Enabled = false;
+        btnSave.Enabled = false;
+        statusProgressBar.Visible = true;
+        statusProgressBar.Maximum = texts.Count;
+        statusProgressBar.Value = 0;
+        statusRowCount.Text = $"Extraction : 0 / {texts.Count}";
+
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
+
+        var progress = new Progress<int>(done =>
+        {
+            statusProgressBar.Value = Math.Min(done, statusProgressBar.Maximum);
+            statusRowCount.Text = $"Extraction : {done} / {texts.Count}";
+        });
+
+        IReadOnlyList<GlossaryEntry> candidates = Array.Empty<GlossaryEntry>();
+        try
+        {
+            candidates = await _glossaryService.ExtractCandidatesAsync(
+                texts,
+                config,
+                _currentLanguage.Code,
+                _currentLanguage.Name,
+                progress);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de l'extraction des termes métier :\n\n{ex.Message}",
+                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            statusProgressBar.Visible = false;
+            btnOpen.Enabled = true;
+            btnSave.Enabled = _allRows is not null;
+            RestoreStatusBar();
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
+        }
+
+        if (candidates.Count == 0)
+        {
+            MessageBox.Show(
+                "Aucun nouveau terme métier n'a été proposé pour la sélection.",
+                "Extraction",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = _extractionDialogFactory();
+        dialog.SetCandidates(candidates, _currentLanguage.Name);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var accepted = dialog.AcceptedEntries;
+        if (accepted.Count == 0)
+            return;
+
+        var existing = _glossaryService.GetEntries(_currentLanguage.Code).ToList();
+        var keys = new HashSet<string>(
+            existing.Select(entry => entry.FrenchTerm.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in accepted)
+        {
+            if (string.IsNullOrWhiteSpace(entry.FrenchTerm))
+                continue;
+            if (!keys.Add(entry.FrenchTerm.Trim()))
+                continue;
+            existing.Add(entry);
+        }
+
+        _glossaryService.ReplaceEntries(_currentLanguage.Code, existing);
+        try
+        {
+            _glossaryService.Save();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Impossible d'enregistrer le glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        UpdateTranslationCacheCountStatus();
+        UpdateVerificationCacheCountStatus();
+        statusRowCount.Text = $"Glossaire : {accepted.Count} terme(s) ajouté(s)";
     }
 
     // --- Icônes ---

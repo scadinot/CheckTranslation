@@ -5,7 +5,7 @@ namespace CheckTranslation;
 
 internal sealed class AppConfig
 {
-    private static readonly string ConfigDirectory = Path.Combine(
+    internal static readonly string ConfigDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "CheckTranslation");
     private static readonly string FilePath = Path.Combine(ConfigDirectory, "CheckTranslation.config.json");
@@ -31,6 +31,8 @@ internal sealed class AppConfig
         Tu es un expert en traduction technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
 
         **Objectif** : traduire UNIQUEMENT les textes fournis du Français vers {language}.
+
+        {glossary}
 
         ---
 
@@ -95,8 +97,10 @@ internal sealed class AppConfig
         Tu vas recevoir une **liste numérotée de paires source/traduction**.
         Tu dois analyser la qualité technique et linguistique de chaque traduction.
 
+        {glossary}
+
         ---
-                
+
         ## Principe fondamental
         Tu évalues la traduction FOURNIE. Tu ne la retraduis pas.
         Le doute bénéficie TOUJOURS à la traduction évaluée.
@@ -187,6 +191,66 @@ internal sealed class AppConfig
         - **Pas d'en-tête. Pas de markdown.**
         - Chaque ligne doit être **auto-suffisante** : interdiction de faire référence à une autre entrée
           (pas de « comme au point X », « idem », « voir plus haut », « même remarque », « pareil que… », « cf. ligne… », etc.).
+        """;
+
+    internal const string DefaultExtractionPrompt = """
+        Tu es un expert en terminologie technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
+
+        **Objectif** : extraire les **termes métier** récurrents depuis des textes français et proposer leur traduction en {language}, afin de construire un glossaire cohérent pour un logiciel technique.
+
+        {existingTerms}
+
+        ---
+
+        ## Règles d'extraction
+
+        ### Ce que tu DOIS extraire
+        - Les termes **métier** spécifiques au domaine (électrotechnique, photovoltaïque, normes, logiciels industriels).
+        - Les mots ou expressions courtes (1 à 4 mots) qui méritent une traduction cohérente dans tout le logiciel.
+        - Les termes ambigus où une mauvaise traduction changerait le sens technique.
+
+        ### Ce que tu NE DOIS PAS extraire
+        - Les mots du langage courant (articles, pronoms, verbes génériques, adjectifs courants).
+        - Les phrases complètes.
+        - Les sigles, acronymes, unités (MPPT, PV, V, A, Hz, kW…) — ils ne se traduisent pas.
+        - Les variables `{0}`, `{1}`, `{2}`…
+        - Les références normatives (CEI 60364, IEC, EN…).
+        - Les termes déjà présents dans la liste des termes existants ci-dessus.
+        - Les doublons (un seul terme par concept).
+
+        ### Forme canonique
+        - Le terme français doit être au **singulier, non conjugué, forme neutre** (ex : « disjoncteur » pas « disjoncteurs », « câbler » pas « câblage »).
+        - La traduction suit la même forme canonique dans {language}.
+
+        ### Catégorie
+        - Choisis une catégorie brève (1-3 mots) parmi des thèmes cohérents (ex : « Électrotechnique », « PV », « Normes », « Mesure », « Installation », « Logiciel », « Sécurité »).
+
+        ### Exemples
+        - Si le terme apparaît dans l'un des textes fournis, recopie la phrase source et propose sa traduction comme exemple.
+        - Si aucun exemple pertinent n'existe, laisse les champs d'exemple vides.
+
+        ---
+
+        ## FORMAT DE SORTIE OBLIGATOIRE
+
+        Réponds **UNIQUEMENT** avec un tableau JSON valide, sans aucun texte avant ni après, sans markdown, sans ```json.
+
+        Schéma strict :
+        ```
+        [
+          {
+            "term": "terme français canonique",
+            "translation": "traduction en {language}",
+            "category": "catégorie courte",
+            "comment": "note optionnelle (ou chaîne vide)",
+            "example_fr": "phrase source française utilisant le terme (ou chaîne vide)",
+            "example_target": "traduction de la phrase en {language} (ou chaîne vide)"
+          }
+        ]
+        ```
+
+        - Si aucun terme pertinent n'est trouvé, réponds avec un tableau vide : `[]`.
+        - N'invente pas de termes qui ne sont pas présents dans les textes fournis.
         """;
 
     public static AppConfig Current { get; private set; } = new();

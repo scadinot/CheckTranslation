@@ -20,9 +20,11 @@ internal static partial class Translator
     private const int RetryCount = 3;
     private const int FixedParallelBatchRequests = 4;
 
-    public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage)
+    public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection)
     {
-        var systemPrompt = config.TranslatePrompt.Replace("{language}", targetLanguage);
+        var systemPrompt = config.TranslatePrompt
+            .Replace("{language}", targetLanguage)
+            .Replace("{glossary}", glossarySection ?? string.Empty);
 
         var sb = new StringBuilder();
         for (int i = 0; i < texts.Count; i++)
@@ -34,9 +36,11 @@ internal static partial class Translator
         return ParseNumberedList(content, texts.Count);
     }
 
-    public static async Task<string[]> VerifyBatchAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage)
+    public static async Task<string[]> VerifyBatchAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, string glossarySection)
     {
-        var systemPrompt = config.VerifyPrompt.Replace("{language}", targetLanguage);
+        var systemPrompt = config.VerifyPrompt
+            .Replace("{language}", targetLanguage)
+            .Replace("{glossary}", glossarySection ?? string.Empty);
 
         var sb = new StringBuilder();
         for (int i = 0; i < pairs.Count; i++)
@@ -48,11 +52,11 @@ internal static partial class Translator
         return ParseNumberedList(content, pairs.Count);
     }
 
-    public static Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null, Action<IReadOnlyList<(string French, string Translation)>, string[]>? onBatchCompleted = null)
-        => ProcessBatchesAsync(pairs, batch => VerifyBatchAsync(batch, config, targetLanguage), progress, onBatchCompleted);
+    public static Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, string glossarySection, IProgress<int>? progress = null, Action<IReadOnlyList<(string French, string Translation)>, string[]>? onBatchCompleted = null)
+        => ProcessBatchesAsync(pairs, batch => VerifyBatchAsync(batch, config, targetLanguage, glossarySection), progress, onBatchCompleted);
 
-    public static Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null, Action<IReadOnlyList<string>, string[]>? onBatchCompleted = null)
-        => ProcessBatchesAsync(texts, batch => TranslateBatchAsync(batch, config, targetLanguage), progress, onBatchCompleted);
+    public static Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection, IProgress<int>? progress = null, Action<IReadOnlyList<string>, string[]>? onBatchCompleted = null)
+        => ProcessBatchesAsync(texts, batch => TranslateBatchAsync(batch, config, targetLanguage, glossarySection), progress, onBatchCompleted);
 
     private static async Task<IReadOnlyList<string[]>> ProcessBatchesAsync<T>(IReadOnlyList<T> items, Func<IReadOnlyList<T>, Task<string[]>> processBatchAsync, IProgress<int>? progress, Action<IReadOnlyList<T>, string[]>? onBatchCompleted = null)
     {
@@ -95,7 +99,7 @@ internal static partial class Translator
         return batches;
     }
 
-    private static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
+    internal static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
         var retryPolicy = CreateRetryPolicy();
 

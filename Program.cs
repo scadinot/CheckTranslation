@@ -18,14 +18,24 @@ internal static class Program
         var services = new ServiceCollection();
         services.AddSingleton<IExcelService, ExcelService>();
         services.AddSingleton<ITranslationService, TranslationService>();
+        services.AddSingleton<IGlossaryService, GlossaryService>();
 
         services.AddTransient<ConfigForm>();
         services.AddTransient<Func<ConfigForm>>(sp => () => sp.GetRequiredService<ConfigForm>());
 
+        services.AddTransient<GlossaryForm>();
+        services.AddTransient<Func<GlossaryForm>>(sp => () => sp.GetRequiredService<GlossaryForm>());
+
+        services.AddTransient<GlossaryExtractionDialog>();
+        services.AddTransient<Func<GlossaryExtractionDialog>>(sp => () => sp.GetRequiredService<GlossaryExtractionDialog>());
+
         services.AddTransient<MainForm>(sp => new MainForm(
             sp.GetRequiredService<IExcelService>(),
             sp.GetRequiredService<ITranslationService>(),
-            sp.GetRequiredService<Func<ConfigForm>>()));
+            sp.GetRequiredService<IGlossaryService>(),
+            sp.GetRequiredService<Func<ConfigForm>>(),
+            sp.GetRequiredService<Func<GlossaryForm>>(),
+            sp.GetRequiredService<Func<GlossaryExtractionDialog>>()));
 
         using var serviceProvider = services.BuildServiceProvider();
         Application.Run(serviceProvider.GetRequiredService<MainForm>());
