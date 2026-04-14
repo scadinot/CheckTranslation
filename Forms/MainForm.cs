@@ -1493,14 +1493,14 @@ public partial class MainForm : Form
 
         var existing = _glossaryService.GetEntries(_currentLanguage.Code).ToList();
         var keys = new HashSet<string>(
-            existing.Select(entry => entry.FrenchTerm.Trim()),
+            existing.Select(entry => entry.Source.Trim()),
             StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in accepted)
         {
-            if (string.IsNullOrWhiteSpace(entry.FrenchTerm))
+            if (string.IsNullOrWhiteSpace(entry.Source))
                 continue;
-            if (!keys.Add(entry.FrenchTerm.Trim()))
+            if (!keys.Add(entry.Source.Trim()))
                 continue;
             existing.Add(entry);
         }

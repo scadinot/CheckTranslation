@@ -222,12 +222,8 @@ internal sealed class AppConfig
         - Le terme français doit être au **singulier, non conjugué, forme neutre** (ex : « disjoncteur » pas « disjoncteurs », « câbler » pas « câblage »).
         - La traduction suit la même forme canonique dans {language}.
 
-        ### Catégorie
-        - Choisis une catégorie brève (1-3 mots) parmi des thèmes cohérents (ex : « Électrotechnique », « PV », « Normes », « Mesure », « Installation », « Logiciel », « Sécurité »).
-
-        ### Exemples
-        - Si le terme apparaît dans l'un des textes fournis, recopie la phrase source et propose sa traduction comme exemple.
-        - Si aucun exemple pertinent n'existe, laisse les champs d'exemple vides.
+        ### Contexte
+        - Fournis une phrase courte expliquant le sens du terme dans le domaine technique (ex : « appareil de protection contre les surintensités »).
 
         ---
 
@@ -241,10 +237,7 @@ internal sealed class AppConfig
           {
             "term": "terme français canonique",
             "translation": "traduction en {language}",
-            "category": "catégorie courte",
-            "comment": "note optionnelle (ou chaîne vide)",
-            "example_fr": "phrase source française utilisant le terme (ou chaîne vide)",
-            "example_target": "traduction de la phrase en {language} (ou chaîne vide)"
+            "context": "phrase courte expliquant le sens du terme"
           }
         ]
         ```

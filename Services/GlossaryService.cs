@@ -38,7 +38,7 @@ internal sealed class GlossaryService : IGlossaryService
         lock (_lock)
         {
             var cleaned = entries
-                .Where(e => !string.IsNullOrWhiteSpace(e.FrenchTerm) && !string.IsNullOrWhiteSpace(e.Translation))
+                .Where(e => !string.IsNullOrWhiteSpace(e.Source) && !string.IsNullOrWhiteSpace(e.Destination))
                 .Select(Clone)
                 .ToList();
 
@@ -84,35 +84,15 @@ internal sealed class GlossaryService : IGlossaryService
         sb.AppendLine();
         sb.AppendLine("Tu DOIS respecter les traductions suivantes pour les termes ci-dessous. Respecte la casse et adapte le contexte (genre, nombre, conjugaison) si applicable.");
         sb.AppendLine();
-        sb.AppendLine("| Terme français | Traduction | Catégorie | Note |");
-        sb.AppendLine("|---|---|---|---|");
+        sb.AppendLine("| Source | Destination | Contexte |");
+        sb.AppendLine("|---|---|---|");
 
         foreach (var entry in entries)
         {
             sb.Append("| ")
-              .Append(EscapeMarkdownCell(entry.FrenchTerm)).Append(" | ")
-              .Append(EscapeMarkdownCell(entry.Translation)).Append(" | ")
-              .Append(EscapeMarkdownCell(entry.Category)).Append(" | ")
-              .Append(EscapeMarkdownCell(entry.Comment)).AppendLine(" |");
-        }
-
-        var examples = entries
-            .Where(e => !string.IsNullOrWhiteSpace(e.FrenchExample) && !string.IsNullOrWhiteSpace(e.TranslationExample))
-            .Take(10)
-            .ToList();
-
-        if (examples.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("### Exemples d'usage");
-            foreach (var example in examples)
-            {
-                sb.Append("- « ")
-                  .Append(example.FrenchExample.Trim())
-                  .Append(" » → « ")
-                  .Append(example.TranslationExample.Trim())
-                  .AppendLine(" »");
-            }
+              .Append(EscapeMarkdownCell(entry.Source)).Append(" | ")
+              .Append(EscapeMarkdownCell(entry.Destination)).Append(" | ")
+              .Append(EscapeMarkdownCell(entry.Context)).AppendLine(" |");
         }
 
         return sb.ToString();
@@ -132,12 +112,9 @@ internal sealed class GlossaryService : IGlossaryService
         var sb = new StringBuilder();
         foreach (var entry in entries)
         {
-            sb.Append(entry.FrenchTerm).Append('\u001F')
-              .Append(entry.Translation).Append('\u001F')
-              .Append(entry.Category).Append('\u001F')
-              .Append(entry.Comment).Append('\u001F')
-              .Append(entry.FrenchExample).Append('\u001F')
-              .Append(entry.TranslationExample).Append('\u001E');
+            sb.Append(entry.Source).Append('\u001F')
+              .Append(entry.Destination).Append('\u001F')
+              .Append(entry.Context).Append('\u001E');
         }
 
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
@@ -158,7 +135,7 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         var existing = GetEntries(languageCode);
         var existingTerms = new HashSet<string>(
-            existing.Select(e => e.FrenchTerm.Trim()),
+            existing.Select(e => e.Source.Trim()),
             StringComparer.OrdinalIgnoreCase);
 
         var existingListBlock = BuildExistingTermsBlock(existing);
@@ -193,8 +170,8 @@ internal sealed class GlossaryService : IGlossaryService
             var parsed = ParseExtractionResponse(raw);
             foreach (var candidate in parsed)
             {
-                var key = candidate.FrenchTerm.Trim();
-                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(candidate.Translation))
+                var key = candidate.Source.Trim();
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(candidate.Destination))
                     continue;
                 if (existingTerms.Contains(key))
                     continue;
@@ -221,9 +198,9 @@ internal sealed class GlossaryService : IGlossaryService
         sb.AppendLine();
         foreach (var entry in existing.Take(200))
         {
-            sb.Append("- ").Append(entry.FrenchTerm);
-            if (!string.IsNullOrWhiteSpace(entry.Translation))
-                sb.Append(" → ").Append(entry.Translation);
+            sb.Append("- ").Append(entry.Source);
+            if (!string.IsNullOrWhiteSpace(entry.Destination))
+                sb.Append(" → ").Append(entry.Destination);
             sb.AppendLine();
         }
         return sb.ToString();
@@ -262,12 +239,9 @@ internal sealed class GlossaryService : IGlossaryService
 
                 var entry = new GlossaryEntry
                 {
-                    FrenchTerm = ReadString(element, "term"),
-                    Translation = ReadString(element, "translation"),
-                    Category = ReadString(element, "category"),
-                    Comment = ReadString(element, "comment"),
-                    FrenchExample = ReadString(element, "example_fr"),
-                    TranslationExample = ReadString(element, "example_target"),
+                    Source = ReadString(element, "term"),
+                    Destination = ReadString(element, "translation"),
+                    Context = ReadString(element, "context"),
                 };
                 result.Add(entry);
             }
@@ -332,12 +306,9 @@ internal sealed class GlossaryService : IGlossaryService
 
     private static GlossaryEntry Clone(GlossaryEntry source) => new()
     {
-        FrenchTerm = source.FrenchTerm,
-        Translation = source.Translation,
-        Category = source.Category,
-        Comment = source.Comment,
-        FrenchExample = source.FrenchExample,
-        TranslationExample = source.TranslationExample,
+        Source = source.Source,
+        Destination = source.Destination,
+        Context = source.Context,
     };
 
     private static string EscapeMarkdownCell(string? value)

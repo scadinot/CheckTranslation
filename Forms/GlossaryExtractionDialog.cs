@@ -57,50 +57,29 @@ internal sealed class GlossaryExtractionDialog : Form
             Name = "colSelected",
             HeaderText = "Ajouter",
             DataPropertyName = nameof(CandidateRow.Selected),
-            FillWeight = 6,
+            FillWeight = 8,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colFrenchTerm",
-            HeaderText = "Terme français",
-            DataPropertyName = nameof(CandidateRow.FrenchTerm),
-            FillWeight = 14,
+            Name = "colSource",
+            HeaderText = "Source",
+            DataPropertyName = nameof(CandidateRow.Source),
+            FillWeight = 25,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colTranslation",
-            HeaderText = "Traduction",
-            DataPropertyName = nameof(CandidateRow.Translation),
-            FillWeight = 14,
+            Name = "colDestination",
+            HeaderText = "Destination",
+            DataPropertyName = nameof(CandidateRow.Destination),
+            FillWeight = 25,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colCategory",
-            HeaderText = "Catégorie",
-            DataPropertyName = nameof(CandidateRow.Category),
-            FillWeight = 10,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colComment",
-            HeaderText = "Commentaire",
-            DataPropertyName = nameof(CandidateRow.Comment),
-            FillWeight = 12,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colFrenchExample",
-            HeaderText = "Exemple FR",
-            DataPropertyName = nameof(CandidateRow.FrenchExample),
-            FillWeight = 22,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colTranslationExample",
-            HeaderText = "Exemple cible",
-            DataPropertyName = nameof(CandidateRow.TranslationExample),
-            FillWeight = 22,
+            Name = "colContext",
+            HeaderText = "Contexte",
+            DataPropertyName = nameof(CandidateRow.Context),
+            FillWeight = 42,
         });
 
         _grid.DataSource = _candidates;
@@ -180,12 +159,9 @@ internal sealed class GlossaryExtractionDialog : Form
             _candidates.Add(new CandidateRow
             {
                 Selected = true,
-                FrenchTerm = entry.FrenchTerm,
-                Translation = entry.Translation,
-                Category = entry.Category,
-                Comment = entry.Comment,
-                FrenchExample = entry.FrenchExample,
-                TranslationExample = entry.TranslationExample,
+                Source = entry.Source,
+                Destination = entry.Destination,
+                Context = entry.Context,
             });
         }
         _lblHeader.Text = $"{entries.Count} terme(s) candidat(s) pour {languageName}. Cochez ceux à ajouter (édition possible).";
@@ -204,16 +180,13 @@ internal sealed class GlossaryExtractionDialog : Form
 
         AcceptedEntries = _candidates
             .Where(r => r.Selected
-                && !string.IsNullOrWhiteSpace(r.FrenchTerm)
-                && !string.IsNullOrWhiteSpace(r.Translation))
+                && !string.IsNullOrWhiteSpace(r.Source)
+                && !string.IsNullOrWhiteSpace(r.Destination))
             .Select(r => new GlossaryEntry
             {
-                FrenchTerm = r.FrenchTerm.Trim(),
-                Translation = r.Translation.Trim(),
-                Category = r.Category.Trim(),
-                Comment = r.Comment.Trim(),
-                FrenchExample = r.FrenchExample.Trim(),
-                TranslationExample = r.TranslationExample.Trim(),
+                Source = r.Source.Trim(),
+                Destination = r.Destination.Trim(),
+                Context = r.Context.Trim(),
             })
             .ToList();
 
@@ -224,11 +197,8 @@ internal sealed class GlossaryExtractionDialog : Form
     private sealed class CandidateRow
     {
         public bool Selected { get; set; } = true;
-        public string FrenchTerm { get; set; } = string.Empty;
-        public string Translation { get; set; } = string.Empty;
-        public string Category { get; set; } = string.Empty;
-        public string Comment { get; set; } = string.Empty;
-        public string FrenchExample { get; set; } = string.Empty;
-        public string TranslationExample { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string Destination { get; set; } = string.Empty;
+        public string Context { get; set; } = string.Empty;
     }
 }

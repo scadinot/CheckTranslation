@@ -82,50 +82,26 @@ internal sealed class GlossaryForm : Form
         };
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colFrenchTerm",
-            HeaderText = "Terme français",
-            DataPropertyName = nameof(GlossaryEntry.FrenchTerm),
-            FillWeight = 18,
+            Name = "colSource",
+            HeaderText = "Source",
+            DataPropertyName = nameof(GlossaryEntry.Source),
+            FillWeight = 30,
             SortMode = DataGridViewColumnSortMode.Automatic,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colTranslation",
-            HeaderText = "Traduction",
-            DataPropertyName = nameof(GlossaryEntry.Translation),
-            FillWeight = 18,
+            Name = "colDestination",
+            HeaderText = "Destination",
+            DataPropertyName = nameof(GlossaryEntry.Destination),
+            FillWeight = 30,
             SortMode = DataGridViewColumnSortMode.Automatic,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "colCategory",
-            HeaderText = "Catégorie",
-            DataPropertyName = nameof(GlossaryEntry.Category),
-            FillWeight = 10,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colComment",
-            HeaderText = "Commentaire",
-            DataPropertyName = nameof(GlossaryEntry.Comment),
-            FillWeight = 14,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colFrenchExample",
-            HeaderText = "Exemple FR",
-            DataPropertyName = nameof(GlossaryEntry.FrenchExample),
-            FillWeight = 20,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colTranslationExample",
-            HeaderText = "Exemple cible",
-            DataPropertyName = nameof(GlossaryEntry.TranslationExample),
-            FillWeight = 20,
+            Name = "colContext",
+            HeaderText = "Contexte",
+            DataPropertyName = nameof(GlossaryEntry.Context),
+            FillWeight = 40,
             SortMode = DataGridViewColumnSortMode.Automatic,
         });
         _grid.CellValueChanged += (_, _) => MarkDirty();
@@ -273,7 +249,7 @@ internal sealed class GlossaryForm : Form
             foreach (var (langCode, binding) in _bindingsByLanguage)
             {
                 var cleaned = binding
-                    .Where(entry => !string.IsNullOrWhiteSpace(entry.FrenchTerm) && !string.IsNullOrWhiteSpace(entry.Translation))
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Source) && !string.IsNullOrWhiteSpace(entry.Destination))
                     .ToList();
                 _glossaryService.ReplaceEntries(langCode, cleaned);
             }
@@ -329,11 +305,8 @@ internal sealed class GlossaryForm : Form
 
     private static GlossaryEntry Clone(GlossaryEntry source) => new()
     {
-        FrenchTerm = source.FrenchTerm,
-        Translation = source.Translation,
-        Category = source.Category,
-        Comment = source.Comment,
-        FrenchExample = source.FrenchExample,
-        TranslationExample = source.TranslationExample,
+        Source = source.Source,
+        Destination = source.Destination,
+        Context = source.Context,
     };
 }
