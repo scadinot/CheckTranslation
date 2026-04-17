@@ -116,30 +116,43 @@ internal sealed class TranslationService : ITranslationService
         if (pendingByText.Count > 0)
         {
             var uniqueTexts = pendingByText.Keys.ToList();
-            var translatedBatches = await Translator.TranslateInBatchesAsync(uniqueTexts, config, targetLanguage, null);
 
-            int translatedCount = 0;
-            foreach (var batch in translatedBatches)
-            {
-                for (int i = 0; i < batch.Length && translatedCount < uniqueTexts.Count; i++, translatedCount++)
+            await Translator.TranslateInBatchesAsync(
+                uniqueTexts,
+                config,
+                targetLanguage,
+                progress: null,
+                onBatchCompleted: (batchItems, batchResults) =>
                 {
-                    var sourceText = uniqueTexts[translatedCount];
-                    var translation = batch[i];
+                    int delta = 0;
+                    int count = Math.Min(batchItems.Count, batchResults.Length);
 
-                    if (!string.IsNullOrEmpty(translation))
+                    for (int i = 0; i < count; i++)
                     {
-                        var cacheKey = BuildCacheKey(sourceText, config, targetLanguage);
-                        lock (_cacheLock)
-                            _translationCache[cacheKey] = translation;
+                        var sourceText = batchItems[i];
+                        var translation = batchResults[i];
+
+                        if (!string.IsNullOrEmpty(translation))
+                        {
+                            var cacheKey = BuildCacheKey(sourceText, config, targetLanguage);
+                            lock (_cacheLock)
+                                _translationCache[cacheKey] = translation;
+                        }
+
+                        if (pendingByText.TryGetValue(sourceText, out var originalIndexes))
+                        {
+                            foreach (var idx in originalIndexes)
+                                results[idx] = translation;
+                            delta += originalIndexes.Count;
+                        }
                     }
 
-                    foreach (var index in pendingByText[sourceText])
-                        results[index] = translation;
-
-                    completed += pendingByText[sourceText].Count;
-                    progress?.Report(completed);
-                }
-            }
+                    if (delta > 0)
+                    {
+                        int done = Interlocked.Add(ref completed, delta);
+                        progress?.Report(done);
+                    }
+                });
         }
 
         return ChunkResults(results);
@@ -181,30 +194,43 @@ internal sealed class TranslationService : ITranslationService
         if (pendingByPair.Count > 0)
         {
             var uniquePairs = pendingByPair.Keys.ToList();
-            var verifiedBatches = await Translator.VerifyInBatchesAsync(uniquePairs, config, targetLanguage, null);
 
-            int verifiedCount = 0;
-            foreach (var batch in verifiedBatches)
-            {
-                for (int i = 0; i < batch.Length && verifiedCount < uniquePairs.Count; i++, verifiedCount++)
+            await Translator.VerifyInBatchesAsync(
+                uniquePairs,
+                config,
+                targetLanguage,
+                progress: null,
+                onBatchCompleted: (batchItems, batchResults) =>
                 {
-                    var pair = uniquePairs[verifiedCount];
-                    var verification = batch[i];
+                    int delta = 0;
+                    int count = Math.Min(batchItems.Count, batchResults.Length);
 
-                    if (!string.IsNullOrEmpty(verification))
+                    for (int i = 0; i < count; i++)
                     {
-                        var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
-                        lock (_cacheLock)
-                            _verificationCache[cacheKey] = verification;
+                        var pair = batchItems[i];
+                        var verification = batchResults[i];
+
+                        if (!string.IsNullOrEmpty(verification))
+                        {
+                            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
+                            lock (_cacheLock)
+                                _verificationCache[cacheKey] = verification;
+                        }
+
+                        if (pendingByPair.TryGetValue(pair, out var originalIndexes))
+                        {
+                            foreach (var idx in originalIndexes)
+                                results[idx] = verification;
+                            delta += originalIndexes.Count;
+                        }
                     }
 
-                    foreach (var index in pendingByPair[pair])
-                        results[index] = verification;
-
-                    completed += pendingByPair[pair].Count;
-                    progress?.Report(completed);
-                }
-            }
+                    if (delta > 0)
+                    {
+                        int done = Interlocked.Add(ref completed, delta);
+                        progress?.Report(done);
+                    }
+                });
         }
 
         return ChunkResults(results);

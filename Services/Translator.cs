@@ -48,13 +48,13 @@ internal static partial class Translator
         return ParseNumberedList(content, pairs.Count);
     }
 
-    public static Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
-        => ProcessBatchesAsync(pairs, batch => VerifyBatchAsync(batch, config, targetLanguage), progress);
+    public static Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null, Action<IReadOnlyList<(string French, string Translation)>, string[]>? onBatchCompleted = null)
+        => ProcessBatchesAsync(pairs, batch => VerifyBatchAsync(batch, config, targetLanguage), progress, onBatchCompleted);
 
-    public static Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
-        => ProcessBatchesAsync(texts, batch => TranslateBatchAsync(batch, config, targetLanguage), progress);
+    public static Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null, Action<IReadOnlyList<string>, string[]>? onBatchCompleted = null)
+        => ProcessBatchesAsync(texts, batch => TranslateBatchAsync(batch, config, targetLanguage), progress, onBatchCompleted);
 
-    private static async Task<IReadOnlyList<string[]>> ProcessBatchesAsync<T>(IReadOnlyList<T> items, Func<IReadOnlyList<T>, Task<string[]>> processBatchAsync, IProgress<int>? progress)
+    private static async Task<IReadOnlyList<string[]>> ProcessBatchesAsync<T>(IReadOnlyList<T> items, Func<IReadOnlyList<T>, Task<string[]>> processBatchAsync, IProgress<int>? progress, Action<IReadOnlyList<T>, string[]>? onBatchCompleted = null)
     {
         var batches = Chunk(items);
         var results = new string[batches.Count][];
@@ -69,6 +69,8 @@ internal static partial class Translator
             {
                 var result = await processBatchAsync(batchInfo.Items);
                 results[batchInfo.Index] = result;
+
+                onBatchCompleted?.Invoke(batchInfo.Items, result);
 
                 var completed = Interlocked.Add(ref done, batchInfo.Items.Count);
                 progress?.Report(completed);
