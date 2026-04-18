@@ -14,8 +14,6 @@ internal sealed partial class ConfigForm : Form
     private bool _openAiModelsLoaded;
     private bool _anthropicModelsLoaded;
     private bool _isLoadingModels;
-    private Button? btnClearTranslationCache;
-    private Button? btnClearVerificationCache;
 
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -41,39 +39,10 @@ internal sealed partial class ConfigForm : Form
         InitModelSelectors();
         InitProviderUi();
         InitMarkdownEditors();
-        InitCacheButtons();
         btnOk.Click += (_, _) => SaveConfig();
-        LoadConfig();
-    }
-
-    private void InitCacheButtons()
-    {
-        btnClearTranslationCache = new Button
-        {
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-            Location = new Point(11, 997),
-            Name = nameof(btnClearTranslationCache),
-            Size = new Size(150, 28),
-            TabIndex = 2,
-            Text = "Vider cache trad.",
-            UseVisualStyleBackColor = true,
-        };
         btnClearTranslationCache.Click += BtnClearTranslationCache_Click;
-
-        btnClearVerificationCache = new Button
-        {
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-            Location = new Point(172, 997),
-            Name = nameof(btnClearVerificationCache),
-            Size = new Size(150, 28),
-            TabIndex = 3,
-            Text = "Vider cache vérif.",
-            UseVisualStyleBackColor = true,
-        };
         btnClearVerificationCache.Click += BtnClearVerificationCache_Click;
-
-        Controls.Add(btnClearTranslationCache);
-        Controls.Add(btnClearVerificationCache);
+        LoadConfig();
     }
 
     private void BtnClearTranslationCache_Click(object? sender, EventArgs e)

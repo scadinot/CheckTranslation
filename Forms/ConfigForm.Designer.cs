@@ -50,6 +50,8 @@ partial class ConfigForm
         txtVerifyPrompt = new TextBox();
         btnOk = new Button();
         btnCancel = new Button();
+        btnClearTranslationCache = new Button();
+        btnClearVerificationCache = new Button();
         splitContainer1 = new SplitContainer();
         grpAuth.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer2).BeginInit();
@@ -385,9 +387,9 @@ partial class ConfigForm
         btnOk.Size = new Size(80, 28);
         btnOk.TabIndex = 4;
         btnOk.Text = "OK";
-        // 
+        //
         // btnCancel
-        // 
+        //
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
         btnCancel.Location = new Point(870, 997);
@@ -395,7 +397,27 @@ partial class ConfigForm
         btnCancel.Size = new Size(80, 28);
         btnCancel.TabIndex = 5;
         btnCancel.Text = "Annuler";
-        // 
+        //
+        // btnClearTranslationCache
+        //
+        btnClearTranslationCache.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        btnClearTranslationCache.Location = new Point(11, 997);
+        btnClearTranslationCache.Name = "btnClearTranslationCache";
+        btnClearTranslationCache.Size = new Size(150, 28);
+        btnClearTranslationCache.TabIndex = 2;
+        btnClearTranslationCache.Text = "Vider cache trad.";
+        btnClearTranslationCache.UseVisualStyleBackColor = true;
+        //
+        // btnClearVerificationCache
+        //
+        btnClearVerificationCache.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        btnClearVerificationCache.Location = new Point(172, 997);
+        btnClearVerificationCache.Name = "btnClearVerificationCache";
+        btnClearVerificationCache.Size = new Size(150, 28);
+        btnClearVerificationCache.TabIndex = 3;
+        btnClearVerificationCache.Text = "Vider cache vérif.";
+        btnClearVerificationCache.UseVisualStyleBackColor = true;
+        //
         // splitContainer1
         // 
         splitContainer1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -426,6 +448,8 @@ partial class ConfigForm
         Controls.Add(grpAuth);
         Controls.Add(btnOk);
         Controls.Add(btnCancel);
+        Controls.Add(btnClearTranslationCache);
+        Controls.Add(btnClearVerificationCache);
         MaximizeBox = false;
         MinimizeBox = false;
         MinimumSize = new Size(683, 718);
@@ -489,6 +513,8 @@ partial class ConfigForm
     private ComboBox txtAnthropicModelName;
     private Button btnOk;
     private Button btnCancel;
+    private Button btnClearTranslationCache;
+    private Button btnClearVerificationCache;
     private SplitContainer splitContainer1;
     private ImageList tabPromptIcons;
     private SplitContainer splitContainer2;
