@@ -74,7 +74,7 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 🟢 | **Export rapport** | Générer un rapport HTML/PDF des vérifications (scores, commentaires) |
 | 🟡 | **Mode batch CLI** | Version console pour intégration CI/CD |
 | 🟢 | **Multi-fichiers** | Ouvrir plusieurs fichiers Excel en onglets |
-| 🟡 | **Glossaire** | Dictionnaire de termes techniques à respecter (injecté dans les prompts) |
+| 🟢 | **Glossaire** | Traité : éditeur par langue + extraction IA assistée, injection automatique via placeholder `{glossary}` dans les prompts, invalidation du cache via fingerprint SHA256 (`IGlossaryService`, `GlossaryForm`, `GlossaryExtractionDialog`) |
 | 🟢 | **Historique des appels IA** | Logger les requêtes/réponses pour debug |
 
 ---
@@ -136,6 +136,9 @@ Ce document liste les améliorations identifiées pour le projet `CheckTranslati
 | 2026-04-10 | 1.0 | Persistance de disposition : taille de fenêtre et largeur des colonnes persistées dans `AppConfig` avec dictionnaires distincts selon le mode détails on/off (`MainForm.LayoutPersistence`) |
 | 2026-04-15 | 1.0 | Fusion Excel : report des traductions d'un fichier source vers un fichier destination avec détection et résolution des conflits (`MergeDifferenceForm`, `ExcelReader.Merge`, modèles `MergeDifference*`) |
 | 2026-04-17 | 1.0 | Refactorisation de la gestion des différences de fusion |
+| 2026-04-17 | 1.0 | Progression temps réel des batchs IA : `onBatchCompleted` dans `Translator.ProcessBatchesAsync`, utilisé par `TranslationService` pour reporter la progression au fil des retours API (PR #7) |
+| 2026-04-18 | 1.0 | Glossaire métier : service de persistance par langue + fingerprint SHA256, éditeur `GlossaryForm`, extraction IA assistée `GlossaryExtractionDialog`, injection automatique via `{glossary}` dans les prompts, invalidation du cache de traduction/vérification (restauration depuis une branche orpheline `claude/analyze-project-2gSd8` retrouvée dans le reflog) |
+| 2026-04-18 | 1.0 | Nettoyage du layout `MergeDifferenceForm` : colonnes DataGridView générées dynamiquement, fenêtre élargie 1716×183, marges plus compactes |
 
 ---
 

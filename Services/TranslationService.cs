@@ -48,12 +48,12 @@ internal sealed class TranslationService : ITranslationService
         }
     }
 
-    public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage)
+    public void UpdateTranslationCache(string frenchText, string translation, AppConfig config, string targetLanguage, string glossaryFingerprint)
     {
         if (string.IsNullOrWhiteSpace(frenchText))
             return;
 
-        var cacheKey = BuildCacheKey(frenchText, config, targetLanguage);
+        var cacheKey = BuildCacheKey(frenchText, config, targetLanguage, glossaryFingerprint);
 
         lock (_cacheLock)
         {
@@ -64,12 +64,12 @@ internal sealed class TranslationService : ITranslationService
         }
     }
 
-    public void UpdateVerificationCache(string frenchText, string translation, string verification, AppConfig config, string targetLanguage)
+    public void UpdateVerificationCache(string frenchText, string translation, string verification, AppConfig config, string targetLanguage, string glossaryFingerprint)
     {
         if (string.IsNullOrWhiteSpace(frenchText) || string.IsNullOrWhiteSpace(translation))
             return;
 
-        var cacheKey = BuildVerificationCacheKey(frenchText, translation, config, targetLanguage);
+        var cacheKey = BuildVerificationCacheKey(frenchText, translation, config, targetLanguage, glossaryFingerprint);
 
         lock (_cacheLock)
         {
@@ -80,7 +80,7 @@ internal sealed class TranslationService : ITranslationService
         }
     }
 
-    public async Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+    public async Task<IReadOnlyList<string[]>> TranslateInBatchesAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection, string glossaryFingerprint, IProgress<int>? progress = null)
     {
         var results = new string[texts.Count];
         var pendingByText = new Dictionary<string, List<int>>(StringComparer.Ordinal);
@@ -89,7 +89,7 @@ internal sealed class TranslationService : ITranslationService
         for (int i = 0; i < texts.Count; i++)
         {
             var text = texts[i];
-            var cacheKey = BuildCacheKey(text, config, targetLanguage);
+            var cacheKey = BuildCacheKey(text, config, targetLanguage, glossaryFingerprint);
 
             string? cachedTranslation;
             lock (_cacheLock)
@@ -121,6 +121,7 @@ internal sealed class TranslationService : ITranslationService
                 uniqueTexts,
                 config,
                 targetLanguage,
+                glossarySection,
                 progress: null,
                 onBatchCompleted: (batchItems, batchResults) =>
                 {
@@ -134,7 +135,7 @@ internal sealed class TranslationService : ITranslationService
 
                         if (!string.IsNullOrEmpty(translation))
                         {
-                            var cacheKey = BuildCacheKey(sourceText, config, targetLanguage);
+                            var cacheKey = BuildCacheKey(sourceText, config, targetLanguage, glossaryFingerprint);
                             lock (_cacheLock)
                                 _translationCache[cacheKey] = translation;
                         }
@@ -158,7 +159,7 @@ internal sealed class TranslationService : ITranslationService
         return ChunkResults(results);
     }
 
-    public async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, IProgress<int>? progress = null)
+    public async Task<IReadOnlyList<string[]>> VerifyInBatchesAsync(IReadOnlyList<(string French, string Translation)> pairs, AppConfig config, string targetLanguage, string glossarySection, string glossaryFingerprint, IProgress<int>? progress = null)
     {
         var results = new string[pairs.Count];
         var pendingByPair = new Dictionary<(string French, string Translation), List<int>>();
@@ -167,7 +168,7 @@ internal sealed class TranslationService : ITranslationService
         for (int i = 0; i < pairs.Count; i++)
         {
             var pair = pairs[i];
-            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
+            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage, glossaryFingerprint);
 
             string? cachedVerification;
             lock (_cacheLock)
@@ -199,6 +200,7 @@ internal sealed class TranslationService : ITranslationService
                 uniquePairs,
                 config,
                 targetLanguage,
+                glossarySection,
                 progress: null,
                 onBatchCompleted: (batchItems, batchResults) =>
                 {
@@ -212,7 +214,7 @@ internal sealed class TranslationService : ITranslationService
 
                         if (!string.IsNullOrEmpty(verification))
                         {
-                            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage);
+                            var cacheKey = BuildVerificationCacheKey(pair.French, pair.Translation, config, targetLanguage, glossaryFingerprint);
                             lock (_cacheLock)
                                 _verificationCache[cacheKey] = verification;
                         }
@@ -236,11 +238,11 @@ internal sealed class TranslationService : ITranslationService
         return ChunkResults(results);
     }
 
-    private static string BuildCacheKey(string text, AppConfig config, string targetLanguage)
-        => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, text);
+    private static string BuildCacheKey(string text, AppConfig config, string targetLanguage, string glossaryFingerprint)
+        => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, glossaryFingerprint ?? string.Empty, text);
 
-    private static string BuildVerificationCacheKey(string frenchText, string translation, AppConfig config, string targetLanguage)
-        => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, frenchText, translation);
+    private static string BuildVerificationCacheKey(string frenchText, string translation, AppConfig config, string targetLanguage, string glossaryFingerprint)
+        => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, glossaryFingerprint ?? string.Empty, frenchText, translation);
 
     private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage)
     {

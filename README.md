@@ -22,9 +22,16 @@ Application de bureau Windows Forms (.NET 8.0) destinee au controle, a la traduc
 - **Traduction IA** : clic droit sur une cellule de traduction pour appeler l'API
 - **Verification IA** : controle qualitatif des traductions avec score/commentaire par langue
 - **Batch + parallelisation** : decoupage en lots de 20, jusqu'a 4 lots en parallele, retry automatique avec backoff exponentiel + jitter (Polly) sur les erreurs HTTP transitoires
+- **Progression temps réel** : la barre de progression s'incrémente au fur et à mesure des retours API (paliers de 20 items)
 - **Auto-traduire (sans IA)** : copie des traductions deja presentes pour un meme texte francais
-- **Caches en session** : cache memoire distinct pour traductions et verifications (clef = provider + url + model + langue + texte), deduplication, compteurs dans la barre d'etat
+- **Caches en session** : cache memoire distinct pour traductions et verifications (clef = provider + url + model + langue + fingerprint glossaire + texte), deduplication, compteurs dans la barre d'etat ; invalidation automatique dès qu'une entrée du glossaire change
 - **Vidage des caches** : boutons dedies dans la configuration
+
+### Glossaire métier
+- **Editeur de glossaire par langue** : bouton dédié dans la barre d'outils — entrées `Source` / `Destination` / `Context` (phrase courte), persistées en JSON dans `%LocalAppData%\CheckTranslation`
+- **Extraction IA assistée** : menu contextuel "Extraire les termes métier…" sur une sélection — l'IA propose des termes candidats que vous validez un par un avant ajout au glossaire
+- **Injection automatique dans les prompts** : le placeholder `{glossary}` est remplacé par la section glossaire de la langue active au moment de la traduction ou de la vérification — garantit la cohérence terminologique entre les appels IA
+- **Invalidation du cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache — toute modification d'une entrée fait retraduire les lignes concernées à la prochaine demande
 
 ### Fichier : sauvegarde, rafraichissement, fusion
 - **Sauvegarde** : ecriture des traductions et des commentaires de verification dans le fichier Excel d'origine
@@ -32,7 +39,7 @@ Application de bureau Windows Forms (.NET 8.0) destinee au controle, a la traduc
 - **Fusion** : report des traductions d'un fichier source vers un fichier destination via la cle `Projet|Fichier|Cle`, avec une boite de dialogue de resolution des conflits par ligne (choix : reporter le francais+commentaire et/ou la traduction+commentaire de traduction)
 
 ### Configuration
-- **Prompts** : traduction + verification avec apercu Markdown (utiliser `{language}` comme placeholder pour la langue cible)
+- **Prompts** : traduction + verification avec apercu Markdown (utiliser `{language}` pour la langue cible et `{glossary}` pour la section glossaire injectée automatiquement)
 - **Fournisseur IA** : OpenAI (ChatGPT) ou Anthropic (Claude)
 - **Parametres OpenAI / Anthropic** : cle API (chiffree via DPAPI), URL, modele configurables (liste des modeles chargee via l'API a l'ouverture de la combo)
 - **Boutons "Vider cache"** : purge manuelle des caches traduction/verification
