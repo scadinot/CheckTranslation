@@ -38,22 +38,28 @@ CheckTranslation/
 │   ├── ConfigForm.resx                       # Ressources du dialog (ne pas modifier)
 │   ├── MergeDifferenceForm.cs                # Dialog de résolution des conflits de fusion
 │   ├── MergeDifferenceForm.Designer.cs       # Code genere par le designer
-│   └── MergeDifferenceForm.resx              # Ressources du dialog
+│   ├── MergeDifferenceForm.resx              # Ressources du dialog
+│   ├── GlossaryForm.cs                       # Editeur du glossaire métier (ComboBox langue + DataGridView)
+│   └── GlossaryExtractionDialog.cs           # Dialog d'extraction assistée (IA propose, l'utilisateur valide)
 ├── Models/
 │   ├── TranslationRow.cs                # Modele de donnees pour une ligne (incl. FrenchComment, GetSyncKey)
 │   ├── AiProvider.cs                    # Enum fournisseur IA (OpenAI / Anthropic)
 │   ├── AppConfig.cs                     # Configuration persistante (multi-fournisseur) avec chiffrement DPAPI
 │   ├── MergeDifference.cs               # Record représentant une différence entre source/destination
 │   ├── MergeDifferenceResolution.cs     # Record de décision utilisateur (maj français/traduction)
-│   └── MergeRowSnapshot.cs              # Record snapshot d'une ligne pour l'UI de fusion
+│   ├── MergeRowSnapshot.cs              # Record snapshot d'une ligne pour l'UI de fusion
+│   ├── Glossary.cs                      # Conteneur du glossaire
+│   └── GlossaryEntry.cs                 # Entrée : Source, Destination, Context
 ├── Services/
 │   ├── IExcelService.cs                 # Interface service Excel (Load/Save/Merge)
 │   ├── ExcelService.cs                  # Implementation IExcelService (façade sur ExcelReader)
 │   ├── ExcelReader.cs                   # Lecture/ecriture/fusion Excel via ClosedXML
 │   ├── ExcelLoadProgress.cs             # Record struct (Done, Total) pour progression ligne-par-ligne
 │   ├── ITranslationService.cs           # Interface cache + batch traduction/vérification
-│   ├── TranslationService.cs            # Implementation : cache mémoire + batch + dédup
-│   └── Translator.cs                    # Appels IA bruts (OpenAI + Anthropic) + retry Polly
+│   ├── TranslationService.cs            # Implementation : cache mémoire + batch + dédup (clé inclut le fingerprint glossaire)
+│   ├── Translator.cs                    # Appels IA bruts (OpenAI + Anthropic) + retry Polly + placeholder {glossary}
+│   ├── IGlossaryService.cs              # Interface du service de glossaire
+│   └── GlossaryService.cs               # Persistance JSON par langue + fingerprint SHA256 + section {glossary} à injecter
 ├── Logic/
 │   ├── QualityScore.cs                  # Parsing du score "XXX - ..." + couleur de fond (dégradé rouge→vert)
 │   └── TranslationRowFiltering.cs       # Filtrage côté client (texte + score<X, score>=X, score:none)
@@ -104,26 +110,28 @@ dotnet publish -c Release
 ## Notes d'architecture
 
 ### Bootstrap
-- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()`, configuration d'un `ServiceCollection` (`IExcelService`/`ITranslationService` en singleton, `ConfigForm` et `MainForm` en transient avec factory `Func<ConfigForm>`), puis `Application.Run(MainForm)`.
-- **Injection de dépendances :** `MainForm` et `ConfigForm` acceptent un constructeur avec leurs services (avec fallback de constructeur sans paramètre instanciant manuellement les services pour la compatibilité Designer).
+- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()`, configuration d'un `ServiceCollection` (`IExcelService`/`ITranslationService`/`IGlossaryService` en singleton, `ConfigForm`/`GlossaryForm`/`GlossaryExtractionDialog` en transient avec factories `Func<...>`), puis `Application.Run(MainForm)`.
+- **Injection de dépendances :** `MainForm`, `ConfigForm`, `GlossaryForm` et `GlossaryExtractionDialog` acceptent un constructeur avec leurs services (avec fallback de constructeur sans paramètre instanciant manuellement les services pour la compatibilité Designer).
 
 ### Formulaires
 - **Formulaire principal :** `Forms/MainForm.cs` — classe `partial` découpée en plusieurs fichiers (`MainForm.LayoutPersistence.cs`, `ManualRefreshSupport.cs`, `VerificationScoreFilterSupport.cs`) pour séparer les responsabilités.
   - DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule), Traduction (editable) et Commentaire (score).
-  - Barre d'outils : Ouvrir / Sauvegarder / Fusionner / Afficher détails / Config / Drapeaux / Rafraîchir.
+  - Barre d'outils : Ouvrir / Sauvegarder / Fusionner / Afficher détails / Config / Drapeaux / Rafraîchir / Glossaire.
   - Barre de statut : fichier, lignes, sélection, cache traduction, cache vérification, provider IA + modèle, langue active.
-  - Menu contextuel sur `colTranslation` : Auto-traduire (copie existante), Traduire, Vérifier.
+  - Menu contextuel sur `colTranslation` : Auto-traduire (copie existante), Traduire, Vérifier, Extraire les termes métier…
   - Menu contextuel sur `colFrench` : Copier le texte français.
   - Raccourci **F5** pour rafraîchir (rechargement fichier + détection des changements sur le français source + conservation des traductions en mémoire).
-- **Fusion Excel :** `Forms/MergeDifferenceForm.cs` — dialog affichant côte à côte la ligne source et la ligne destination pour qu'on choisisse (via deux checkboxes) s'il faut reporter le français/commentaire et/ou la traduction/commentaire de traduction.
+- **Fusion Excel :** `Forms/MergeDifferenceForm.cs` — dialog affichant côte à côte la ligne source et la ligne destination pour qu'on choisisse (via deux checkboxes) s'il faut reporter le français/commentaire et/ou la traduction/commentaire de traduction. Colonnes DataGridView générées dynamiquement.
 - **Configuration :** `Forms/ConfigForm.cs` — dialog modal pour editer `Models/AppConfig.cs` + boutons "Vider cache trad." / "Vider cache vérif." agissant sur `ITranslationService`.
+- **Glossaire :** `Forms/GlossaryForm.cs` (éditeur ComboBox langue + DataGridView triable des entrées Source/Destination/Context) et `Forms/GlossaryExtractionDialog.cs` (l'IA propose des termes candidats, l'utilisateur les valide un par un avant ajout au glossaire de la langue active).
 
 ### Services
 - **Lecture/ecriture Excel :** `Services/ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D), lit les colonnes A/B/C/E + toutes les colonnes de traduction. Sauvegarde `Save()`. Fusion `Merge()` avec détection des différences (`GetMergeSourceDifferences()`) et résolution par ligne via `MergeDifferenceResolution`. Utilise une `SyncKey = Project|File|Key` (séparateur `\u001F`) pour corréler les lignes source/destination.
 - **Façade Excel :** `Services/ExcelService.cs` (implémente `IExcelService`) — expose `Load`, `LoadWithRowProgress`, `Save`, `Merge`, `GetMergeSourceDifferences`.
 - **Progression chargement :** `Services/ExcelLoadProgress.cs` — `record struct(Done, Total)` permettant d'afficher une progress bar en lignes lues plutôt qu'en pourcentage.
-- **Traduction IA :** `Services/Translator.cs` — supporte OpenAI (`OpenAI.Chat.ChatClient`) et Anthropic (`AnthropicClient`). Batchs parallélisés (`Task.WhenAll`) avec limitation de concurrence (`SemaphoreSlim`, `FixedParallelBatchRequests = 4`). Retry exponentiel avec jitter via Polly (3 tentatives) sur les erreurs HTTP transitoires (408/429/500/502/503/504, `HttpRequestException`, `TimeoutException`, `TaskCanceledException`). `BatchSize = 20`, `Temperature = 0.1`.
-- **Service traduction :** `Services/TranslationService.cs` (implémente `ITranslationService`) — cache mémoire (traduction + vérification) avec clé `Provider|Url|Model|Language|Texte` (séparateur `\u001F`), déduplication des doublons intra-lot, compteurs par langue, mises à jour manuelles via `UpdateTranslationCache` / `UpdateVerificationCache`, vidage via `ClearTranslationCache` / `ClearVerificationCache`.
+- **Traduction IA :** `Services/Translator.cs` — supporte OpenAI (`OpenAI.Chat.ChatClient`) et Anthropic (`AnthropicClient`). Batchs parallélisés (`Task.WhenAll`) avec limitation de concurrence (`SemaphoreSlim`, `FixedParallelBatchRequests = 4`). Retry exponentiel avec jitter via Polly (3 tentatives) sur les erreurs HTTP transitoires (408/429/500/502/503/504, `HttpRequestException`, `TimeoutException`, `TaskCanceledException`). `BatchSize = 20`, `Temperature = 0.1`. Le placeholder `{glossary}` dans les system prompts est remplacé par la section glossaire fournie par `IGlossaryService`. `ProcessBatchesAsync` expose un callback `onBatchCompleted` (utilisé par `TranslationService` pour reporter la progression par lot).
+- **Service traduction :** `Services/TranslationService.cs` (implémente `ITranslationService`) — cache mémoire (traduction + vérification) avec clé `Provider|Url|Model|Language|GlossaryFingerprint|Texte` (séparateur `\u001F` ; le fingerprint rend la clé dépendante de l'état du glossaire : toute modification d'une entrée invalide automatiquement les entrées cache correspondantes), déduplication des doublons intra-lot, compteurs par langue, mises à jour manuelles via `UpdateTranslationCache` / `UpdateVerificationCache`, vidage via `ClearTranslationCache` / `ClearVerificationCache`. Reporting de progression par lot via `onBatchCompleted` + `Interlocked.Add` (cf. PR #7).
+- **Glossaire :** `Services/GlossaryService.cs` (implémente `IGlossaryService`) — persistance JSON par langue dans `%LocalAppData%\CheckTranslation`, calcul d'un `GetGlossaryFingerprint(langueCode)` (SHA256 des entrées triées) injecté dans les clés de cache, et `BuildGlossarySection(langueCode, langueName)` qui construit la section textuelle à injecter à la place du placeholder `{glossary}` des prompts. L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict et filtrage des termes déjà connus.
 - **Sélection du modèle :** `Forms/ConfigForm.cs` — les listes de modèles OpenAI/Anthropic sont chargées via l'API au moment où l'utilisateur ouvre la liste déroulante.
 
 ### Logic
@@ -133,6 +141,7 @@ dotnet publish -c Release
 ### Modèles
 - **Ligne :** `Models/TranslationRow.cs` — POCO avec `Project`, `File`, `Key`, `FrenchComment`, `French`, `Translation`, `Comment` + dictionnaires `Translations` et `Comments` par colonne. Méthodes `SwitchLanguage(oldCol, newCol)` et `GetSyncKey()`.
 - **Fusion :** `Models/MergeDifference.cs` (Source vs Destination), `Models/MergeRowSnapshot.cs` (snapshot lecture seule d'une ligne pour l'UI), `Models/MergeDifferenceResolution.cs` (décision utilisateur).
+- **Glossaire :** `Models/Glossary.cs` (conteneur), `Models/GlossaryEntry.cs` (triplet `Source`, `Destination`, `Context`). Le modèle est **agnostique à la langue source** : le glossaire est stocké par couple (langue source, langue cible) — pratique si un jour un autre couple que FR→XX est ajouté.
 - **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` stocke dans `%LocalAppData%\CheckTranslation`, cles API chiffrees via DPAPI (`DataProtectionScope.CurrentUser`). Persiste aussi :
   - `ShowDetails` (visibilité colonnes Projet/Fichier/Clé)
   - `Provider` sélectionné + URL/Modèle par provider
@@ -157,7 +166,8 @@ dotnet publish -c Release
 
 ## Avertissements importants
 
-- **Ne PAS modifier `*.Designer.cs` a la main** — ces fichiers (`MainForm`, `ConfigForm`, `MergeDifferenceForm`) sont generes automatiquement par le designer Windows Forms
+- **Ne PAS modifier `*.Designer.cs` a la main** — ces fichiers (`MainForm`, `ConfigForm`, `MergeDifferenceForm`, `GlossaryForm`, `GlossaryExtractionDialog`) sont generes automatiquement par le designer Windows Forms
+- **Icône du bouton Glossaire** : `MainForm.LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent. Aujourd'hui `glossary.png` n'existe pas — l'icône affichée est donc celle de la configuration.
 - **Ne PAS modifier les `*.resx` manuellement** — geres par le designer
 - **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — necessaire car ils sont dans un sous-dossier `Forms/` ; ne pas supprimer ces entrees. Les fichiers partials (`MainForm.LayoutPersistence.resx`, `ManualRefreshSupport.resx`, `VerificationScoreFilterSupport.resx`) sont explicitement exclus via `<EmbeddedResource Remove="..."/>`.
 - **Les colonnes Projet/Fichier/Cle sont creees programmatiquement** dans `MainForm.cs` (`InitDetailsColumns`) et inserees avant les colonnes du Designer ; ne pas les ajouter dans `MainForm.Designer.cs`. La colonne `Commentaire` est aussi créée par code (`InitCommentColumn`).

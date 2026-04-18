@@ -24,15 +24,19 @@
 - `Program.cs` : point d'entrée (STA), charge la config, construit le conteneur DI, résout et lance `MainForm`
 - `Forms/MainForm.cs` (+ partials `MainForm.LayoutPersistence.cs`, `ManualRefreshSupport.cs`, `VerificationScoreFilterSupport.cs` et `MainForm.Designer.cs`) : UI principale (tableau, filtres, tri, menus contextuels, langues, fusion, rafraîchissement, persistance de disposition)
 - `Forms/ConfigForm.cs` (+ `ConfigForm.Designer.cs`) : dialogue de configuration des paramètres API, prompts et boutons de vidage de cache
-- `Forms/MergeDifferenceForm.cs` (+ Designer) : dialogue modal de résolution d'un conflit de fusion (source vs destination)
+- `Forms/MergeDifferenceForm.cs` (+ Designer) : dialogue modal de résolution d'un conflit de fusion (source vs destination) — colonnes DataGridView générées dynamiquement
+- `Forms/GlossaryForm.cs` (+ Designer) : éditeur du glossaire métier par langue (ComboBox + DataGridView triable)
+- `Forms/GlossaryExtractionDialog.cs` (+ Designer) : extraction IA assistée (l'IA propose, l'utilisateur valide)
 - `Models/AppConfig.cs` : persistance de configuration (JSON) + chiffrement DPAPI pour les clés API + préférences UI (taille fenêtre, largeur colonnes, langue, détails)
 - `Models/TranslationRow.cs` : modèle en mémoire d'une ligne de traduction et stockage multi-langues
 - `Models/MergeDifference.cs`, `MergeRowSnapshot.cs`, `MergeDifferenceResolution.cs` : modèles immuables pour le workflow de fusion
+- `Models/Glossary.cs`, `Models/GlossaryEntry.cs` : modèles du glossaire (entrées `Source`, `Destination`, `Context`)
 - `Services/IExcelService.cs` / `ExcelService.cs` : façade service sur `ExcelReader` pour l'usage en DI
 - `Services/ExcelReader.cs` : chargement/sauvegarde/fusion Excel via ClosedXML, filtrage `@Invariant`, détection de différences
 - `Services/ExcelLoadProgress.cs` : `record struct(Done, Total)` pour la progression ligne-par-ligne
-- `Services/ITranslationService.cs` / `TranslationService.cs` : cache mémoire (traduction + vérification), déduplication, découpage en batch
-- `Services/Translator.cs` : appels bruts OpenAI/Anthropic + parallélisation et retry Polly
+- `Services/ITranslationService.cs` / `TranslationService.cs` : cache mémoire (traduction + vérification), déduplication, découpage en batch, reporting de progression par lot
+- `Services/Translator.cs` : appels bruts OpenAI/Anthropic + parallélisation et retry Polly + callback `onBatchCompleted` + placeholder `{glossary}`
+- `Services/IGlossaryService.cs` / `GlossaryService.cs` : persistance JSON par langue, fingerprint SHA256, construction de la section à injecter dans les prompts
 - `Logic/QualityScore.cs` : parsing du score (`XXX - commentaire`, 0..100) et calcul de la couleur de fond (dégradé rouge → vert)
 - `Logic/TranslationRowFiltering.cs` : filtrage côté client (texte + pseudo-filtres `score<N`, `score>=N`, `score:none`)
 - `Controls/SortableBindingList.cs` : `BindingList<T>` triable côté client (utilisé pour le tri du `DataGridView`)
@@ -229,8 +233,8 @@ La classe est découpée en plusieurs `partial class` :
 - `RetryCount = 3` (politique Polly)
 
 ### Traduction & Vérification
-- `TranslateBatchAsync(texts, ...)` : construit une liste numérotée, demande une réponse strictement numérotée au format `N. texte`.
-- `VerifyBatchAsync(pairs, ...)` : requiert `N. XXX - commentaire` et interdit les références croisées entre entrées (rappelé dans le prompt par défaut).
+- `TranslateBatchAsync(texts, ..., glossarySection)` : construit une liste numérotée, remplace `{language}` et `{glossary}` dans le system prompt, demande une réponse strictement numérotée au format `N. texte`.
+- `VerifyBatchAsync(pairs, ..., glossarySection)` : requiert `N. XXX - commentaire` et interdit les références croisées entre entrées (rappelé dans le prompt par défaut).
 
 ### Traitement par lots
 - `TranslateInBatchesAsync` / `VerifyInBatchesAsync` découpent la requête en lots de 20 et les exécutent en parallèle (sémaphore).
@@ -238,17 +242,34 @@ La classe est découpée en plusieurs `partial class` :
   - `HttpRequestException` transitoire (408/429/500/502/503/504, statut nul)
   - `TimeoutException`, `TaskCanceledException`
   - `ClientResultException` avec code 408/429/5xx
-- La progression est reportée en *nombre d'items traités*.
+- La progression est reportée **au fil de l'eau** via un callback `onBatchCompleted` invoqué après chaque batch (protégé par `Interlocked.Add` côté caller).
 
 ### Cache mémoire (`TranslationService`)
 - Deux caches distincts (traduction, vérification), `Dictionary<string,string>` protégés par un `lock`.
-- Clé traduction : `Provider|Url|Model|Language|Texte` (séparateur `\u001F`).
-- Clé vérification : `Provider|Url|Model|Language|French|Translation`.
+- Clé traduction : `Provider|Url|Model|Language|GlossaryFingerprint|Texte` (séparateur `\u001F`).
+- Clé vérification : `Provider|Url|Model|Language|GlossaryFingerprint|French|Translation`.
+- Le fingerprint du glossaire est un SHA256 des entrées triées (calculé par `GlossaryService.GetGlossaryFingerprint(langueCode)`). Toute modification d'une entrée change le fingerprint → les clés de cache précédentes ne matchent plus → les traductions sont redemandées à l'IA. C'est le mécanisme d'invalidation automatique.
 - Déduplication intra-lot (plusieurs lignes avec le même français n'envoient qu'une seule requête API).
 - `UpdateTranslationCache` / `UpdateVerificationCache` pour synchroniser après saisie manuelle / réception d'une réponse valide.
 - `GetTranslationCacheCount(config, targetLanguage)` / `GetVerificationCacheCount(...)` alimentent la status bar.
 - `ClearTranslationCache(config)` / `ClearVerificationCache(config)` utilisés par les boutons du `ConfigForm`.
 - `ChunkResults` re-chunk les résultats en lots de 20 pour coller au contrat de batch du `MainForm`.
+
+## 9bis) Glossaire métier (`GlossaryService`)
+
+### Modèle
+- `GlossaryEntry(Source, Destination, Context)` : triplet immuable. `Source` et `Destination` correspondent au couple de langues configuré (typiquement FR → `targetLanguage`). `Context` est une phrase courte expliquant le terme dans son domaine technique.
+- Le glossaire est persisté par langue dans un fichier JSON dans `%LocalAppData%\CheckTranslation`.
+
+### API (`IGlossaryService`)
+- `GetEntries(langueCode)` / `SaveEntries(langueCode, entries)` : lecture/écriture par langue.
+- `BuildGlossarySection(langueCode, langueName)` : construit la section textuelle à injecter à la place du placeholder `{glossary}` dans les prompts. Retourne une chaîne vide si aucune entrée → aucun impact sur le prompt final.
+- `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées — inclus dans les clés de cache.
+
+### Workflow utilisateur
+1. **Édition manuelle** : bouton toolbar `btnGlossary` (icône `Resources/glossary.png` ou fallback `config.png`) ouvre `GlossaryForm`. L'utilisateur sélectionne une langue et ajoute/modifie/supprime des entrées triables.
+2. **Extraction IA** : menu contextuel "Extraire les termes métier…" sur une sélection de lignes → envoie le français + traductions à l'IA avec un prompt JSON strict demandant une liste de termes techniques. Filtrage des termes déjà connus. L'utilisateur valide un par un via `GlossaryExtractionDialog` avant ajout au glossaire de la langue active. Réutilise `Translator.CallApiAsync` (pipeline Polly + multi-providers).
+3. **Injection dans les prompts** : à chaque appel de `TranslateInBatchesAsync` / `VerifyInBatchesAsync`, le `MainForm` construit `glossarySection` et `glossaryFingerprint` pour la langue active et les passe à `TranslationService`. Le fingerprint invalide automatiquement le cache dès qu'une entrée change.
 
 ### Parsing des réponses batch
 - `ParseNumberedList(content, expectedCount)` parse une réponse de liste numérotée (regex `^\s*(\d+)[.)]\s*(.+)$`).
