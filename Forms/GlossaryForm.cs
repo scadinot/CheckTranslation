@@ -2,17 +2,9 @@ using System.ComponentModel;
 
 namespace CheckTranslation;
 
-internal sealed class GlossaryForm : Form
+internal sealed partial class GlossaryForm : Form
 {
     private readonly IGlossaryService _glossaryService;
-
-    private readonly ComboBox _languageCombo;
-    private readonly DataGridView _grid;
-    private readonly Button _btnAdd;
-    private readonly Button _btnRemove;
-    private readonly Button _btnOk;
-    private readonly Button _btnCancel;
-    private readonly Label _lblCount;
 
     private readonly Dictionary<string, SortableBindingList<GlossaryEntry>> _bindingsByLanguage = new(StringComparer.OrdinalIgnoreCase);
     private string _currentLanguageCode = string.Empty;
@@ -25,149 +17,18 @@ internal sealed class GlossaryForm : Form
     public GlossaryForm(IGlossaryService glossaryService)
     {
         _glossaryService = glossaryService;
+        InitializeComponent();
 
-        Text = "Glossaire métier";
-        StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(900, 500);
-        ClientSize = new Size(1100, 600);
-        ShowInTaskbar = false;
-        MinimizeBox = false;
-        MaximizeBox = true;
-        FormBorderStyle = FormBorderStyle.Sizable;
-
-        var topPanel = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 40,
-            Padding = new Padding(10, 8, 10, 4),
-        };
-
-        var lblLanguage = new Label
-        {
-            Text = "Langue :",
-            AutoSize = true,
-            Location = new Point(10, 12),
-        };
-
-        _languageCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(80, 8),
-            Width = 220,
-        };
-        _languageCombo.SelectedIndexChanged += LanguageCombo_SelectedIndexChanged;
-
-        _lblCount = new Label
-        {
-            AutoSize = true,
-            Location = new Point(320, 12),
-            ForeColor = SystemColors.GrayText,
-        };
-
-        topPanel.Controls.Add(lblLanguage);
-        topPanel.Controls.Add(_languageCombo);
-        topPanel.Controls.Add(_lblCount);
-
-        _grid = new DataGridView
-        {
-            Dock = DockStyle.Fill,
-            AllowUserToAddRows = true,
-            AllowUserToDeleteRows = true,
-            AutoGenerateColumns = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            RowHeadersVisible = false,
-            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
-        };
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colSource",
-            HeaderText = "Source",
-            DataPropertyName = nameof(GlossaryEntry.Source),
-            FillWeight = 30,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colDestination",
-            HeaderText = "Destination",
-            DataPropertyName = nameof(GlossaryEntry.Destination),
-            FillWeight = 30,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "colContext",
-            HeaderText = "Contexte",
-            DataPropertyName = nameof(GlossaryEntry.Context),
-            FillWeight = 40,
-            SortMode = DataGridViewColumnSortMode.Automatic,
-        });
-        _grid.CellValueChanged += (_, _) => MarkDirty();
-        _grid.UserAddedRow += (_, _) => MarkDirty();
-        _grid.UserDeletedRow += (_, _) => MarkDirty();
-
-        var bottomPanel = new Panel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 48,
-            Padding = new Padding(10, 8, 10, 8),
-        };
-
-        _btnAdd = new Button
-        {
-            Text = "Ajouter",
-            Location = new Point(10, 10),
-            Width = 100,
-        };
-        _btnAdd.Click += (_, _) => AddEntry();
-
-        _btnRemove = new Button
-        {
-            Text = "Supprimer",
-            Location = new Point(120, 10),
-            Width = 100,
-        };
-        _btnRemove.Click += (_, _) => RemoveSelectedEntries();
-
-        _btnCancel = new Button
-        {
-            Text = "Annuler",
-            DialogResult = DialogResult.Cancel,
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Location = new Point(bottomPanel.Width - 230, 10),
-            Width = 100,
-        };
-
-        _btnOk = new Button
-        {
-            Text = "Enregistrer",
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Location = new Point(bottomPanel.Width - 120, 10),
-            Width = 100,
-        };
-        _btnOk.Click += BtnOk_Click;
-
-        bottomPanel.Controls.Add(_btnAdd);
-        bottomPanel.Controls.Add(_btnRemove);
-        bottomPanel.Controls.Add(_btnCancel);
-        bottomPanel.Controls.Add(_btnOk);
-        bottomPanel.Resize += (_, _) =>
-        {
-            _btnCancel.Location = new Point(bottomPanel.Width - 230, 10);
-            _btnOk.Location = new Point(bottomPanel.Width - 120, 10);
-        };
-
-        AcceptButton = _btnOk;
-        CancelButton = _btnCancel;
-
-        Controls.Add(_grid);
-        Controls.Add(topPanel);
-        Controls.Add(bottomPanel);
+        languageCombo.SelectedIndexChanged += LanguageCombo_SelectedIndexChanged;
+        grid.CellValueChanged += (_, _) => MarkDirty();
+        grid.UserAddedRow += (_, _) => MarkDirty();
+        grid.UserDeletedRow += (_, _) => MarkDirty();
+        btnAdd.Click += (_, _) => AddEntry();
+        btnRemove.Click += (_, _) => RemoveSelectedEntries();
+        btnOk.Click += BtnOk_Click;
+        FormClosing += GlossaryForm_FormClosing;
 
         InitLanguages();
-        FormClosing += GlossaryForm_FormClosing;
     }
 
     /// <summary>
@@ -175,12 +36,12 @@ internal sealed class GlossaryForm : Form
     /// </summary>
     public void SelectLanguage(string languageCode)
     {
-        for (int i = 0; i < _languageCombo.Items.Count; i++)
+        for (int i = 0; i < languageCombo.Items.Count; i++)
         {
-            if (_languageCombo.Items[i] is LanguageInfo lang
+            if (languageCombo.Items[i] is LanguageInfo lang
                 && string.Equals(lang.Code, languageCode, StringComparison.OrdinalIgnoreCase))
             {
-                _languageCombo.SelectedIndex = i;
+                languageCombo.SelectedIndex = i;
                 return;
             }
         }
@@ -189,15 +50,15 @@ internal sealed class GlossaryForm : Form
     private void InitLanguages()
     {
         foreach (var lang in MainForm.Languages)
-            _languageCombo.Items.Add(lang);
-        _languageCombo.DisplayMember = nameof(LanguageInfo.Name);
-        if (_languageCombo.Items.Count > 0)
-            _languageCombo.SelectedIndex = 0;
+            languageCombo.Items.Add(lang);
+        languageCombo.DisplayMember = nameof(LanguageInfo.Name);
+        if (languageCombo.Items.Count > 0)
+            languageCombo.SelectedIndex = 0;
     }
 
     private void LanguageCombo_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (_languageCombo.SelectedItem is not LanguageInfo lang)
+        if (languageCombo.SelectedItem is not LanguageInfo lang)
             return;
 
         _currentLanguageCode = lang.Code;
@@ -210,13 +71,13 @@ internal sealed class GlossaryForm : Form
             _bindingsByLanguage[lang.Code] = binding;
         }
 
-        _grid.DataSource = binding;
+        grid.DataSource = binding;
         UpdateCountLabel();
     }
 
     private void AddEntry()
     {
-        if (_grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
+        if (grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
             return;
         binding.Add(new GlossaryEntry());
         MarkDirty();
@@ -224,10 +85,10 @@ internal sealed class GlossaryForm : Form
 
     private void RemoveSelectedEntries()
     {
-        if (_grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
+        if (grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
             return;
 
-        var toRemove = _grid.SelectedRows
+        var toRemove = grid.SelectedRows
             .Cast<DataGridViewRow>()
             .Select(r => r.DataBoundItem as GlossaryEntry)
             .Where(e => e is not null)
@@ -270,10 +131,10 @@ internal sealed class GlossaryForm : Form
 
     private void CommitCurrentEdit()
     {
-        _grid.EndEdit();
-        if (_grid.DataSource is SortableBindingList<GlossaryEntry> binding)
+        grid.EndEdit();
+        if (grid.DataSource is SortableBindingList<GlossaryEntry> binding)
         {
-            if (_grid.BindingContext?[binding] is CurrencyManager cm)
+            if (grid.BindingContext?[binding] is CurrencyManager cm)
                 cm.EndCurrentEdit();
         }
     }
@@ -297,10 +158,10 @@ internal sealed class GlossaryForm : Form
 
     private void UpdateCountLabel()
     {
-        if (_grid.DataSource is SortableBindingList<GlossaryEntry> binding)
-            _lblCount.Text = $"{binding.Count} entrée(s)";
+        if (grid.DataSource is SortableBindingList<GlossaryEntry> binding)
+            lblCount.Text = $"{binding.Count} entrée(s)";
         else
-            _lblCount.Text = string.Empty;
+            lblCount.Text = string.Empty;
     }
 
     private static GlossaryEntry Clone(GlossaryEntry source) => new()

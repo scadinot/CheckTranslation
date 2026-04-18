@@ -31,6 +31,12 @@
     <EmbeddedResource Update="Forms\ConfigForm.resx">
       <LogicalName>CheckTranslation.ConfigForm.resources</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Update="Forms\GlossaryForm.resx">
+      <LogicalName>CheckTranslation.GlossaryForm.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Forms\GlossaryExtractionDialog.resx">
+      <LogicalName>CheckTranslation.GlossaryExtractionDialog.resources</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
