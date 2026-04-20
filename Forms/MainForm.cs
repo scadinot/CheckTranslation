@@ -25,6 +25,9 @@ public partial class MainForm : Form
     private string? _currentFilePath;
     private LanguageInfo _currentLanguage = Languages[0];
     private List<TranslationRow>? _allRows;
+    // Indique qu'une ecriture disque est en cours (Save ou Merge).
+    // Pendant cet etat, la fermeture de la fenetre est bloquee pour eviter la corruption du fichier.
+    private bool _isWriting;
     private readonly Dictionary<string, string> _filters = new();
     private readonly Dictionary<string, TextBox> _filterTextBoxes = new();
     private System.Windows.Forms.Timer? _filterDebounceTimer;
@@ -412,6 +415,17 @@ public partial class MainForm : Form
         }
     }
 
+    // Active/desactive l'etat "ecriture en cours" : bloque la fermeture de la fenetre et desactive
+    // la toolbar + le DataGridView pour eviter toute interaction pendant une ecriture disque.
+    // La desactivation d'un container WinForms conserve l'etat individuel Enabled de chaque enfant,
+    // restaure a l'issue de l'operation sans avoir a memoriser manuellement les etats precedents.
+    private void SetWritingState(bool writing)
+    {
+        _isWriting = writing;
+        toolStrip.Enabled = !writing;
+        dataGridView.Enabled = !writing;
+    }
+
     private async void BtnSave_Click(object? sender, EventArgs e)
     {
         if (_currentFilePath is null || _allRows is null)
@@ -419,11 +433,10 @@ public partial class MainForm : Form
 
         dataGridView.EndEdit();
 
-        btnSave.Enabled = false;
-        btnOpen.Enabled = false;
-
+        SetWritingState(true);
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Marquee;
+        statusRowCount.Text = "Sauvegarde en cours...";
 
         try
         {
@@ -444,8 +457,7 @@ public partial class MainForm : Form
         {
             statusProgressBar.Style = ProgressBarStyle.Blocks;
             statusProgressBar.Visible = false;
-            btnSave.Enabled = true;
-            btnOpen.Enabled = true;
+            SetWritingState(false);
         }
     }
 
@@ -488,8 +500,19 @@ public partial class MainForm : Form
 
             statusProgressBar.Visible = true;
             statusProgressBar.Style = ProgressBarStyle.Marquee;
+            statusRowCount.Text = "Fusion en cours...";
 
-            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
+            // Ecriture disque proprement dite : bloquer la fermeture et la toolbar jusqu'a la fin.
+            SetWritingState(true);
+            int mergedCount;
+            try
+            {
+                mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
+            }
+            finally
+            {
+                SetWritingState(false);
+            }
             int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.HasAnyChange);
 
             statusRowCount.Text = sourceDifferences.Count > 0
@@ -1605,6 +1628,27 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
     private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
     {
+        // Empecher la fermeture pendant une ecriture disque pour eviter la corruption du fichier
+        // uniquement pour les fermetures initiees par l'utilisateur ou l'application.
+        if (_isWriting)
+        {
+            var canCancelClose =
+                e.CloseReason == CloseReason.UserClosing ||
+                e.CloseReason == CloseReason.ApplicationExitCall;
+
+            if (canCancelClose)
+            {
+                e.Cancel = true;
+                MessageBox.Show(
+                    this,
+                    "Une operation d'ecriture est en cours. Veuillez attendre la fin avant de fermer l'application.",
+                    "Operation en cours",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            return;
+        }
+
         SaveWindowLayout();
     }
 
