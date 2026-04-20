@@ -487,11 +487,16 @@ public partial class MainForm : Form
         if (dialog.ShowDialog() != DialogResult.OK)
             return;
 
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
-        btnMerge.Enabled = false;
+        // Un seul mecanisme de protection pour toute la fusion : SetWritingState bloque la
+        // fermeture et desactive toolStrip + dataGridView pendant la duree complete de
+        // l'operation (lecture des differences + dialogs de resolution + ecriture disque).
+        // Rationale : eviter la re-entrance (clic Merge / Open / Save) pendant la phase
+        // lecture, et eviter la corruption pendant la phase ecriture. Les dialogs modaux
+        // MergeDifferenceForm fonctionnent normalement meme avec la toolbar parent desactivee.
+        SetWritingState(true);
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Marquee;
+        statusRowCount.Text = "Analyse des différences...";
 
         try
         {
@@ -503,21 +508,8 @@ public partial class MainForm : Form
                 return;
             }
 
-            statusProgressBar.Visible = true;
-            statusProgressBar.Style = ProgressBarStyle.Marquee;
             statusRowCount.Text = "Fusion en cours...";
-
-            // Ecriture disque proprement dite : bloquer la fermeture et la toolbar jusqu'a la fin.
-            SetWritingState(true);
-            int mergedCount;
-            try
-            {
-                mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
-            }
-            finally
-            {
-                SetWritingState(false);
-            }
+            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
             int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.HasAnyChange);
 
             statusRowCount.Text = sourceDifferences.Count > 0
@@ -543,9 +535,7 @@ public partial class MainForm : Form
         {
             statusProgressBar.Style = ProgressBarStyle.Blocks;
             statusProgressBar.Visible = false;
-            btnOpen.Enabled = true;
-            btnSave.Enabled = _allRows is not null;
-            btnMerge.Enabled = _allRows is not null;
+            SetWritingState(false);
         }
     }
 
