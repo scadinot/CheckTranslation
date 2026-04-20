@@ -1628,16 +1628,24 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
     private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
     {
-        // Empecher la fermeture pendant une ecriture disque pour eviter la corruption du fichier.
+        // Empecher la fermeture pendant une ecriture disque pour eviter la corruption du fichier
+        // uniquement pour les fermetures initiees par l'utilisateur ou l'application.
         if (_isWriting)
         {
-            e.Cancel = true;
-            MessageBox.Show(
-                this,
-                "Une operation d'ecriture est en cours. Veuillez attendre la fin avant de fermer l'application.",
-                "Operation en cours",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            var canCancelClose =
+                e.CloseReason == CloseReason.UserClosing ||
+                e.CloseReason == CloseReason.ApplicationExitCall;
+
+            if (canCancelClose)
+            {
+                e.Cancel = true;
+                MessageBox.Show(
+                    this,
+                    "Une operation d'ecriture est en cours. Veuillez attendre la fin avant de fermer l'application.",
+                    "Operation en cours",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
             return;
         }
 
