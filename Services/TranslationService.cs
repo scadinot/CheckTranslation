@@ -255,7 +255,7 @@ internal sealed class TranslationService : ITranslationService
     }
 
     // Match large (sans langue ni fingerprint) : utilise par les methodes Clear* pour purger
-    // toutes les entrees d'un provider, y compris les entrees periemees (fingerprint obsolete).
+    // toutes les entrees d'un provider, y compris les entrees perimees (fingerprint obsolete).
     private static bool IsCacheKeyMatch(string cacheKey, AppConfig config)
     {
         var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName) + "\u001F";
