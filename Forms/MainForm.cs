@@ -1570,7 +1570,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
     private static Bitmap LoadIcon(string name, int size = 16)
     {
         // Toute erreur (fichier manquant, corrompu, inaccessible) retombe sur un bitmap
-        // transparent de la bonne taille plutot que de faire planter l'app au demarrage.
+        // transparent de la bonne taille plutôt que de faire planter l'app au demarrage.
         var path = Path.Combine(ResourceDir, name);
         if (!File.Exists(path))
         {
