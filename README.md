@@ -101,7 +101,7 @@ Le fichier `CheckTranslation.config.json` est enregistré dans :
 - Taille de la fenêtre
 - Largeur des colonnes (deux jeux distincts selon le mode « détails »)
 
-Le glossaire est persisté séparément, fichier JSON par langue dans le même dossier.
+Le glossaire est persisté séparément dans le même dossier, dans un unique fichier `glossary.json` contenant les entrées par langue.
 
 ---
 
