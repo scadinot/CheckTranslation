@@ -85,6 +85,11 @@ internal sealed partial class ConfigForm : Form
 
     private AppConfig BuildCurrentConfig()
     {
+        // Preserver les champs de disposition depuis AppConfig.Current : ils ne sont pas
+        // edites dans ConfigForm mais font partie de la config persistee. Sans cette copie,
+        // un clic sur OK reinitialisait WindowWidth/Height et les ColumnFillWeights du mode
+        // inactif a 0 / {} -> perte definitive au redemarrage suivant.
+        var current = AppConfig.Current;
         return new AppConfig
         {
             TranslatePrompt = txtTranslatePrompt.Text.Trim(),
@@ -99,8 +104,12 @@ internal sealed partial class ConfigForm : Form
             AnthropicModelName = txtAnthropicModelName.Text.Trim(),
 
             Provider = rbAnthropic.Checked ? AiProvider.Anthropic : AiProvider.OpenAI,
-            ShowDetails = AppConfig.Current.ShowDetails,
-            SelectedLanguageCode = AppConfig.Current.SelectedLanguageCode,
+            ShowDetails = current.ShowDetails,
+            SelectedLanguageCode = current.SelectedLanguageCode,
+            WindowWidth = current.WindowWidth,
+            WindowHeight = current.WindowHeight,
+            ColumnFillWeightsWithDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithDetails, StringComparer.Ordinal),
+            ColumnFillWeightsWithoutDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
         };
     }
 

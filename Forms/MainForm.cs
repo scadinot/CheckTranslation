@@ -1393,10 +1393,9 @@ public partial class MainForm : Form
                 for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
                 {
                     if (!string.IsNullOrEmpty(batch[i]))
-                    {
                         rows[rowIndex].Comment = batch[i];
-                        _translationService.UpdateVerificationCache(rows[rowIndex].French, rows[rowIndex].Translation, batch[i], config, _currentLanguage.Name, glossaryFingerprint);
-                    }
+                    // Le cache de verification est deja alimente par le callback onBatchCompleted
+                    // dans TranslationService.VerifyInBatchesAsync ; pas besoin de le refaire ici.
                     else
                         errors++;
                 }
