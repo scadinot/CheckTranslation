@@ -1,199 +1,523 @@
-# CLAUDE.md - Guide pour assistants IA sur CheckTranslation
+# CLAUDE.md — Guide technique et suivi
 
-## Apercu du projet
+Référence complète du projet **CheckTranslation**, destinée aux humains comme aux assistants IA. Couvre l'architecture, les conventions, les avertissements, le suivi chronologique et la roadmap.
 
-CheckTranslation est une application de bureau Windows Forms en .NET 8.0 destinee au controle, a la traduction et a la verification des traductions d'un logiciel. Elle lit un fichier Excel exporté par ResX Resource Manager (via Visual Studio), filtre les entrees marquees `@Invariant` et affiche les traductions dans un tableau pour verification et edition.
+> Documentation utilisateur et installation : voir [README.md](README.md).
 
-## Stack technique
+---
 
-- **Langage :** C# (version recente avec references nullables et usings implicites)
+## Table des matières
+
+1. [Aperçu](#1-aperçu)
+2. [Stack technique](#2-stack-technique)
+3. [Structure du projet](#3-structure-du-projet)
+4. [Format Excel (ResX Resource Manager)](#4-format-excel-resx-resource-manager)
+5. [Build & exécution](#5-build--exécution)
+6. [Architecture](#6-architecture)
+7. [Flux fonctionnels](#7-flux-fonctionnels)
+8. [Détails IA (Translator + TranslationService + Glossaire)](#8-détails-ia-translator--translationservice--glossaire)
+9. [Conventions de code](#9-conventions-de-code)
+10. [Avertissements importants](#10-avertissements-importants)
+11. [Tests](#11-tests)
+12. [Suivi chronologique](#12-suivi-chronologique)
+13. [Roadmap](#13-roadmap)
+
+---
+
+## 1. Aperçu
+
+CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources (type `.resx`) à partir d'un **export Excel** généré par ResX Resource Manager. L'application charge un fichier `.xlsx`, affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis sauvegarde les modifications dans le fichier Excel.
+
+Elle peut appeler les API **OpenAI** et **Anthropic** pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts. Elle peut aussi fusionner des traductions d'un fichier source vers un fichier destination avec résolution des conflits ligne-par-ligne.
+
+---
+
+## 2. Stack technique
+
+- **Langage :** C# (références nullables activées, implicit usings activés)
 - **Framework :** .NET 8.0 (`net8.0-windows`)
-- **Interface :** Windows Forms (WinForms)
-- **Systeme de build :** MSBuild via la CLI `dotnet`
-- **Support IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
-- **Dependances :**
-  - `ClosedXML` 0.104.2 — lecture et ecriture des fichiers Excel (.xlsx)
-  - `OpenAI` 2.8.0 — appels API OpenAI (chat + listing de modèles)
-  - `Anthropic` 12.8.0 — appels API Anthropic (messages + listing de modèles)
-  - `Markdig` 0.38.0 — rendu Markdown pour l'aperçu des prompts
-  - `Polly` 8.5.2 — resilience (retry + backoff exponentiel avec jitter) sur les appels IA
-  - `Microsoft.Extensions.DependencyInjection` 9.0.0 — conteneur DI utilisé dans `Program.cs`
+- **Interface :** Windows Forms
+- **Build :** MSBuild via la CLI `dotnet`
+- **IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
 
-## Structure du projet
+### Dépendances NuGet
+- `ClosedXML` `0.104.2` — lecture/écriture `.xlsx`
+- `OpenAI` `2.8.0` — client chat completions + listing modèles
+- `Anthropic` `12.8.0` — client messages + listing modèles
+- `Markdig` `0.38.0` — rendu Markdown (aperçu des prompts)
+- `Polly` `8.5.2` — retry + backoff exponentiel + jitter sur les appels IA
+- `Microsoft.Extensions.DependencyInjection` `9.0.0` — conteneur DI
+
+---
+
+## 3. Structure du projet
 
 ```
 CheckTranslation/
-├── CheckTranslation.slnx        # Fichier solution
-├── CheckTranslation.csproj      # Fichier projet (WinExe, net8.0-windows)
-├── Program.cs                   # Point d'entree (STAThread, bootstrap DI, lance MainForm)
+├── CheckTranslation.slnx        # Solution
+├── CheckTranslation.csproj      # Projet (WinExe, net8.0-windows)
+├── Program.cs                   # Point d'entrée (STAThread, bootstrap DI)
 ├── Forms/
-│   ├── MainForm.cs                           # Logique principale (chargement, sauvegarde, langues, filtres, rafraîchissement, persistance disposition, filtre score)
-│   ├── MainForm.Designer.cs                  # Code genere par le designer (ne pas modifier)
-│   ├── MainForm.resx                         # Ressources du formulaire (ne pas modifier)
-│   ├── ConfigForm.cs                         # Dialog de configuration (prompts + IA + vider cache)
-│   ├── ConfigForm.Designer.cs                # Code genere par le designer (ne pas modifier)
-│   ├── ConfigForm.resx                       # Ressources du dialog (ne pas modifier)
-│   ├── MergeDifferenceForm.cs                # Dialog de résolution des conflits de fusion
-│   ├── MergeDifferenceForm.Designer.cs       # Code genere par le designer
-│   ├── MergeDifferenceForm.resx              # Ressources du dialog
-│   ├── GlossaryForm.cs                       # Editeur du glossaire métier (ComboBox langue + DataGridView)
-│   ├── GlossaryForm.Designer.cs              # Code genere par le designer
-│   ├── GlossaryForm.resx                     # Ressources du dialog
-│   ├── GlossaryExtractionDialog.cs           # Dialog d'extraction assistée (IA propose, l'utilisateur valide)
-│   ├── GlossaryExtractionDialog.Designer.cs  # Code genere par le designer
-│   └── GlossaryExtractionDialog.resx         # Ressources du dialog
+│   ├── MainForm.cs                           # Logique principale (~1940 lignes, organisée en sections)
+│   ├── MainForm.Designer.cs                  # Code généré par le designer
+│   ├── MainForm.resx                         # Ressources du form
+│   ├── ConfigForm.cs                         # Config (prompts, IA, vidage cache)
+│   ├── ConfigForm.Designer.cs
+│   ├── ConfigForm.resx
+│   ├── MergeDifferenceForm.cs                # Dialog résolution conflits de fusion
+│   ├── MergeDifferenceForm.Designer.cs
+│   ├── MergeDifferenceForm.resx
+│   ├── GlossaryForm.cs                       # Éditeur du glossaire par langue
+│   ├── GlossaryForm.Designer.cs
+│   ├── GlossaryForm.resx
+│   ├── GlossaryExtractionDialog.cs           # Extraction IA assistée (validation terme par terme)
+│   ├── GlossaryExtractionDialog.Designer.cs
+│   └── GlossaryExtractionDialog.resx
 ├── Models/
-│   ├── TranslationRow.cs                # Modele de donnees pour une ligne (incl. FrenchComment, GetSyncKey)
-│   ├── AiProvider.cs                    # Enum fournisseur IA (OpenAI / Anthropic)
-│   ├── AppConfig.cs                     # Configuration persistante (multi-fournisseur) avec chiffrement DPAPI
-│   ├── MergeDifference.cs               # Record représentant une différence entre source/destination
-│   ├── MergeDifferenceResolution.cs     # Record de décision utilisateur (maj français/traduction)
-│   ├── MergeRowSnapshot.cs              # Record snapshot d'une ligne pour l'UI de fusion
+│   ├── TranslationRow.cs                # Ligne de traduction + dictionnaires par colonne
+│   ├── AiProvider.cs                    # Enum OpenAI / Anthropic
+│   ├── AppConfig.cs                     # Config persistante (JSON + DPAPI)
+│   ├── MergeDifference.cs               # Différence source vs destination
+│   ├── MergeDifferenceResolution.cs     # Décision utilisateur par ligne (fusion)
+│   ├── MergeRowSnapshot.cs              # Snapshot lecture seule pour l'UI de fusion
 │   ├── Glossary.cs                      # Conteneur du glossaire
-│   └── GlossaryEntry.cs                 # Entrée : Source, Destination, Context
+│   └── GlossaryEntry.cs                 # Source / Destination / Context
 ├── Services/
-│   ├── IExcelService.cs                 # Interface service Excel (Load/Save/Merge)
-│   ├── ExcelService.cs                  # Implementation IExcelService (façade sur ExcelReader)
-│   ├── ExcelReader.cs                   # Lecture/ecriture/fusion Excel via ClosedXML
-│   ├── ExcelLoadProgress.cs             # Record struct (Done, Total) pour progression ligne-par-ligne
-│   ├── ITranslationService.cs           # Interface cache + batch traduction/vérification
-│   ├── TranslationService.cs            # Implementation : cache mémoire + batch + dédup (clé inclut le fingerprint glossaire)
-│   ├── Translator.cs                    # Appels IA bruts (OpenAI + Anthropic) + retry Polly + placeholder {glossary}
-│   ├── IGlossaryService.cs              # Interface du service de glossaire
-│   └── GlossaryService.cs               # Persistance JSON par langue + fingerprint SHA256 + section {glossary} à injecter
+│   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour ExcelReader
+│   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
+│   ├── ExcelLoadProgress.cs                  # record struct(Done, Total)
+│   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
+│   ├── Translator.cs                         # Appels bruts OpenAI/Anthropic + Polly
+│   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON par langue + fingerprint SHA256
 ├── Logic/
-│   ├── QualityScore.cs                  # Parsing du score "XXX - ..." + couleur de fond (dégradé rouge→vert)
-│   └── TranslationRowFiltering.cs       # Filtrage côté client (texte + score<X, score>=X, score:none)
+│   ├── QualityScore.cs                       # Parsing score "XXX - ..." + dégradé couleur
+│   └── TranslationRowFiltering.cs            # Filtrage côté client (texte + score<N, score>=N, score:none)
 ├── Controls/
-│   └── SortableBindingList.cs           # BindingList<T> avec tri cote client
-├── Resources/                           # Icones PNG (drapeaux, open, save, config, merge, refresh, columns, eyes, pencil)
-├── Input.xlsx                           # Fichier Excel exporté par ResX Manager (~3 Mo)
-├── README.md                            # Documentation utilisateur
-├── ANALYSE_PROJET.md                    # Analyse détaillée (architecture, flux, points d'attention)
-├── ROADMAP.md                           # Feuille de route / suivi des améliorations
-└── CLAUDE.md                            # Ce fichier
+│   └── SortableBindingList.cs                # BindingList<T> triable
+├── Resources/                                # Icônes PNG (drapeaux, toolbar, tabs)
+├── Input.xlsx                                # Fichier Excel exemple (~3 Mo)
+├── README.md                                 # Documentation utilisateur
+└── CLAUDE.md                                 # Ce fichier (guide technique + suivi)
 ```
 
-## Format du fichier Excel (Input.xlsx)
+---
 
-Le fichier est un export ResX Resource Manager contenant une feuille `ResXResourceManager` avec ~22 000 lignes :
+## 4. Format Excel (ResX Resource Manager)
 
-| Colonne | Contenu                  |
-|---------|--------------------------|
-| A       | Project                  |
-| B       | File                     |
-| C       | Key                      |
-| D       | Comment (contient `@Invariant` pour les lignes a ignorer) |
-| E       | Texte francais (langue par defaut) |
-| F       | Comment.de-DE            |
-| G       | .de-DE (allemand)        |
-| H-S     | Autres langues (en-US, es-ES, it-IT, nl-NL, pl-PL, zh-CN) |
+Export d'une feuille `ResXResourceManager` (~22 000 lignes). Les colonnes sont 1-indexées :
 
-## Commandes de build et d'execution
+| Colonne | Contenu |
+|---------|---------|
+| A (1) | Project |
+| B (2) | File |
+| C (3) | Key |
+| D (4) | Comment source (contient `@Invariant` pour ignorer la ligne) |
+| E (5) | Texte français (langue par défaut, pas de colonne de commentaire) |
+| F | Comment.de-DE |
+| G | .de-DE (allemand) |
+| H…S | Autres langues : en-US, es-ES, it-IT, nl-NL, pl-PL, zh-CN (chaque langue = une colonne de commentaire précédée d'une colonne de traduction) |
+
+Convention : pour une langue dont la colonne de traduction est `col`, la colonne de commentaire associée est `col - 1`.
+
+---
+
+## 5. Build & exécution
 
 ```bash
-# Build (debug)
+# Build debug
 dotnet build
 
-# Build (release)
+# Build release
 dotnet build -c Release
 
-# Lancer l'application
+# Lancer
 dotnet run
 
-# Nettoyer les artefacts de build
+# Nettoyer
 dotnet clean
 
 # Publier
 dotnet publish -c Release
 ```
 
-## Notes d'architecture
+Le projet cible `net8.0-windows` → SDK .NET 8 requis, Windows uniquement.
 
-### Bootstrap
-- **Point d'entree :** `Program.cs` — bootstrap WinForms standard avec `ApplicationConfiguration.Initialize()`, configuration d'un `ServiceCollection` (`IExcelService`/`ITranslationService`/`IGlossaryService` en singleton, `ConfigForm`/`GlossaryForm`/`GlossaryExtractionDialog` en transient avec factories `Func<...>`), puis `Application.Run(MainForm)`.
-- **Injection de dépendances :** `MainForm`, `ConfigForm`, `GlossaryForm` et `GlossaryExtractionDialog` acceptent un constructeur avec leurs services (avec fallback de constructeur sans paramètre instanciant manuellement les services pour la compatibilité Designer).
+---
 
-### Formulaires
-- **Formulaire principal :** `Forms/MainForm.cs` — classe `partial` (avec `MainForm.Designer.cs` comme autre moitié). Toute la logique applicative est regroupée dans `MainForm.cs` et organisée en sections commentées (`// --- Filtres ---`, `// --- Persistance de disposition ---`, `// --- Bouton Rafraîchir + F5 ---`, `// --- Filtre par score de vérification ---`, etc.).
-  - DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule), Traduction (editable) et Commentaire (score).
-  - Barre d'outils : Ouvrir / Sauvegarder / Fusionner / Afficher détails / Config / Drapeaux / Rafraîchir / Glossaire.
-  - Barre de statut : fichier, lignes, sélection, cache traduction, cache vérification, provider IA + modèle, langue active.
-  - Menu contextuel sur `colTranslation` : Auto-traduire (copie existante), Traduire, Vérifier, Extraire les termes métier…
-  - Menu contextuel sur `colFrench` : Copier le texte français.
-  - Raccourci **F5** pour rafraîchir (rechargement fichier + détection des changements sur le français source + conservation des traductions en mémoire).
-- **Fusion Excel :** `Forms/MergeDifferenceForm.cs` — dialog affichant côte à côte la ligne source et la ligne destination pour qu'on choisisse (via deux checkboxes) s'il faut reporter le français/commentaire et/ou la traduction/commentaire de traduction. Colonnes DataGridView générées dynamiquement.
-- **Configuration :** `Forms/ConfigForm.cs` — dialog modal pour editer `Models/AppConfig.cs` + boutons "Vider cache trad." / "Vider cache vérif." agissant sur `ITranslationService`.
-- **Glossaire :** `Forms/GlossaryForm.cs` (éditeur ComboBox langue + DataGridView triable des entrées Source/Destination/Context) et `Forms/GlossaryExtractionDialog.cs` (l'IA propose des termes candidats, l'utilisateur les valide un par un avant ajout au glossaire de la langue active).
+## 6. Architecture
 
-### Services
-- **Lecture/ecriture Excel :** `Services/ExcelReader.cs` — charge le fichier via ClosedXML, ignore les lignes `@Invariant` (colonne D), lit les colonnes A/B/C/E + toutes les colonnes de traduction. Sauvegarde `Save()`. Fusion `Merge()` avec détection des différences (`GetMergeSourceDifferences()`) et résolution par ligne via `MergeDifferenceResolution`. Utilise une `SyncKey = Project|File|Key` (séparateur `\u001F`) pour corréler les lignes source/destination.
-- **Façade Excel :** `Services/ExcelService.cs` (implémente `IExcelService`) — expose `Load`, `LoadWithRowProgress`, `Save`, `Merge`, `GetMergeSourceDifferences`.
-- **Progression chargement :** `Services/ExcelLoadProgress.cs` — `record struct(Done, Total)` permettant d'afficher une progress bar en lignes lues plutôt qu'en pourcentage.
-- **Traduction IA :** `Services/Translator.cs` — supporte OpenAI (`OpenAI.Chat.ChatClient`) et Anthropic (`AnthropicClient`). Batchs parallélisés (`Task.WhenAll`) avec limitation de concurrence (`SemaphoreSlim`, `FixedParallelBatchRequests = 4`). Retry exponentiel avec jitter via Polly (3 tentatives) sur les erreurs HTTP transitoires (408/429/500/502/503/504, `HttpRequestException`, `TimeoutException`, `TaskCanceledException`). `BatchSize = 20`, `Temperature = 0.1`. Le placeholder `{glossary}` dans les system prompts est remplacé par la section glossaire fournie par `IGlossaryService`. `ProcessBatchesAsync` expose un callback `onBatchCompleted` (utilisé par `TranslationService` pour reporter la progression par lot).
-- **Service traduction :** `Services/TranslationService.cs` (implémente `ITranslationService`) — cache mémoire (traduction + vérification) avec clé `Provider|Url|Model|Language|GlossaryFingerprint|Texte` (séparateur `\u001F` ; le fingerprint rend la clé dépendante de l'état du glossaire : toute modification d'une entrée invalide automatiquement les entrées cache correspondantes), déduplication des doublons intra-lot, compteurs par langue, mises à jour manuelles via `UpdateTranslationCache` / `UpdateVerificationCache`, vidage via `ClearTranslationCache` / `ClearVerificationCache`. Reporting de progression par lot via `onBatchCompleted` + `Interlocked.Add` (cf. PR #7).
-- **Glossaire :** `Services/GlossaryService.cs` (implémente `IGlossaryService`) — persistance JSON par langue dans `%LocalAppData%\CheckTranslation`, calcul d'un `GetGlossaryFingerprint(langueCode)` (SHA256 des entrées triées) injecté dans les clés de cache, et `BuildGlossarySection(langueCode, langueName)` qui construit la section textuelle à injecter à la place du placeholder `{glossary}` des prompts. L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict et filtrage des termes déjà connus.
-- **Sélection du modèle :** `Forms/ConfigForm.cs` — les listes de modèles OpenAI/Anthropic sont chargées via l'API au moment où l'utilisateur ouvre la liste déroulante.
+### 6.1 Bootstrap (Program.cs + DI)
 
-### Logic
-- **Score de qualité :** `Logic/QualityScore.cs` — parsing du format `XXX - commentaire` (regex, 0-100) et calcul d'une couleur de fond en dégradé (rouge `<60` → orange `70` → jaune `80` → vert `90-100`). Utilisé par `MainForm.DataGridView_CellFormatting` pour coloriser les cellules `colTranslation` et `colComment`.
-- **Filtrage :** `Logic/TranslationRowFiltering.cs` — filtrage côté client sur toutes les colonnes ; pour `Comment`, supporte en plus les pseudo-filtres `score<N`, `score>=N`, `score:none` utilisés par le ComboBox de filtre par score.
+`Program.Main` :
+1. `AppConfig.Load()` → alimente `AppConfig.Current`.
+2. `ApplicationConfiguration.Initialize()` (DPI, police).
+3. Configure un `ServiceCollection` :
+   - `IExcelService → ExcelService` (singleton)
+   - `ITranslationService → TranslationService` (singleton)
+   - `IGlossaryService → GlossaryService` (singleton)
+   - `ConfigForm`, `GlossaryForm`, `GlossaryExtractionDialog` (transient + factory `Func<T>`)
+   - `MainForm` (transient, reçoit les services et factories par ctor)
+4. `Application.Run(MainForm)` résolu via le conteneur.
 
-### Modèles
-- **Ligne :** `Models/TranslationRow.cs` — POCO avec `Project`, `File`, `Key`, `FrenchComment`, `French`, `Translation`, `Comment` + dictionnaires `Translations` et `Comments` par colonne. Méthodes `SwitchLanguage(oldCol, newCol)` et `GetSyncKey()`.
-- **Fusion :** `Models/MergeDifference.cs` (Source vs Destination), `Models/MergeRowSnapshot.cs` (snapshot lecture seule d'une ligne pour l'UI), `Models/MergeDifferenceResolution.cs` (décision utilisateur).
-- **Glossaire :** `Models/Glossary.cs` (conteneur), `Models/GlossaryEntry.cs` (triplet `Source`, `Destination`, `Context`). Le modèle est **agnostique à la langue source** : le glossaire est stocké par couple (langue source, langue cible) — pratique si un jour un autre couple que FR→XX est ajouté.
-- **Configuration persistante :** `Models/AppConfig.cs` — fichier `CheckTranslation.config.json` stocke dans `%LocalAppData%\CheckTranslation`, cles API chiffrees via DPAPI (`DataProtectionScope.CurrentUser`). Persiste aussi :
-  - `ShowDetails` (visibilité colonnes Projet/Fichier/Clé)
-  - `Provider` sélectionné + URL/Modèle par provider
-  - `SelectedLanguageCode`
-  - `WindowWidth`/`WindowHeight`
-  - `ColumnFillWeightsWithDetails` / `ColumnFillWeightsWithoutDetails` (persistance fine des largeurs selon le mode)
-  - Lecture de l'ancien emplacement (`AppContext.BaseDirectory`) conservée pour compatibilité.
+Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement les services (compat Designer) et un **ctor DI** utilisé en runtime.
 
-### UI helpers
-- **Tri :** `Controls/SortableBindingList.cs` — etend `BindingList<T>` pour activer le tri dans le DataGridView.
-- **Donnees d'entree :** `Input.xlsx` est copie dans le repertoire de sortie via `CopyToOutputDirectory`.
+### 6.2 Formulaires
 
-## Conventions de code
+**`Forms/MainForm.cs`** (~1940 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
+- Constructeur, InitComponent, init des colonnes / boutons / langues
+- `// --- Indicateur de qualité (couleur) ---` : `DataGridView_CellFormatting` + `QualityScore.GetBackColor`
+- `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms
+- Tri, menu contextuel, chargement/sauvegarde, traduire/vérifier IA, glossaire, auto-traduire
+- `// --- Icônes ---`
+- `// --- Persistance de disposition ---` : taille fenêtre + largeur colonnes (2 dictionnaires distincts selon mode détails)
+- `// --- Bouton Rafraîchir + F5 ---` : rechargement fichier + détection changements source
+- `// --- Filtre par score de vérification ---` : ComboBox dans l'en-tête Commentaire
 
-- **Namespace :** `CheckTranslation` (unique pour tout le projet, independamment des sous-dossiers)
-- **References nullables :** Activees — utiliser les annotations `?` lorsque les valeurs nulles sont possibles
-- **Usings implicites :** Actives — les espaces de noms courants `System.*` et `System.Windows.Forms.*` sont importes automatiquement
-- **Namespaces a portee de fichier :** Utilises dans tous les fichiers sources
-- **Modificateurs d'acces :** `internal` pour les classes non exposees hors de l'assembly (`TranslationRow`, `AppConfig`, services, modèles de fusion…), `public` pour les classes de formulaires héritant de `Form`
-- **Records :** préférés pour les modèles immuables (`MergeDifference`, `MergeRowSnapshot`, `MergeDifferenceResolution`, `LanguageInfo`, `ExcelLoadProgress`)
-- **Sections commentées :** `// --- Nom de section ---` pour structurer les gros fichiers (ex. `MainForm.cs` est organisé en sections : filtres, persistance de disposition, rafraîchissement, filtre par score, etc.)
+**`Forms/ConfigForm.cs`** — dialog modal pour `AppConfig`. Tous les contrôles (prompts, fournisseur IA, clés, URLs, modèles, boutons "Vider cache trad./vérif.") sont dans le Designer. `ConfigForm.cs` contient uniquement les handlers et la logique métier.
 
-## Avertissements importants
+**`Forms/MergeDifferenceForm.cs`** — dialog affichant côte à côte ligne source et ligne destination ; deux checkboxes ("reporter français+commentaire", "reporter traduction+commentaire") + bouton Continuer/Annuler. Colonnes DataGridView générées dynamiquement selon le contexte.
 
-- **Ne PAS modifier `*.Designer.cs` a la main** — ces fichiers (`MainForm`, `ConfigForm`, `MergeDifferenceForm`, `GlossaryForm`, `GlossaryExtractionDialog`) sont generes automatiquement par le designer Windows Forms
-- **Icône du bouton Glossaire** : `MainForm.LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent. Aujourd'hui `glossary.png` n'existe pas — l'icône affichée est donc celle de la configuration.
-- **Ne PAS modifier les `*.resx` manuellement** — geres par le designer
-- **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — necessaire car ils sont dans un sous-dossier `Forms/` ; ne pas supprimer ces entrees.
-- **Les colonnes Projet/Fichier/Cle sont creees programmatiquement** dans `MainForm.cs` (`InitDetailsColumns`) et inserees avant les colonnes du Designer ; ne pas les ajouter dans `MainForm.Designer.cs`. La colonne `Commentaire` est aussi créée par code (`InitCommentColumn`).
-- **Le bouton `Rafraîchir` est ajouté programmatiquement** (`MainForm.InitRefreshButton`, section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
-- **Les filtres ComboBox de score sont créés par code** (`MainForm.TryCreateSpecialFilterControl`, section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
-- **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire comme du texte ; la lecture se fait via ClosedXML dans `Services/ExcelReader.cs`
-- **Le projet cible `net8.0-windows`** — il necessite le SDK .NET 8 et ne fonctionne que sous Windows
-- **Fusion Excel :** la résolution des différences se fait par paire Source/Destination via `MergeDifferenceForm`, affichée pour CHAQUE ligne ayant un français ou un commentaire différent. L'utilisateur peut annuler la fusion globalement.
+**`Forms/GlossaryForm.cs`** — éditeur du glossaire métier : `ComboBox` de langue + `DataGridView` triable des entrées `Source` / `Destination` / `Context`. Boutons Ajouter / Supprimer / Annuler / Enregistrer. Prompt de confirmation si modifications non enregistrées à la fermeture.
 
-## Tests
+**`Forms/GlossaryExtractionDialog.cs`** — dialog d'extraction assistée : l'IA propose une liste de termes candidats (source + destination + contexte), l'utilisateur coche ceux à ajouter (édition possible inline) puis valide. Retourne `AcceptedEntries` (liste filtrée).
 
-- Aucun framework de test n'est actuellement configure
-- Aucun projet de test n'existe dans la solution
-- Pour ajouter des tests, utiliser un projet de test separe avec xUnit ou NUnit (ex. : `CheckTranslation.Tests/`)
-- Candidats naturels pour des tests unitaires : `QualityScore`, `TranslationRowFiltering`, `TranslationService` (cache/dédup), `ExcelReader.Merge`, `AppConfig` (round-trip DPAPI), `Translator.ParseNumberedList`.
+### 6.3 Services
 
-## Linting et formatage
+**`ExcelReader` (static)** — cœur Excel :
+- `Load(filePath, translationColumns, activeColumn, progress)` : parse la feuille, ignore les `@Invariant`, renseigne `TranslationRow.RowNumber/Project/File/Key/FrenchComment/French` + dictionnaires `Translations[col]` et `Comments[col]`. Rapporte la progression via `IProgress<ExcelLoadProgress>` (toutes les 10 lignes + bornes).
+- `Save(filePath, activeColumn, rows)` : synchronise la vue langue active dans les dictionnaires, puis réécrit cellule par cellule. `WriteCellValue` double une apostrophe de tête pour la préserver.
+- `GetMergeSourceDifferences(...)` et `Merge(...)` : corrélation des lignes via `SyncKey = Project|File|Key` (séparateur `\u001F`), détection des divergences français/commentaire, écriture sélective selon `MergeDifferenceResolution`.
 
-- Aucune configuration `.editorconfig`, StyleCop ou analyseur Roslyn n'existe
-- Suivre les conventions C# standard (PascalCase pour les membres publics, camelCase pour les variables locales et parametres)
-- Aucun pipeline CI/CD n'est configure
+**`ExcelService`** (implémente `IExcelService`) : façade DI, expose `Load`, `LoadWithRowProgress`, `Save`, `Merge`, `GetMergeSourceDifferences`.
 
-## Workflow Git
+**`Translator` (static)** — appels bruts aux providers :
+- OpenAI via `OpenAI.Chat.ChatClient`.
+- Anthropic via `AnthropicClient` (endpoint normalisé : retrait de `/v1` ou `/v1/messages`), `MaxTokens = 2048`.
+- `TranslateBatchAsync(texts, config, lang, glossarySection)` et `VerifyBatchAsync(pairs, ...)` : construisent une liste numérotée, remplacent `{language}` et `{glossary}` dans le system prompt, demandent une réponse strictement numérotée.
+- `TranslateInBatchesAsync` / `VerifyInBatchesAsync` : découpent en lots de `BatchSize = 20`, parallélisent avec `Task.WhenAll` + `SemaphoreSlim(FixedParallelBatchRequests = 4)`.
+- Retry Polly (3 tentatives, backoff exponentiel + jitter) sur : `HttpRequestException` transitoire (408/429/5xx + statut nul), `TimeoutException`, `TaskCanceledException`, `ClientResultException` (408/429/5xx).
+- **Callback `onBatchCompleted(batchItems, batchResults)`** invoqué dans chaque tâche parallèle juste après réception des résultats du batch → permet à `TranslationService` de reporter la progression au fil de l'eau.
+- `ParseNumberedList` (regex `^\s*(\d+)[.)]\s*(.+)$`) supporte les entrées multi-lignes.
 
-- **Branche principale :** `master`
-- **Patterns d'exclusion :** `.gitignore` standard Visual Studio (artefacts de build, fichiers utilisateur, packages)
-- **Les commits sont signes** via cle SSH
-- Limiter les modifications de `Input.xlsx` — c'est un fichier binaire volumineux (~3 Mo)
+**`TranslationService`** (implémente `ITranslationService`) :
+- Deux caches distincts (`Dictionary<string,string>` + `lock`) : traduction, vérification.
+- Clé traduction : `Provider|Url|Model|Language|GlossaryFingerprint|Texte`.
+- Clé vérification : `Provider|Url|Model|Language|GlossaryFingerprint|French|Translation`.
+- Déduplication intra-lot (plusieurs lignes avec le même français → une seule requête API).
+- Utilise `Translator.*InBatchesAsync` avec le callback `onBatchCompleted` pour remplir le cache et reporter la progression au fil des batches (`Interlocked.Add` sur le compteur `completed`).
+- API : `UpdateTranslationCache`, `UpdateVerificationCache`, `GetTranslationCacheCount`, `GetVerificationCacheCount`, `ClearTranslationCache`, `ClearVerificationCache`.
+
+**`GlossaryService`** (implémente `IGlossaryService`) :
+- Persistance JSON par langue dans `%LocalAppData%\CheckTranslation`.
+- `GetEntries(langueCode)` / `ReplaceEntries(langueCode, entries)` / `Save()`.
+- `BuildGlossarySection(langueCode, langueName)` : produit la section texte injectée à la place du placeholder `{glossary}`. Chaîne vide si aucune entrée → aucun impact sur le prompt.
+- `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées, inclus dans les clés de cache → **invalidation automatique** dès qu'une entrée change.
+- L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict ; filtrage des termes déjà connus avant proposition à l'utilisateur.
+
+### 6.4 Logic
+
+**`QualityScore`** (static) — format attendu `XXX - commentaire` (3 chiffres, 0..100). Regex `^\s*(\d{3})\s*[-–]\s*`. `GetBackColor(score)` interpole linéairement une palette pastel (rouge < 60 → orange 70 → jaune 80 → vert 90–100).
+
+**`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
+- `score:none` → lignes sans score parsable
+- `score<N` → lignes sans score OU score ≤ N (inclusif)
+- `score>=N` → lignes avec score ≥ N
+
+### 6.5 Modèles
+
+**`TranslationRow`** (POCO) :
+- Identité : `RowNumber` (ligne Excel), `Project`, `File`, `Key`.
+- Source : `French`, `FrenchComment`.
+- Vue langue active : `Translation`, `Comment` (modifiées directement par l'UI).
+- Multi-langues : `Translations: Dictionary<int,string>`, `Comments: Dictionary<int,string>` (clé = numéro de colonne Excel).
+- `SwitchLanguage(oldCol, newCol)` : pousse la vue active dans le dictionnaire sous `oldCol`, recharge depuis `newCol`. Évite le rechargement Excel à chaque switch de langue.
+- `GetSyncKey()` : `Project|File|Key` avec séparateur `\u001F`.
+
+**Fusion** :
+- `MergeRowSnapshot` : record immuable `(Project, File, Key, French, FrenchComment, Translation, TranslationComment)`.
+- `MergeDifference(SyncKey, Source, Destination)` : paire affichée dans le dialog.
+- `MergeDifferenceResolution(UpdateFrenchAndComment, UpdateTranslationAndComment)` : décision utilisateur (bool + bool). Propriété dérivée `HasAnyChange`.
+
+**Glossaire** :
+- `Glossary` : conteneur.
+- `GlossaryEntry(Source, Destination, Context)` : triplet. La structure de l'entrée reste générique, mais le stockage actuel du glossaire est indexé par `languageCode` côté cible (`EntriesByLanguage`) et suppose donc implicitement une source FR ; les autres couples source/destination ne sont pas encore pris en charge tels quels sans faire évoluer le format de clé.
+
+### 6.6 Configuration persistante (`AppConfig`)
+
+Fichier : `%LocalAppData%\CheckTranslation\CheckTranslation.config.json` (lecture de compatibilité sur `AppContext.BaseDirectory` si le nouveau emplacement est absent).
+
+Contenu persisté :
+- Prompts (`TranslatePrompt`, `VerifyPrompt`)
+- Fournisseur sélectionné (`Provider`) et paramètres par provider (`OpenAiKey/Url/ModelName`, `AnthropicKey/Url/ModelName`)
+- `ShowDetails`, `SelectedLanguageCode`, `WindowWidth/Height`
+- `ColumnFillWeightsWithDetails` / `ColumnFillWeightsWithoutDetails` : largeurs de colonnes selon le mode détails
+
+**Sécurité** : clés API chiffrées via DPAPI (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`). En cas d'échec de déchiffrement (autre utilisateur, format invalide), retourne la valeur telle quelle plutôt que de planter.
+
+**Compat legacy** : les champs historiques `Key`/`Url`/`ModelName` (OpenAI uniquement) sont toujours reconnus au chargement.
+
+---
+
+## 7. Flux fonctionnels
+
+### 7.1 Démarrage
+1. `AppConfig.Load()` alimente `AppConfig.Current`.
+2. `Program.Main` configure la DI et lance `MainForm`.
+3. `MainForm` restaure la taille de la fenêtre et les largeurs de colonnes depuis `AppConfig`.
+
+### 7.2 Ouverture d'un Excel
+1. Dialog `OpenFileDialog` → `_currentFilePath`.
+2. `ExcelService.LoadWithRowProgress(...)` charge les lignes (progress bar alimentée par `ExcelLoadProgress(Done, Total)`).
+3. Les lignes `@Invariant` sont ignorées.
+4. Les filtres de l'UI sont réinitialisés.
+5. `DataSource` de `SortableBindingList<TranslationRow>` assigné au `DataGridView`.
+
+### 7.3 Affichage / édition
+- `DataGridView` avec colonnes :
+  - Projet / Fichier / Clé (insérées par code, masquables)
+  - Français (Designer, lecture seule)
+  - Traduction (Designer, éditable)
+  - Commentaire (inséré par code, lecture seule)
+- `CellFormatting` colorie Traduction + Commentaire selon `QualityScore.TryParse(row.Comment)`.
+- `CellEndEdit` sur Traduction → `ITranslationService.UpdateTranslationCache(...)`.
+
+### 7.4 Changement de langue
+- Clic sur un drapeau de la toolbar.
+- Chaque `TranslationRow.SwitchLanguage(oldCol, newCol)` bascule la vue active.
+- Filtres réinitialisés, status bar mise à jour, `AppConfig.SelectedLanguageCode` persisté.
+
+### 7.5 Filtrage
+- TextBox superposé à l'en-tête (toutes colonnes sauf Commentaire) + debounce 300 ms.
+- ComboBox superposé à l'en-tête Commentaire (filtres par score).
+- `TranslationRowFiltering.Filter(_allRows, _filters)` recalcule le snapshot affiché.
+- `ApplyFiltersPreservingSelection()` conserve la sélection et le scroll lors des ré-applications.
+
+### 7.6 Tri
+- Clic sur l'en-tête d'une colonne → tri asc/desc (`dataGridView.Sort`).
+- Indicateur (triangle) dessiné à droite du titre dans `CellPainting`.
+
+### 7.7 Traduire / vérifier (IA)
+Menu contextuel sur `colTranslation` :
+- **Auto-traduire (copie existante)** : recopie des traductions connues pour le même français — sans appel IA.
+- **Traduire** : via IA (batch).
+- **Vérifier la traduction** : via IA (batch).
+- **Extraire les termes métier…** : déclenche l'extraction IA et ouvre `GlossaryExtractionDialog`.
+
+En multi-sélection : mêmes actions sur toute la sélection. Progress bar alimentée via `IProgress<int>`; `UseWaitCursor` pendant l'appel. Avertissement si des réponses IA n'ont pas pu être extraites.
+
+### 7.8 Rafraîchir (bouton ou F5)
+- **Fichier chargé** : `ExcelService.LoadWithRowProgress(...)` recharge depuis le disque. Détection des lignes dont le français/commentaire source a changé → confirmation utilisateur avant d'écraser les valeurs en mémoire. Les traductions des lignes inchangées sont conservées.
+- **Pas de fichier / après édition** : `ApplyFiltersPreservingSelection()` réapplique filtres + tri.
+- L'indicateur `Rafraîchir *` (étoile) s'affiche après une édition/traduction/vérification pour signaler qu'une ré-application filtres/tri est utile.
+
+### 7.9 Sauvegarde
+- `ExcelService.Save(filePath, activeColumn, rows)` synchronise la vue active puis réécrit toutes les traductions + commentaires. Les commentaires de vérification (format score) sont aussi persistés dans les colonnes Excel correspondantes.
+
+### 7.10 Fusion
+1. Dialog → `_destinationFilePath`.
+2. `ExcelService.GetMergeSourceDifferences(...)` détecte toutes les lignes où le français ou le commentaire source diffère entre source et destination.
+3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
+4. `ExcelService.Merge(...)` applique les résolutions. Les lignes sans divergence source → report systématique de la traduction. Retour : nombre de lignes mises à jour.
+
+### 7.11 Glossaire
+- **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
+- **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → validation → ajout au glossaire de la langue active.
+- **Injection dans les prompts** : à chaque appel de `TranslateInBatchesAsync` / `VerifyInBatchesAsync`, `MainForm` construit `glossarySection` (texte) et `glossaryFingerprint` (SHA256) pour la langue active. Le fingerprint invalide automatiquement les entrées de cache périmées.
+
+---
+
+## 8. Détails IA (Translator + TranslationService + Glossaire)
+
+### 8.1 Paramètres globaux
+- `BatchSize = 20`
+- `Temperature = 0.1f`
+- `FixedParallelBatchRequests = 4`
+- `RetryCount = 3`
+- `AnthropicMaxTokens = 2048`
+
+### 8.2 Progression temps réel
+Historiquement, `TranslationService` passait `null` en progress à `Translator` et ne reportait qu'après `Task.WhenAll` — la progress bar sautait de 0 à 100 % à la fin. Depuis la PR #7 :
+- `Translator.ProcessBatchesAsync` accepte un callback `Action<IReadOnlyList<T>, string[]>? onBatchCompleted` invoqué dans chaque tâche parallèle juste après réception des résultats d'un batch.
+- `TranslationService` passe un callback qui : remplit le cache, mappe les résultats aux indices originaux (via `pendingByText` / `pendingByPair`), incrémente `completed` via `Interlocked.Add`, reporte la progression.
+- Résultat UX : la status bar s'incrémente par paliers de ~20 au rythme des retours API (toutes les 3–10 s).
+
+### 8.3 Glossaire dans les prompts
+Les prompts par défaut contiennent un placeholder `{glossary}`. Juste avant l'appel API :
+```csharp
+systemPrompt = systemPrompt
+    .Replace("{language}", targetLanguage)
+    .Replace("{glossary}", glossarySection ?? string.Empty);
+```
+Le `glossarySection` est construit par `GlossaryService.BuildGlossarySection(...)` sous forme :
+```
+Glossaire à respecter (Source → Destination) :
+- "ABC" → "XYZ" (contexte : …)
+- …
+```
+(chaîne vide si aucune entrée → le placeholder disparaît du prompt).
+
+### 8.4 Invalidation de cache via fingerprint
+La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées `(Source|Destination|Context)`. Dès qu'une entrée est ajoutée, modifiée ou supprimée, le fingerprint change → les anciennes clés ne matchent plus → les lignes concernées seront retraduites à la prochaine demande.
+
+---
+
+## 9. Conventions de code
+
+- **Namespace unique** : `CheckTranslation` pour tout le projet, indépendamment des sous-dossiers.
+- **Nullable enable** + annotations `?` explicites.
+- **Implicit usings** enable.
+- **File-scoped namespaces** (`namespace CheckTranslation;`).
+- **Modificateurs d'accès** : `internal` pour les classes d'assembly (`TranslationRow`, `AppConfig`, services, modèles de fusion…). `public` uniquement pour les classes héritant de `Form`.
+- **Records** pour les modèles immuables : `MergeDifference`, `MergeRowSnapshot`, `MergeDifferenceResolution`, `LanguageInfo`, `ExcelLoadProgress`.
+- **Sections commentées** : `// --- Nom de section ---` pour structurer les gros fichiers (ex. `MainForm.cs`).
+- **Nommage** :
+  - UI (champs de contrôles) : **sans** underscore, ex. `btnOk`, `grid`, `languageCombo`.
+  - État non-UI (champs privés) : **avec** underscore, ex. `_glossaryService`, `_dirty`, `_allRows`.
+- **PascalCase** pour membres publics, **camelCase** pour variables locales et paramètres.
+
+---
+
+## 10. Avertissements importants
+
+- **Ne PAS modifier `*.Designer.cs` à la main** — générés par le designer WinForms. Toute modif manuelle doit être reproductible par le designer, sinon elle sera écrasée.
+- **Ne PAS modifier les `*.resx` manuellement** — générés par le designer.
+- **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — nécessaire car ils sont dans un sous-dossier `Forms/`. Ne pas supprimer ces entrées (`MainForm`, `ConfigForm`, `GlossaryForm`, `GlossaryExtractionDialog`).
+- **Les colonnes Projet/Fichier/Clé et Commentaire sont créées programmatiquement** dans `MainForm` (`InitDetailsColumns`, `InitCommentColumn`) et insérées autour des colonnes du Designer. Ne pas les ajouter dans `MainForm.Designer.cs`.
+- **Le bouton `Rafraîchir` est ajouté programmatiquement** (`InitRefreshButton` dans la section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
+- **Les ComboBox de filtre par score sont créés par code** (`TryCreateSpecialFilterControl` dans la section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
+- **Fusion Excel** : résolution ligne-par-ligne via `MergeDifferenceForm` pour CHAQUE ligne divergente. L'utilisateur peut annuler la fusion globalement.
+- **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
+- **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
+- **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
+- **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
+- **Caches mémoire non persistés** : perdus à la fermeture.
+
+---
+
+## 11. Tests
+
+**État actuel** : aucun framework de test, aucun projet de test dans la solution.
+
+**Candidats prioritaires** pour un futur `CheckTranslation.Tests/` (xUnit ou NUnit) :
+- `Logic/QualityScore` (parsing + calcul couleur)
+- `Logic/TranslationRowFiltering` (texte + pseudo-filtres score)
+- `Services/TranslationService` (cache, dédup, invalidation par fingerprint)
+- `Services/ExcelReader.Merge` (fusion + conflits)
+- `Services/Translator.ParseNumberedList` (robustesse du parsing)
+- `Models/AppConfig` (round-trip DPAPI + compat legacy)
+
+**Pas de CI/CD** configuré actuellement. Pas d'`.editorconfig` ni d'analyseurs Roslyn / StyleCop.
+
+---
+
+## 12. Suivi chronologique
+
+| Date | Changement |
+|------|------------|
+| 2026-01-XX | Version initiale |
+| 2026-03-06 | Hygiène WinForms Designer : nettoyage de `ConfigForm.Designer.cs` |
+| 2026-03-06 | DI : ajout de `IExcelService`/`ITranslationService` + injection dans `MainForm` |
+| 2026-03-06 | Séparation UI/Logic : extraction de `Logic/QualityScore.cs` + `Logic/TranslationRowFiltering.cs` |
+| 2026-03-07 | Chargement Excel : progress bar en lignes lues (`ExcelLoadProgress` + `LoadWithRowProgress`) |
+| 2026-03-07 | Auto-traduction (sans IA) : copie des traductions déjà présentes (menu contextuel) |
+| 2026-03-13 | Chargement fichier : réinitialisation des champs de filtre après `Ouvrir` |
+| 2026-03-13 | Cache traductions IA : cache mémoire par texte/langue/config + dédup + update manuel |
+| 2026-03-13 | Emplacement config : déplacement vers `%LocalAppData%\CheckTranslation` avec compat lecture |
+| 2026-03-13 | Cache vérifications IA : cache mémoire distinct + compteur dédié dans la status bar |
+| 2026-03-13 | Persistance vérification : sauvegarde des commentaires de vérification dans l'Excel |
+| 2026-03-13 | Appels API parallèles : `Task.WhenAll` + `SemaphoreSlim` pour limiter le rate limiting |
+| 2026-03-20 | Boutons « Vider cache » dans `ConfigForm` |
+| 2026-03-27 | Filtre par score de vérification : ComboBox dans l'en-tête Commentaire |
+| 2026-04-03 | Bouton Rafraîchir + F5 : rechargement fichier + détection changements source |
+| 2026-04-10 | Persistance de disposition : taille fenêtre + largeurs colonnes (2 dictionnaires selon mode) |
+| 2026-04-15 | Fusion Excel : report traductions source→destination avec résolution des conflits |
+| 2026-04-17 | Refactorisation de la gestion des différences de fusion |
+| 2026-04-17 | Progression temps réel des batchs IA : callback `onBatchCompleted` (PR #7) |
+| 2026-04-18 | Glossaire métier : service + éditeur + extraction IA + injection dans prompts + invalidation par fingerprint (PR #8) |
+| 2026-04-18 | Nettoyage layout `MergeDifferenceForm` : fenêtre élargie, marges compactes |
+| 2026-04-18 | Migration des boutons « Vider cache » de `ConfigForm` vers le Designer (PR #9) |
+| 2026-04-18 | Migration de `GlossaryForm` et `GlossaryExtractionDialog` vers le pattern Designer + resx (PR #10) |
+| 2026-04-18 | Fusion des 3 partials de `MainForm` (`LayoutPersistence`, `ManualRefreshSupport`, `VerificationScoreFilterSupport`) dans `MainForm.cs` avec sections commentées (PR #11) |
+
+---
+
+## 13. Roadmap
+
+Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
+
+### 13.1 Architecture & maintenabilité
+
+| Prio | Axe | État | Amélioration suggérée |
+|:--:|---|---|---|
+| 🔴 | **Tests** | Aucun | Projet `CheckTranslation.Tests` (xUnit/NUnit). Candidats prioritaires listés en §11. |
+| 🟡 | **Séparation UI/Logic** | Partielle (`Logic/` extrait, `MainForm` désormais en sections commentées) | Extraire un `MainFormViewModel`/présenteur pour chargement/sauvegarde/traduction/fusion |
+| 🟢 | **Prompts externalisés** | En dur dans `AppConfig.cs` | Déplacer dans des fichiers `.md` séparés (édition facile) |
+
+### 13.2 Performance
+
+| Prio | Axe | État | Amélioration suggérée |
+|:--:|---|---|---|
+| 🟢 | **Appels API parallèles** | ✅ `Task.WhenAll` + `SemaphoreSlim(4)` | Ajuster selon quotas réels des providers |
+| 🟢 | **Chargement Excel** | ✅ Progress en lignes lues | Streaming / `VirtualMode` pour >50k lignes |
+| 🟢 | **Cache traductions** | ✅ Mémoire + dédup + fingerprint glossaire | Persistance disque entre sessions |
+| 🟢 | **DataGridView** | Double-buffering activé | `VirtualMode` pour très gros fichiers |
+
+### 13.3 UX / Interface
+
+| Prio | Axe | État | Amélioration suggérée |
+|:--:|---|---|---|
+| 🔴 | **Annulation** | Aucune | `CancellationToken` + bouton « Annuler » |
+| 🟡 | **Historique Undo/Redo** | Aucun | Au moins 1 niveau |
+| 🟢 | **Recherche globale** | Filtres par colonne uniquement | Recherche toutes colonnes |
+| 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
+| 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
+| 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
+| 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
+
+### 13.4 Robustesse & sécurité
+
+| Prio | Axe | État | Amélioration suggérée |
+|:--:|---|---|---|
+| 🟢 | **Retry API** | ✅ Polly (408/429/5xx + exceptions transitoires) | Ajuster selon limites réelles |
+| 🟡 | **Timeout explicite** | Aucun | Timeout configurable sur les appels IA |
+| 🟢 | **Validation prompts** | Aucune | Vérifier la présence de `{language}` |
+| 🟡 | **Fichier Excel verrouillé** | Exception brute | Détecter + proposer copie temporaire |
+| 🟢 | **Backup auto** | Aucun | `.bak` avant chaque sauvegarde |
+| 🟡 | **Traduction partielle** | Entrée IA vide → placeholder | Restaurer l'ancienne valeur + message explicite |
+
+### 13.5 Fonctionnalités à ajouter
+
+| Prio | Fonctionnalité | Description |
+|:--:|---|---|
+| 🟡 | **Traduction auto au chargement** | Option pour traduire automatiquement les cellules vides |
+| 🟢 | **Comparaison avant/après** | Vue diff depuis le chargement |
+| 🟢 | **Statistiques** | Dashboard : % traduit, % vérifié, scores moyens par langue |
+| 🟢 | **Export rapport** | HTML/PDF des vérifications |
+| 🟡 | **Mode batch CLI** | Version console pour CI/CD |
+| 🟢 | **Multi-fichiers** | Onglets pour plusieurs fichiers simultanés |
+| 🟢 | **Historique des appels IA** | Logger requêtes/réponses pour debug |
+
+### 13.6 DevOps & qualité
+
+| Prio | Axe | État | Amélioration suggérée |
+|:--:|---|---|---|
+| 🔴 | **CI/CD** | Aucun | GitHub Actions : build + tests + release |
+| 🟢 | **Version affichée** | Non | Titre ou About (`AssemblyVersion`) |
+| 🟡 | **Logging** | `Debug.WriteLine` | Serilog/NLog + fichier rotatif |
+| 🟢 | **Analyseurs** | Aucun | `.editorconfig` + StyleCop |
+| 🟢 | **Documentation** | README à jour | Screenshots, GIF de démo |
+
+### 13.7 Quick wins
+
+| État | Amélioration |
+|---|---|
+| Partiel | **Bouton « Copier »** sur les cellules (français fait, traduction à ajouter) |
+| À faire | **Tooltip** sur cellules tronquées |
+| À faire | **Compteur de caractères** traduction vs source |
+| À faire | **Indicateur « non sauvegardé »** dans le titre |
+| À faire | **Raccourci F2** : éditer la cellule sélectionnée |
+| À faire | **Son/notification** fin de batch (app en arrière-plan) |
+
+---
+
+*Document vivant — à maintenir à jour au fil des PR.*
