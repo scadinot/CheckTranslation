@@ -14,11 +14,15 @@ namespace CheckTranslation;
 
 internal static partial class Translator
 {
-    private const int BatchSize = 20;
+    internal const int BatchSize = 20;
     private const float Temperature = 0.1f;
     private const long AnthropicMaxTokens = 2048;
     private const int RetryCount = 3;
     private const int FixedParallelBatchRequests = 4;
+
+    // Le pipeline Polly est stateless : une seule instance partagée pour toutes les invocations
+    // (plus d'allocation par appel).
+    private static readonly ResiliencePipeline<string> RetryPipeline = BuildRetryPipeline();
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection)
     {
@@ -44,7 +48,7 @@ internal static partial class Translator
 
         var sb = new StringBuilder();
         for (int i = 0; i < pairs.Count; i++)
-            sb.AppendLine($"{i + 1}. Source: {pairs[i].French} | Traduction: {pairs[i].Translation}");
+            sb.AppendLine($"{i + 1}. Source : {pairs[i].French} | Traduction : {pairs[i].Translation}");
 
         var content = await CallApiAsync(systemPrompt, sb.ToString(), config);
         System.Diagnostics.Debug.WriteLine($"[VerifyBatch] Réponse IA :\n{content}");
@@ -101,9 +105,7 @@ internal static partial class Translator
 
     internal static async Task<string> CallApiAsync(string systemPrompt, string userMessage, AppConfig config)
     {
-        var retryPolicy = CreateRetryPolicy();
-
-        return await retryPolicy.ExecuteAsync(async _ =>
+        return await RetryPipeline.ExecuteAsync(async _ =>
         {
             return config.Provider switch
             {
@@ -181,7 +183,7 @@ internal static partial class Translator
         }
     }
 
-    private static ResiliencePipeline<string> CreateRetryPolicy()
+    private static ResiliencePipeline<string> BuildRetryPipeline()
     {
         return new ResiliencePipelineBuilder<string>()
             .AddRetry(new RetryStrategyOptions<string>

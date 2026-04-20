@@ -6,10 +6,10 @@ internal sealed class TranslationService : ITranslationService
     private readonly Dictionary<string, string> _verificationCache = new(StringComparer.Ordinal);
     private readonly object _cacheLock = new();
 
-    public int GetTranslationCacheCount(AppConfig config, string targetLanguage)
+    public int GetTranslationCacheCount(AppConfig config, string targetLanguage, string glossaryFingerprint)
     {
         lock (_cacheLock)
-            return _translationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
+            return _translationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage, glossaryFingerprint));
     }
 
     public int ClearTranslationCache(AppConfig config)
@@ -27,10 +27,10 @@ internal sealed class TranslationService : ITranslationService
         }
     }
 
-    public int GetVerificationCacheCount(AppConfig config, string targetLanguage)
+    public int GetVerificationCacheCount(AppConfig config, string targetLanguage, string glossaryFingerprint)
     {
         lock (_cacheLock)
-            return _verificationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage));
+            return _verificationCache.Keys.Count(key => IsCacheKeyMatch(key, config, targetLanguage, glossaryFingerprint));
     }
 
     public int ClearVerificationCache(AppConfig config)
@@ -244,12 +244,18 @@ internal sealed class TranslationService : ITranslationService
     private static string BuildVerificationCacheKey(string frenchText, string translation, AppConfig config, string targetLanguage, string glossaryFingerprint)
         => string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, glossaryFingerprint ?? string.Empty, frenchText, translation);
 
-    private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage)
+    // Match strict incluant la langue + le fingerprint glossaire : utilise par les methodes Get*Count
+    // pour ne compter que les entrees encore atteignables par la configuration courante.
+    // Apres une modification du glossaire, les entrees au fingerprint precedent ne sont plus hit -->
+    // ne pas les compter evite un affichage trompeur "Cache trad. : N" avec des entrees mortes.
+    private static bool IsCacheKeyMatch(string cacheKey, AppConfig config, string targetLanguage, string glossaryFingerprint)
     {
-        var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage) + "\u001F";
+        var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName, targetLanguage, glossaryFingerprint ?? string.Empty) + "\u001F";
         return cacheKey.StartsWith(prefix, StringComparison.Ordinal);
     }
 
+    // Match large (sans langue ni fingerprint) : utilise par les methodes Clear* pour purger
+    // toutes les entrees d'un provider, y compris les entrees perimees (fingerprint obsolete).
     private static bool IsCacheKeyMatch(string cacheKey, AppConfig config)
     {
         var prefix = string.Join("\u001F", config.Provider, config.Url, config.ModelName) + "\u001F";
@@ -260,8 +266,8 @@ internal sealed class TranslationService : ITranslationService
     {
         var batches = new List<string[]>();
 
-        for (int i = 0; i < results.Count; i += 20)
-            batches.Add(results.Skip(i).Take(20).ToArray());
+        for (int i = 0; i < results.Count; i += Translator.BatchSize)
+            batches.Add(results.Skip(i).Take(Translator.BatchSize).ToArray());
 
         return batches;
     }

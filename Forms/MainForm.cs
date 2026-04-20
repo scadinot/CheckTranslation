@@ -962,12 +962,14 @@ public partial class MainForm : Form
 
     private void UpdateTranslationCacheCountStatus()
     {
-        statusTranslationCacheCount.Text = $"Cache trad. : {_translationService.GetTranslationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
+        var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
+        statusTranslationCacheCount.Text = $"Cache trad. : {_translationService.GetTranslationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint)}";
     }
 
     private void UpdateVerificationCacheCountStatus()
     {
-        statusVerificationCacheCount.Text = $"Cache Vérif. : {_translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name)}";
+        var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
+        statusVerificationCacheCount.Text = $"Cache Vérif. : {_translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint)}";
     }
 
     private void UpdateProviderStatus()
@@ -1157,7 +1159,9 @@ public partial class MainForm : Form
             if (string.IsNullOrWhiteSpace(row.French) || string.IsNullOrWhiteSpace(row.Translation))
                 continue;
 
-            if (row.Translation is "Traduction en cours..." or "Vérification...")
+            // Placeholder utilise pendant un batch IA : ignorer pour ne pas l'utiliser comme
+            // source de recopie. Symetrique avec la condition de skip cote cibles.
+            if (row.Translation is "Traduction en cours...")
                 continue;
 
             var key = Normalize(row.French);
@@ -1565,12 +1569,29 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
     private static Bitmap LoadIcon(string name, int size = 16)
     {
-        using var original = new Bitmap(Path.Combine(ResourceDir, name));
-        var resized = new Bitmap(size, size);
-        using var g = Graphics.FromImage(resized);
-        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        g.DrawImage(original, 0, 0, size, size);
-        return resized;
+        // Toute erreur (fichier manquant, corrompu, inaccessible) retombe sur un bitmap
+        // transparent de la bonne taille plutôt que de faire planter l'app au demarrage.
+        var path = Path.Combine(ResourceDir, name);
+        if (!File.Exists(path))
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Icone introuvable : {path}");
+            return new Bitmap(size, size);
+        }
+
+        try
+        {
+            using var original = new Bitmap(path);
+            var resized = new Bitmap(size, size);
+            using var g = Graphics.FromImage(resized);
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(original, 0, 0, size, size);
+            return resized;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Impossible de charger l'icone '{name}' : {ex.Message}");
+            return new Bitmap(size, size);
+        }
     }
 
     // --- Persistance de disposition ---
