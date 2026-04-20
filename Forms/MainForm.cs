@@ -28,6 +28,12 @@ public partial class MainForm : Form
     private readonly Dictionary<string, string> _filters = new();
     private readonly Dictionary<string, TextBox> _filterTextBoxes = new();
     private System.Windows.Forms.Timer? _filterDebounceTimer;
+    // Dimensions calculees dynamiquement a l'init pour s'adapter au DPI courant.
+    // Evite les constantes en pixels qui rendent les filtres disproportionnes en DPI 125/150/200%.
+    private int _filterControlHeight = 16;          // hauteur d'un TextBox/ComboBox de filtre
+    private int _columnHeaderTitleHeight = 25;      // hauteur de la zone titre dans l'en-tete
+    private int FilterIconWidth => LogicalToDeviceUnits(18);
+    private int FilterBottomMargin => LogicalToDeviceUnits(5);
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
     private int _contextMenuRowIndex = -1;
@@ -548,9 +554,16 @@ public partial class MainForm : Form
         dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
         dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = SystemColors.ControlText;
 
-        // Augmenter la hauteur des en-têtes pour contenir titre + filtre
+        // Calcul DPI-aware des metriques du filtre a partir des polices effectives.
+        var headerFont = dataGridView.ColumnHeadersDefaultCellStyle.Font ?? dataGridView.Font;
+        _columnHeaderTitleHeight = TextRenderer.MeasureText("Mg", headerFont).Height + LogicalToDeviceUnits(4);
+
+        using (var sampleBox = new TextBox { Font = new Font(dataGridView.Font.FontFamily, 8.5f) })
+            _filterControlHeight = sampleBox.PreferredHeight;
+
+        // Augmenter la hauteur des en-tetes pour contenir titre + filtre (adaptatif au DPI)
         dataGridView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-        dataGridView.ColumnHeadersHeight = 50;
+        dataGridView.ColumnHeadersHeight = _columnHeaderTitleHeight + _filterControlHeight + FilterBottomMargin + LogicalToDeviceUnits(4);
 
         // Timer pour le debounce du filtrage
         _filterDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
@@ -658,10 +671,11 @@ public partial class MainForm : Form
                 continue;
             }
 
-            // Positionner le TextBox avec un espace à gauche pour l'icône de filtre
-            const int filterHeight = 16;
-            const int bottomMargin = 5;
-            const int iconWidth = 18; // Espace pour l'icône 🔍
+            // Positionner le TextBox avec un espace a gauche pour l'icone de filtre
+            // Dimensions calculees dynamiquement dans InitFilterPanel pour s'adapter au DPI.
+            int iconWidth = FilterIconWidth;
+            int filterHeight = _filterControlHeight;
+            int bottomMargin = FilterBottomMargin;
 
             textBox.Visible = true;
             textBox.SetBounds(
@@ -682,11 +696,12 @@ public partial class MainForm : Form
 
         var column = dataGridView.Columns[e.ColumnIndex];
 
-        // Constantes pour le layout (synchronisées avec UpdateFilterPanelLayout)
-        const int filterHeight = 16;
-        const int bottomMargin = 5;
-        const int iconWidth = 18;
-        int titleAreaHeight = dataGridView.ColumnHeadersHeight - filterHeight - bottomMargin - 4;
+        // Dimensions synchronisees avec UpdateFilterPanelLayout / TryLayoutSpecialFilterControl
+        // (calculees a partir du DPI dans InitFilterPanel).
+        int filterHeight = _filterControlHeight;
+        int bottomMargin = FilterBottomMargin;
+        int iconWidth = FilterIconWidth;
+        int titleAreaHeight = dataGridView.ColumnHeadersHeight - filterHeight - bottomMargin - LogicalToDeviceUnits(4);
 
         // Zone pour le titre (partie haute, au-dessus du TextBox)
         var titleRect = new Rectangle(
@@ -1898,9 +1913,10 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             return true;
         }
 
-        const int filterHeight = 18;
-        const int bottomMargin = 4;
-        const int iconWidth = 18;
+        // Dimensions synchronisees avec UpdateFilterPanelLayout (calculees DPI-aware dans InitFilterPanel).
+        int iconWidth = FilterIconWidth;
+        int filterHeight = _filterControlHeight;
+        int bottomMargin = FilterBottomMargin;
 
         comboBox.Visible = true;
         comboBox.SetBounds(
