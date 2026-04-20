@@ -40,12 +40,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Remove="Forms\MainForm.LayoutPersistence.resx" />
-    <EmbeddedResource Remove="Forms\ManualRefreshSupport.resx" />
-    <EmbeddedResource Remove="Forms\VerificationScoreFilterSupport.resx" />
-  </ItemGroup>
-
-  <ItemGroup>
     <None Update="Input.xlsx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

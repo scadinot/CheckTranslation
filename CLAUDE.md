@@ -27,12 +27,9 @@ CheckTranslation/
 ├── CheckTranslation.csproj      # Fichier projet (WinExe, net8.0-windows)
 ├── Program.cs                   # Point d'entree (STAThread, bootstrap DI, lance MainForm)
 ├── Forms/
-│   ├── MainForm.cs                           # Logique principale (chargement, sauvegarde, langues, filtres)
+│   ├── MainForm.cs                           # Logique principale (chargement, sauvegarde, langues, filtres, rafraîchissement, persistance disposition, filtre score)
 │   ├── MainForm.Designer.cs                  # Code genere par le designer (ne pas modifier)
 │   ├── MainForm.resx                         # Ressources du formulaire (ne pas modifier)
-│   ├── MainForm.LayoutPersistence.cs         # Partial : persistance taille fenêtre + largeur colonnes
-│   ├── ManualRefreshSupport.cs               # Partial : bouton rafraîchir + F5, rechargement fichier
-│   ├── VerificationScoreFilterSupport.cs     # Partial : filtre combobox par score de vérification
 │   ├── ConfigForm.cs                         # Dialog de configuration (prompts + IA + vider cache)
 │   ├── ConfigForm.Designer.cs                # Code genere par le designer (ne pas modifier)
 │   ├── ConfigForm.resx                       # Ressources du dialog (ne pas modifier)
@@ -40,7 +37,11 @@ CheckTranslation/
 │   ├── MergeDifferenceForm.Designer.cs       # Code genere par le designer
 │   ├── MergeDifferenceForm.resx              # Ressources du dialog
 │   ├── GlossaryForm.cs                       # Editeur du glossaire métier (ComboBox langue + DataGridView)
-│   └── GlossaryExtractionDialog.cs           # Dialog d'extraction assistée (IA propose, l'utilisateur valide)
+│   ├── GlossaryForm.Designer.cs              # Code genere par le designer
+│   ├── GlossaryForm.resx                     # Ressources du dialog
+│   ├── GlossaryExtractionDialog.cs           # Dialog d'extraction assistée (IA propose, l'utilisateur valide)
+│   ├── GlossaryExtractionDialog.Designer.cs  # Code genere par le designer
+│   └── GlossaryExtractionDialog.resx         # Ressources du dialog
 ├── Models/
 │   ├── TranslationRow.cs                # Modele de donnees pour une ligne (incl. FrenchComment, GetSyncKey)
 │   ├── AiProvider.cs                    # Enum fournisseur IA (OpenAI / Anthropic)
@@ -114,7 +115,7 @@ dotnet publish -c Release
 - **Injection de dépendances :** `MainForm`, `ConfigForm`, `GlossaryForm` et `GlossaryExtractionDialog` acceptent un constructeur avec leurs services (avec fallback de constructeur sans paramètre instanciant manuellement les services pour la compatibilité Designer).
 
 ### Formulaires
-- **Formulaire principal :** `Forms/MainForm.cs` — classe `partial` découpée en plusieurs fichiers (`MainForm.LayoutPersistence.cs`, `ManualRefreshSupport.cs`, `VerificationScoreFilterSupport.cs`) pour séparer les responsabilités.
+- **Formulaire principal :** `Forms/MainForm.cs` — classe `partial` (avec `MainForm.Designer.cs` comme autre moitié). Toute la logique applicative est regroupée dans `MainForm.cs` et organisée en sections commentées (`// --- Filtres ---`, `// --- Persistance de disposition ---`, `// --- Bouton Rafraîchir + F5 ---`, `// --- Filtre par score de vérification ---`, etc.).
   - DataGridView avec colonnes Projet/Fichier/Cle (masquables), Francais (lecture seule), Traduction (editable) et Commentaire (score).
   - Barre d'outils : Ouvrir / Sauvegarder / Fusionner / Afficher détails / Config / Drapeaux / Rafraîchir / Glossaire.
   - Barre de statut : fichier, lignes, sélection, cache traduction, cache vérification, provider IA + modèle, langue active.
@@ -162,17 +163,17 @@ dotnet publish -c Release
 - **Namespaces a portee de fichier :** Utilises dans tous les fichiers sources
 - **Modificateurs d'acces :** `internal` pour les classes non exposees hors de l'assembly (`TranslationRow`, `AppConfig`, services, modèles de fusion…), `public` pour les classes de formulaires héritant de `Form`
 - **Records :** préférés pour les modèles immuables (`MergeDifference`, `MergeRowSnapshot`, `MergeDifferenceResolution`, `LanguageInfo`, `ExcelLoadProgress`)
-- **Partials :** pour découper `MainForm` par responsabilité (layout, refresh, score filter)
+- **Sections commentées :** `// --- Nom de section ---` pour structurer les gros fichiers (ex. `MainForm.cs` est organisé en sections : filtres, persistance de disposition, rafraîchissement, filtre par score, etc.)
 
 ## Avertissements importants
 
 - **Ne PAS modifier `*.Designer.cs` a la main** — ces fichiers (`MainForm`, `ConfigForm`, `MergeDifferenceForm`, `GlossaryForm`, `GlossaryExtractionDialog`) sont generes automatiquement par le designer Windows Forms
 - **Icône du bouton Glossaire** : `MainForm.LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent. Aujourd'hui `glossary.png` n'existe pas — l'icône affichée est donc celle de la configuration.
 - **Ne PAS modifier les `*.resx` manuellement** — geres par le designer
-- **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — necessaire car ils sont dans un sous-dossier `Forms/` ; ne pas supprimer ces entrees. Les fichiers partials (`MainForm.LayoutPersistence.resx`, `ManualRefreshSupport.resx`, `VerificationScoreFilterSupport.resx`) sont explicitement exclus via `<EmbeddedResource Remove="..."/>`.
+- **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — necessaire car ils sont dans un sous-dossier `Forms/` ; ne pas supprimer ces entrees.
 - **Les colonnes Projet/Fichier/Cle sont creees programmatiquement** dans `MainForm.cs` (`InitDetailsColumns`) et inserees avant les colonnes du Designer ; ne pas les ajouter dans `MainForm.Designer.cs`. La colonne `Commentaire` est aussi créée par code (`InitCommentColumn`).
-- **Le bouton `Rafraîchir` est ajouté programmatiquement** (`ManualRefreshSupport.InitRefreshButton`) puis disposé par `ArrangeToolStripItems`.
-- **Les filtres ComboBox de score sont créés par code** (`VerificationScoreFilterSupport.TryCreateSpecialFilterControl`) et superposés aux en-têtes du DataGridView.
+- **Le bouton `Rafraîchir` est ajouté programmatiquement** (`MainForm.InitRefreshButton`, section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
+- **Les filtres ComboBox de score sont créés par code** (`MainForm.TryCreateSpecialFilterControl`, section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
 - **`Input.xlsx` est un fichier binaire** — ne pas tenter de le lire comme du texte ; la lecture se fait via ClosedXML dans `Services/ExcelReader.cs`
 - **Le projet cible `net8.0-windows`** — il necessite le SDK .NET 8 et ne fonctionne que sous Windows
 - **Fusion Excel :** la résolution des différences se fait par paire Source/Destination via `MergeDifferenceForm`, affichée pour CHAQUE ligne ayant un français ou un commentaire différent. L'utilisateur peut annuler la fusion globalement.
