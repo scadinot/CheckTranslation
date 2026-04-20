@@ -87,7 +87,7 @@ internal sealed partial class ConfigForm : Form
     {
         // Preserver les champs de disposition depuis AppConfig.Current : ils ne sont pas
         // edites dans ConfigForm mais font partie de la config persistee. Sans cette copie,
-        // un click sur OK reinitialisait WindowWidth/Height et les ColumnFillWeights du mode
+        // un clic sur OK reinitialisait WindowWidth/Height et les ColumnFillWeights du mode
         // inactif a 0 / {} -> perte definitive au redemarrage suivant.
         var current = AppConfig.Current;
         return new AppConfig
