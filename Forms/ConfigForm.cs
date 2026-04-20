@@ -332,7 +332,15 @@ internal sealed partial class ConfigForm : Form
     {
         var t = model.GetType();
         var p = t.GetProperty("ID") ?? t.GetProperty("Id") ?? t.GetProperty("ModelID") ?? t.GetProperty("ModelId");
-        return p?.GetValue(model)?.ToString();
+        if (p is null)
+        {
+            // Si le SDK Anthropic / OpenAI renomme la propriete d'ID, la reflexion retourne null
+            // silencieusement -> la liste des modeles est vide sans avertissement. On logge un
+            // indice pour faciliter le diagnostic lors d'une mise a jour SDK.
+            System.Diagnostics.Debug.WriteLine($"[ConfigForm] GetModelId : aucune propriete Id/ID/ModelId/ModelID sur le type '{t.FullName}'. Mise a jour SDK ?");
+            return null;
+        }
+        return p.GetValue(model)?.ToString();
     }
 
     private static string NormalizeAnthropicBaseUrl(string url)
@@ -386,8 +394,12 @@ internal sealed partial class ConfigForm : Form
         }
 
         if (models is null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConfigForm] ExtractIds : payload de type '{payload.GetType().FullName}' n'est ni IEnumerable ni n'expose Data/Items. Mise a jour SDK ?");
             yield break;
+        }
 
+        bool anyMatch = false;
         foreach (var model in models)
         {
             if (model is null)
@@ -398,8 +410,12 @@ internal sealed partial class ConfigForm : Form
             if (p is null)
                 continue;
 
+            anyMatch = true;
             yield return p.GetValue(model)?.ToString();
         }
+
+        if (!anyMatch)
+            System.Diagnostics.Debug.WriteLine("[ConfigForm] ExtractIds : aucun modele n'expose une propriete Id/ID/Model/Name. Mise a jour SDK ?");
     }
 
     private void InitMarkdownEditors()

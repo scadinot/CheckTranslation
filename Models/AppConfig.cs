@@ -316,8 +316,16 @@ internal sealed class AppConfig
             var json = File.ReadAllText(path);
             dto = JsonSerializer.Deserialize<ConfigDto>(json);
         }
-        catch
+        // On ne rattrape que les exceptions attendues lors d'une lecture + desserialisation
+        // de fichier config. Les exceptions fatales (OutOfMemory, AccessViolation, etc.)
+        // doivent remonter pour ne pas masquer de vrais problemes.
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or System.Text.Json.JsonException
+            or ArgumentException
+            or NotSupportedException)
         {
+            System.Diagnostics.Debug.WriteLine($"[AppConfig] Lecture de la config echouee : {ex.GetType().Name} : {ex.Message}");
             return new AppConfig();
         }
 
