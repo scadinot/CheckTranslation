@@ -240,7 +240,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **Glossaire** :
 - `Glossary` : conteneur.
-- `GlossaryEntry(Source, Destination, Context)` : triplet. Le glossaire est **agnostique au couple source/destination** → conserve la structure même si un autre couple que FR → X était introduit.
+- `GlossaryEntry(Source, Destination, Context)` : triplet. La structure de l'entrée reste générique, mais le stockage actuel du glossaire est indexé par `languageCode` côté cible (`EntriesByLanguage`) et suppose donc implicitement une source FR ; les autres couples source/destination ne sont pas encore pris en charge tels quels sans faire évoluer le format de clé.
 
 ### 6.6 Configuration persistante (`AppConfig`)
 
