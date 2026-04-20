@@ -209,7 +209,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`GlossaryService`** (implémente `IGlossaryService`) :
 - Persistance JSON par langue dans `%LocalAppData%\CheckTranslation`.
-- `GetEntries(langueCode)` / `SaveEntries(langueCode, entries)`.
+- `GetEntries(langueCode)` / `ReplaceEntries(langueCode, entries)` / `Save()`.
 - `BuildGlossarySection(langueCode, langueName)` : produit la section texte injectée à la place du placeholder `{glossary}`. Chaîne vide si aucune entrée → aucun impact sur le prompt.
 - `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées, inclus dans les clés de cache → **invalidation automatique** dès qu'une entrée change.
 - L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict ; filtrage des termes déjà connus avant proposition à l'utilisateur.
