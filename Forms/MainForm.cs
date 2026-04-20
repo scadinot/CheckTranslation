@@ -28,6 +28,11 @@ public partial class MainForm : Form
     // Indique qu'une ecriture disque est en cours (Save ou Merge).
     // Pendant cet etat, la fermeture de la fenetre est bloquee pour eviter la corruption du fichier.
     private bool _isWriting;
+    // Feedback non-modal pour les tentatives de fermeture pendant _isWriting : on flash un message
+    // dans la status bar puis on restaure le texte precedent apres quelques secondes.
+    private System.Windows.Forms.Timer? _closeBlockedFlashTimer;
+    private string? _statusTextBeforeCloseBlocked;
+    private const string CloseBlockedMessage = "⚠ Opération en cours — fermeture bloquée";
     private readonly Dictionary<string, string> _filters = new();
     private readonly Dictionary<string, TextBox> _filterTextBoxes = new();
     private System.Windows.Forms.Timer? _filterDebounceTimer;
@@ -1659,17 +1664,44 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             if (canCancelClose)
             {
                 e.Cancel = true;
-                MessageBox.Show(
-                    this,
-                    "Une operation d'ecriture est en cours. Veuillez attendre la fin avant de fermer l'application.",
-                    "Operation en cours",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                FlashCloseBlocked();
             }
             return;
         }
 
         SaveWindowLayout();
+    }
+
+    // Feedback non-modal quand la fermeture est bloquee : flash un message dans la status bar
+    // pendant 3 s puis restaure le texte precedent. Moins intrusif qu'un MessageBox.
+    private void FlashCloseBlocked()
+    {
+        // Premiere tentative : memoriser le texte courant pour pouvoir le restaurer. Les clics
+        // suivants ne reecrasent pas cette memoire (le texte actuel est deja notre message flash).
+        _statusTextBeforeCloseBlocked ??= statusRowCount.Text;
+
+        statusRowCount.Text = CloseBlockedMessage;
+
+        if (_closeBlockedFlashTimer is null)
+        {
+            _closeBlockedFlashTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            _closeBlockedFlashTimer.Tick += CloseBlockedFlashTimer_Tick;
+        }
+        _closeBlockedFlashTimer.Stop();
+        _closeBlockedFlashTimer.Start();
+    }
+
+    private void CloseBlockedFlashTimer_Tick(object? sender, EventArgs e)
+    {
+        _closeBlockedFlashTimer?.Stop();
+
+        // Ne restaurer le texte memorise que si la status bar affiche encore notre message de flash.
+        // Si la sauvegarde / fusion s'est terminee entre temps, son code de finalisation a deja pose
+        // un texte definitif (ex. "Lignes : N (sauvegarde)") - on ne l'ecrase pas.
+        if (statusRowCount.Text == CloseBlockedMessage && _statusTextBeforeCloseBlocked is not null)
+            statusRowCount.Text = _statusTextBeforeCloseBlocked;
+
+        _statusTextBeforeCloseBlocked = null;
     }
 
     private void DataGridView_ColumnWidthChanged_SaveLayout(object? sender, DataGridViewColumnEventArgs e)
