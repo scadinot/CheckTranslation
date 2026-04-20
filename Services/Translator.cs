@@ -20,7 +20,7 @@ internal static partial class Translator
     private const int RetryCount = 3;
     private const int FixedParallelBatchRequests = 4;
 
-    // Le pipeline Polly est stateless : une seule instance partagee pour toutes les invocations
+    // Le pipeline Polly est stateless : une seule instance partagée pour toutes les invocations
     // (plus d'allocation par appel).
     private static readonly ResiliencePipeline<string> RetryPipeline = BuildRetryPipeline();
 
