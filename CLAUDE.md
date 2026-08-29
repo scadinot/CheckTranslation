@@ -58,7 +58,7 @@ CheckTranslation/
 ├── CheckTranslation.csproj      # Projet (WinExe, net8.0-windows)
 ├── Program.cs                   # Point d'entrée (STAThread, bootstrap DI)
 ├── Forms/
-│   ├── MainForm.cs                           # Logique principale (~1940 lignes, organisée en sections)
+│   ├── MainForm.cs                           # Logique principale (~2050 lignes, organisée en sections)
 │   ├── MainForm.Designer.cs                  # Code généré par le designer
 │   ├── MainForm.resx                         # Ressources du form
 │   ├── ConfigForm.cs                         # Config (prompts, IA, vidage cache)
@@ -163,11 +163,12 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 ### 6.2 Formulaires
 
-**`Forms/MainForm.cs`** (~1940 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
+**`Forms/MainForm.cs`** (~2050 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
 - Constructeur, InitComponent, init des colonnes / boutons / langues
 - `// --- Indicateur de qualité (couleur) ---` : `DataGridView_CellFormatting` + `QualityScore.GetBackColor`
-- `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms
+- `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms. Les métriques de layout sont calculées au runtime selon le DPI (`_filterControlHeight`, `_columnHeaderTitleHeight`, `FilterIconWidth`, `FilterBottomMargin`) — plus aucune constante en pixels.
 - Tri, menu contextuel, chargement/sauvegarde, traduire/vérifier IA, glossaire, auto-traduire
+- **Verrou d'écriture disque** : `SetWritingState(bool)` positionne `_isWriting`, désactive `toolStrip` + `dataGridView` et fait annuler la fermeture par `MainForm_FormClosing`. Le refus de fermeture est signalé sans modale par `FlashCloseBlocked()` (message temporaire de 3 s dans la status bar, texte précédent restauré).
 - `// --- Icônes ---`
 - `// --- Persistance de disposition ---` : taille fenêtre + largeur colonnes (2 dictionnaires distincts selon mode détails)
 - `// --- Bouton Rafraîchir + F5 ---` : rechargement fichier + détection changements source
@@ -194,8 +195,8 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - OpenAI via `OpenAI.Chat.ChatClient`.
 - Anthropic via `AnthropicClient` (endpoint normalisé : retrait de `/v1` ou `/v1/messages`), `MaxTokens = 2048`.
 - `TranslateBatchAsync(texts, config, lang, glossarySection)` et `VerifyBatchAsync(pairs, ...)` : construisent une liste numérotée, remplacent `{language}` et `{glossary}` dans le system prompt, demandent une réponse strictement numérotée.
-- `TranslateInBatchesAsync` / `VerifyInBatchesAsync` : découpent en lots de `BatchSize = 20`, parallélisent avec `Task.WhenAll` + `SemaphoreSlim(FixedParallelBatchRequests = 4)`.
-- Retry Polly (3 tentatives, backoff exponentiel + jitter) sur : `HttpRequestException` transitoire (408/429/5xx + statut nul), `TimeoutException`, `TaskCanceledException`, `ClientResultException` (408/429/5xx).
+- `TranslateInBatchesAsync` / `VerifyInBatchesAsync` : découpent en lots de `BatchSize = 20` (constante `internal`, réutilisée par `TranslationService.ChunkResults`), parallélisent avec `Task.WhenAll` + `SemaphoreSlim(FixedParallelBatchRequests = 4)`.
+- Retry Polly (3 tentatives, backoff exponentiel + jitter), pipeline `static readonly RetryPipeline` construit une seule fois (stateless, partagé par tous les appels), sur : `HttpRequestException` transitoire (408/429/5xx + statut nul), `TimeoutException`, `TaskCanceledException`, `ClientResultException` (408/429/5xx).
 - **Callback `onBatchCompleted(batchItems, batchResults)`** invoqué dans chaque tâche parallèle juste après réception des résultats du batch → permet à `TranslationService` de reporter la progression au fil de l'eau.
 - `ParseNumberedList` (regex `^\s*(\d+)[.)]\s*(.+)$`) supporte les entrées multi-lignes.
 
@@ -206,6 +207,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - Déduplication intra-lot (plusieurs lignes avec le même français → une seule requête API).
 - Utilise `Translator.*InBatchesAsync` avec le callback `onBatchCompleted` pour remplir le cache et reporter la progression au fil des batches (`Interlocked.Add` sur le compteur `completed`).
 - API : `UpdateTranslationCache`, `UpdateVerificationCache`, `GetTranslationCacheCount`, `GetVerificationCacheCount`, `ClearTranslationCache`, `ClearVerificationCache`.
+- **Deux niveaux de correspondance de clé** : les `Get*Count` matchent `Provider|Url|Model|Language|GlossaryFingerprint` (le fingerprint est un paramètre obligatoire) → les entrées devenues inatteignables après modification du glossaire ne sont plus comptées ; les `Clear*` matchent uniquement `Provider|Url|Model` → la purge emporte aussi les entrées périmées.
 
 **`GlossaryService`** (implémente `IGlossaryService`) :
 - Persistance JSON par langue dans `%LocalAppData%\CheckTranslation`.
@@ -312,9 +314,10 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 
 ### 7.9 Sauvegarde
 - `ExcelService.Save(filePath, activeColumn, rows)` synchronise la vue active puis réécrit toutes les traductions + commentaires. Les commentaires de vérification (format score) sont aussi persistés dans les colonnes Excel correspondantes.
+- Toute la durée de l'opération est encadrée par `SetWritingState(true/false)` (bloc `finally`) : toolbar et grille désactivées, fermeture de la fenêtre refusée, status bar « Sauvegarde en cours… ».
 
 ### 7.10 Fusion
-1. Dialog → `_destinationFilePath`.
+1. Dialog → `_destinationFilePath`, puis `SetWritingState(true)` — le verrou couvre **toute** la fusion (analyse des différences, dialogs de résolution, écriture disque) et est levé dans le `finally`. Les `MergeDifferenceForm` restent utilisables : ce sont des dialogs modaux, la désactivation du parent ne les affecte pas.
 2. `ExcelService.GetMergeSourceDifferences(...)` détecte toutes les lignes où le français ou le commentaire source diffère entre source et destination.
 3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
 4. `ExcelService.Merge(...)` applique les résolutions. Les lignes sans divergence source → report systématique de la traduction. Retour : nombre de lignes mises à jour.
@@ -386,6 +389,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Le bouton `Rafraîchir` est ajouté programmatiquement** (`InitRefreshButton` dans la section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
 - **Les ComboBox de filtre par score sont créés par code** (`TryCreateSpecialFilterControl` dans la section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
 - **Fusion Excel** : résolution ligne-par-ligne via `MergeDifferenceForm` pour CHAQUE ligne divergente. L'utilisateur peut annuler la fusion globalement.
+- **Écritures disque protégées par `SetWritingState`** — ne PAS revenir à un `btnXxx.Enabled = false` ponctuel dans `BtnSave_Click` / `BtnMerge_Click` : le verrou global est ce qui bloque aussi la fermeture (`_isWriting` lu par `MainForm_FormClosing`). Toujours appeler `SetWritingState(false)` dans un `finally`.
+- **Métriques des filtres calculées au runtime** — pas de constantes en pixels : `InitFilterPanel` mesure police et `TextBox.PreferredHeight`, `UpdateFilterPanelLayout` / `DataGridView_CellPainting` / `TryLayoutSpecialFilterControl` doivent rester synchronisés sur ces champs, sinon les filtres se désalignent en DPI 125/150/200 %.
+- **`ConfigForm.BuildCurrentConfig()` reconstruit un `AppConfig` complet** — tout nouveau champ persistant non édité dans le dialog doit y être recopié depuis `AppConfig.Current`, faute de quoi un clic sur OK le réinitialise (cas vécu avec `WindowWidth/Height` et les `ColumnFillWeights`).
 - **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
 - **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
@@ -438,6 +444,13 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-04-18 | Migration des boutons « Vider cache » de `ConfigForm` vers le Designer (PR #9) |
 | 2026-04-18 | Migration de `GlossaryForm` et `GlossaryExtractionDialog` vers le pattern Designer + resx (PR #10) |
 | 2026-04-18 | Fusion des 3 partials de `MainForm` (`LayoutPersistence`, `ManualRefreshSupport`, `VerificationScoreFilterSupport`) dans `MainForm.cs` avec sections commentées (PR #11) |
+| 2026-04-20 | Documentation : fusion de `ANALYSE_PROJET.md` + `ROADMAP.md` dans `CLAUDE.md`, 4 fichiers `.md` → 2 (PR #12) |
+| 2026-04-20 | Filtres DPI-aware : hauteurs d'en-tête et de contrôles calculées depuis la police et `LogicalToDeviceUnits` au lieu de constantes en pixels (PR #13) |
+| 2026-04-20 | Protection contre la fermeture pendant une écriture disque : `_isWriting` + `SetWritingState`, toolbar et grille désactivées, `FormClosing` annulé (PR #14) |
+| 2026-04-20 | Fix : `ConfigForm.BuildCurrentConfig` écrasait les champs de disposition ; double alimentation du cache de vérification supprimée dans `VerifyRowsAsync` (PR #15) |
+| 2026-04-20 | Fix review Copilot : compteurs de cache tenant compte du fingerprint glossaire, `LoadIcon` tolérant aux erreurs, `catch` typé dans `AppConfig.Load`, pipeline Polly partagé, `BatchSize` partagé, traces de diagnostic sur l'introspection des SDK (PR #16) |
+| 2026-04-20 | Fermeture bloquée : flash non-modal de 3 s dans la status bar à la place du `MessageBox` (PR #17) |
+| 2026-04-20 | `BtnMerge_Click` : protection unifiée sous `SetWritingState` pour toute la fusion, en remplacement des `Enabled` bouton par bouton (PR #18) |
 
 ---
 
