@@ -224,10 +224,12 @@ internal static partial class ResxReader
         {
             document = XDocument.Load(path);
         }
-        catch (XmlException ex)
+        catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
         {
-            // Un .resx invalide ne doit pas interrompre le chargement de toute la solution.
-            System.Diagnostics.Debug.WriteLine($"[ResxReader] XML invalide, fichier ignoré : {path} ({ex.Message})");
+            // Ni un .resx invalide ni un fichier inaccessible (verrouillé par Visual Studio, droits
+            // insuffisants, chemin trop long) ne doivent interrompre le chargement de toute la
+            // solution : le fichier est ignoré, le reste est chargé.
+            System.Diagnostics.Debug.WriteLine($"[ResxReader] Fichier ignoré au chargement : {path} ({ex.GetType().Name} : {ex.Message})");
             return [];
         }
 
@@ -280,6 +282,7 @@ internal static partial class ResxReader
             .ToDictionary(group => BuildIdentity(group.Project, group.File), group => group.NeutralPath, StringComparer.OrdinalIgnoreCase);
 
         int writtenFiles = 0;
+        var failures = new List<string>();
 
         foreach (var fileRows in rows.GroupBy(row => BuildIdentity(row.Project, row.File), StringComparer.OrdinalIgnoreCase))
         {
@@ -291,12 +294,42 @@ internal static partial class ResxReader
 
             foreach (var language in languages)
             {
-                if (SaveLanguageFile(BuildVariantPath(neutralPath, language.Code), neutralPath, language.Code, fileRows))
-                    writtenFiles++;
+                var variantPath = BuildVariantPath(neutralPath, language.Code);
+                try
+                {
+                    if (SaveLanguageFile(variantPath, neutralPath, language.Code, fileRows))
+                        writtenFiles++;
+                }
+                catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+                {
+                    // Contrairement au chargement, un fichier écarté à la sauvegarde n'est JAMAIS
+                    // silencieux : ce sont des traductions que l'utilisateur croirait enregistrées.
+                    // On écrit tout ce qui peut l'être, puis on remonte la liste des échecs.
+                    failures.Add($"{variantPath} : {ex.Message}");
+                }
             }
         }
 
+        if (failures.Count > 0)
+            throw new IOException(BuildSaveFailureMessage(failures));
+
         return writtenFiles;
+    }
+
+    private static string BuildSaveFailureMessage(IReadOnlyList<string> failures)
+    {
+        const int maxListed = 10;
+
+        var message = new StringBuilder();
+        message.AppendLine($"{failures.Count} fichier(s) .resx n'ont pas pu être écrits :");
+
+        foreach (var failure in failures.Take(maxListed))
+            message.AppendLine("- " + failure);
+
+        if (failures.Count > maxListed)
+            message.AppendLine($"... et {failures.Count - maxListed} autre(s).");
+
+        return message.ToString();
     }
 
     private static bool SaveLanguageFile(string variantPath, string neutralPath, string languageCode, IEnumerable<TranslationRow> rows)
@@ -307,18 +340,11 @@ internal static partial class ResxReader
         if (!exists && !rows.Any(row => HasContent(row, languageCode)))
             return false;
 
-        XDocument document;
-        try
-        {
-            document = exists
-                ? XDocument.Load(variantPath, LoadOptions.PreserveWhitespace)
-                : CreateEmptyDocumentFrom(neutralPath);
-        }
-        catch (XmlException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ResxReader] XML invalide, écriture annulée : {variantPath} ({ex.Message})");
-            return false;
-        }
+        // Les exceptions XML / accès disque remontent volontairement à Save, qui les collecte
+        // et les signale : abandonner ce fichier en silence perdrait des traductions.
+        var document = exists
+            ? XDocument.Load(variantPath, LoadOptions.PreserveWhitespace)
+            : CreateEmptyDocumentFrom(neutralPath);
 
         var root = document.Root;
         if (root is null)

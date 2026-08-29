@@ -35,9 +35,12 @@ internal static partial class SolutionReader
             var fullPath = Path.GetFullPath(Path.Combine(solutionDirectory, NormalizeSeparators(relativePath)));
             var directory = Path.GetDirectoryName(fullPath);
 
-            if (directory is null || !Directory.Exists(directory))
+            // On teste le fichier projet lui-même, pas seulement son répertoire : une solution
+            // peut pointer vers un .csproj supprimé dont le dossier existe encore, et scanner ce
+            // dossier ramènerait des .resx qui ne font plus partie de la solution.
+            if (directory is null || !File.Exists(fullPath))
             {
-                System.Diagnostics.Debug.WriteLine($"[SolutionReader] Projet ignoré (répertoire absent) : {fullPath}");
+                System.Diagnostics.Debug.WriteLine($"[SolutionReader] Projet ignoré (fichier projet absent) : {fullPath}");
                 continue;
             }
 

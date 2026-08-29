@@ -488,8 +488,8 @@ public partial class MainForm : Form
         if (_allRows is null || _allRows.Count == 0)
             return;
 
-        // La fusion n'existe que pour la source Excel : le bouton est deja desactive dans les
-        // autres cas, la garde protege les appels par programme (raccourci, automatisation).
+        // La fusion n'existe que pour la source Excel : le bouton est déjà désactivé dans les
+        // autres cas, la garde protège les appels par programme (raccourci, automatisation).
         if (_currentSource?.SupportsMerge != true)
             return;
 
@@ -522,7 +522,7 @@ public partial class MainForm : Form
 
         try
         {
-            // Meme raison que pour la sauvegarde : la vue active doit etre poussee dans les
+            // Même raison que pour la sauvegarde : la vue active doit être poussée dans les
             // dictionnaires avant que la fusion ne lise Translations[langue].
             foreach (var row in _allRows)
                 row.CommitActiveLanguage(_currentLanguage.Code);
