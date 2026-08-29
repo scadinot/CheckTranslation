@@ -150,7 +150,9 @@ Entrées exclues au chargement (mêmes règles que ResX Resource Manager) :
 - métadonnées du designer WinForms, dont la clé commence par `>>` (les clés `$this.Text`, `btnOk.Text`… sont conservées) ;
 - répertoires `bin`, `obj`, `.git`, `.vs`.
 
-Une variante de culture n'est jamais confondue avec un fichier neutre : le suffixe est validé via `CultureInfo`, y compris pour les cultures non gérées par l'application (`Msg.pt-BR.resx` n'est ni chargé, ni traité comme neutre).
+Une variante de culture n'est jamais confondue avec un fichier neutre : le suffixe est validé contre la liste des cultures connues du système, y compris pour les cultures non gérées par l'application (`Msg.pt-BR.resx` n'est ni chargé, ni traité comme neutre). En second recours, un suffixe de forme BCP-47 valide mais absent de cette liste est accepté (`ca-ES-valencia`).
+
+⚠ La validation ne peut **pas** reposer sur l'exception de `CultureInfo.GetCultureInfo` : sous ICU (le défaut depuis .NET 5, Windows compris), elle ne lève pas pour un nom quelconque bien formé — `Designer`, `Backup`, `resources` renvoient une culture « custom ». S'y fier ferait passer n'importe quel suffixe pour une culture, et le fichier neutre correspondant (`Notes.Backup.resx`) disparaîtrait silencieusement de la découverte.
 
 ---
 
@@ -218,9 +220,10 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 ### 6.3 Services
 
 **`ExcelReader` (static)** — cœur Excel :
-- `Load(filePath, translationColumns, activeColumn, progress)` : parse la feuille, ignore les `@Invariant`, renseigne `TranslationRow.RowNumber/Project/File/Key/FrenchComment/French` + dictionnaires `Translations[col]` et `Comments[col]`. Rapporte la progression via `IProgress<ExcelLoadProgress>` (toutes les 10 lignes + bornes).
-- `Save(filePath, activeColumn, rows)` : synchronise la vue langue active dans les dictionnaires, puis réécrit cellule par cellule. `WriteCellValue` double une apostrophe de tête pour la préserver.
-- `GetMergeSourceDifferences(...)` et `Merge(...)` : corrélation des lignes via `SyncKey = Project|File|Key` (séparateur `\u001F`), détection des divergences français/commentaire, écriture sélective selon `MergeDifferenceResolution`.
+- `Load(filePath, languages, progress)` : parse la feuille, ignore les `@Invariant`, renseigne `TranslationRow.RowNumber/Project/File/Key/FrenchComment/French` + dictionnaires `Translations[code]` et `Comments[code]` (la colonne de chaque langue vient de `LanguageInfo.Column`). Rapporte la progression via `IProgress<SourceLoadProgress>` (toutes les 10 lignes + bornes). Ne positionne pas la vue active : c'est `MainForm` qui appelle `SelectLanguage`.
+- `Save(filePath, rows, languages)` : réécrit cellule par cellule les langues connues, la correspondance code → colonne étant reconstruite localement. `WriteCellValue` double une apostrophe de tête pour la préserver. La synchronisation de la vue active est faite en amont par `MainForm` (`CommitActiveLanguage`).
+- `Merge(...)` / `GetMergeSourceDifferences(...)` prennent la `LanguageInfo` active : la colonne sert à écrire dans le classeur destination, le code à lire la traduction dans la ligne source.
+- Corrélation des lignes via `SyncKey = Project|File|Key` (séparateur `\u001F`), détection des divergences français/commentaire, écriture sélective selon `MergeDifferenceResolution`.
 
 **`ExcelService`** (implémente `IExcelService`) : façade DI **réduite à la fusion** (`Merge`, `GetMergeSourceDifferences`). Le chargement et la sauvegarde passent désormais par `ITranslationSource`.
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -20,10 +21,14 @@ namespace CheckTranslation;
 /// blobs sérialisés) et les métadonnées du designer (clés « &gt;&gt;… ») sont exclues.</item>
 /// </list>
 /// </summary>
-internal static class ResxReader
+internal static partial class ResxReader
 {
     private const string ResxExtension = ".resx";
     private static readonly string[] IgnoredDirectories = ["bin", "obj", ".git", ".vs"];
+
+    private static readonly HashSet<string> KnownCultureNames = new(
+        CultureInfo.GetCultures(CultureTypes.AllCultures).Select(culture => culture.Name),
+        StringComparer.OrdinalIgnoreCase);
 
     // --- Découverte ---
 
@@ -97,6 +102,17 @@ internal static class ResxReader
     /// Détecte le suffixe de culture d'un .resx (<c>Msg.de-DE.resx</c> → « de-DE »). Toute culture
     /// valide est reconnue, pas seulement celles gérées par l'application : c'est ce qui permet de
     /// ne pas confondre une variante non gérée avec un fichier neutre.
+    ///
+    /// La validation ne peut PAS reposer sur l'exception de <see cref="CultureInfo.GetCultureInfo(string)"/> :
+    /// sous ICU (le défaut depuis .NET 5, Windows compris), cette méthode ne lève pas pour un nom
+    /// quelconque bien formé — « Designer », « Backup », « resources » renvoient une culture
+    /// « custom ». S'y fier ferait passer n'importe quel suffixe pour une culture, et le fichier
+    /// neutre correspondant disparaîtrait silencieusement de la découverte.
+    ///
+    /// On valide donc contre la liste des cultures connues du système, en tolérant en second
+    /// recours les variantes absentes de cette liste mais syntaxiquement valides — ICU ne liste
+    /// pas <c>ca-ES-valencia</c>, par exemple. Aucune borne de longueur : elle rejetterait ces
+    /// mêmes noms longs et pourtant valides.
     /// </summary>
     private static bool TryGetCulture(string resxPath, out string culture)
     {
@@ -108,22 +124,35 @@ internal static class ResxReader
             return false;
 
         var candidate = stem[(separator + 1)..];
-        if (candidate.Length is < 2 or > 12)
+        if (candidate.Length < 2)
+            return false;
+
+        if (KnownCultureNames.Contains(candidate))
+        {
+            culture = candidate;
+            return true;
+        }
+
+        // Le suffixe doit au minimum avoir la forme d'une culture composée (langue + au moins une
+        // sous-étiquette) : un mot isolé comme « Backup » n'en est pas une.
+        if (!CultureShapeRegex().IsMatch(candidate))
             return false;
 
         try
         {
-            // GetCultureInfo lève pour un nom inconnu ; la culture invariante ("") est écartée
-            // par le test de longueur ci-dessus.
             var info = CultureInfo.GetCultureInfo(candidate);
             culture = info.Name;
-            return !string.IsNullOrEmpty(culture);
+            return culture.Length > 0;
         }
         catch (CultureNotFoundException)
         {
             return false;
         }
     }
+
+    // Forme BCP-47 : sous-étiquette de langue de 2 ou 3 lettres, suivie de 1 à 3 sous-étiquettes.
+    [GeneratedRegex("^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){1,3}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CultureShapeRegex();
 
     private static string BuildVariantPath(string neutralPath, string languageCode)
         => neutralPath[..^ResxExtension.Length] + "." + languageCode + ResxExtension;
