@@ -16,12 +16,28 @@ internal static class TranslationRowFiltering
                 "French" => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "Translation" => filtered.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "Comment" => ApplyCommentFilter(filtered, filter),
+                "LayoutIssue" => ApplyLayoutFilter(filtered, filter),
                 _ => filtered,
             };
         }
 
         return filtered.ToList();
     }
+
+    /// <summary>
+    /// Pseudo-filtres de la colonne de mise en page : « layout:issues » (tout défaut),
+    /// « layout:truncation », « layout:collision », « layout:unverifiable », « layout:ok ».
+    /// </summary>
+    private static IEnumerable<TranslationRow> ApplyLayoutFilter(IEnumerable<TranslationRow> rows, string filter)
+        => filter switch
+        {
+            "layout:issues" => rows.Where(r => r.LayoutStatus is LayoutStatus.Truncated or LayoutStatus.Collision),
+            "layout:truncation" => rows.Where(r => r.LayoutStatus == LayoutStatus.Truncated),
+            "layout:collision" => rows.Where(r => r.LayoutStatus == LayoutStatus.Collision),
+            "layout:unverifiable" => rows.Where(r => r.LayoutStatus == LayoutStatus.Unverifiable),
+            "layout:ok" => rows.Where(r => r.LayoutStatus == LayoutStatus.Ok),
+            _ => rows.Where(r => r.LayoutIssue.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+        };
 
     private static IEnumerable<TranslationRow> ApplyCommentFilter(IEnumerable<TranslationRow> rows, string filter)
     {

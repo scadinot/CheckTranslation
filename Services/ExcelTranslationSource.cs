@@ -9,6 +9,8 @@ internal sealed class ExcelTranslationSource(string path) : ITranslationSource
 
     public bool SupportsMerge => true;
 
+    public bool SupportsLayoutCheck => false;
+
     // Un classeur vide se lit tel quel : il n'y a pas d'étape intermédiaire à expliquer.
     public string? LastLoadReport => null;
 

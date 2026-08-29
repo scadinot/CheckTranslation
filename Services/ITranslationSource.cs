@@ -20,6 +20,13 @@ internal interface ITranslationSource
     bool SupportsMerge { get; }
 
     /// <summary>
+    /// Indique si la vérification de mise en page est possible. Elle exige la géométrie des
+    /// contrôles, qui n'existe que dans les fichiers <c>.resx</c> : l'export Excel n'en contient
+    /// aucune trace.
+    /// </summary>
+    bool SupportsLayoutCheck { get; }
+
+    /// <summary>
     /// Charge toutes les lignes traduisibles. Les lignes marquées <c>@Invariant</c> dans le
     /// commentaire source sont exclues.
     /// </summary>

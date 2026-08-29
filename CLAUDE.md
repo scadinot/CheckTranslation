@@ -95,6 +95,9 @@ CheckTranslation/
 │   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour la fusion Excel
 │   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
 │   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
+│   ├── FormGeometryReader.cs                 # Géométrie des contrôles WinForms (socle anti-débordement)
+│   ├── GdiTextWidthMeasurer.cs               # Mesure GDI de la largeur rendue (Windows)
+│   ├── ILayoutCheckService.cs / LayoutCheckService.cs  # Verdict de mise en page par ligne
 │   ├── SolutionReader.cs                     # Liste des projets d'un .sln ou .slnx
 │   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
@@ -102,6 +105,7 @@ CheckTranslation/
 │   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON par langue + fingerprint SHA256
 ├── Logic/
 │   ├── QualityScore.cs                       # Parsing score "XXX - ..." + dégradé couleur
+│   ├── LayoutAnalyzer.cs                     # Troncatures + collisions entre contrôles frères
 │   └── TranslationRowFiltering.cs            # Filtrage côté client (texte + score<N, score>=N, score:none)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
@@ -237,6 +241,13 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - **Asymétrie assumée sur les erreurs d'E/S** : au *chargement*, un `.resx` invalide ou inaccessible (verrouillé par Visual Studio, droits, chemin trop long) est ignoré avec une trace `Debug` — le reste de la solution se charge. À la *sauvegarde*, un fichier en échec n'est **jamais** ignoré en silence : `Save` écrit tout ce qu'il peut, collecte les échecs et lève une `IOException` les listant, que `MainForm` affiche. Ignorer silencieusement à l'écriture ferait croire à l'utilisateur que ses traductions sont enregistrées.
 - `Save(...)` : **n'écrit que les variantes de culture, jamais le fichier neutre** (le français est en lecture seule dans l'UI). Écriture chirurgicale : chargement en `LoadOptions.PreserveWhitespace`, mise à jour ou insertion de l'entrée ciblée, fichier réécrit uniquement s'il a réellement changé (sauvegarde idempotente). Le BOM d'origine est préservé. Un fichier de langue absent est créé à partir de l'en-tête du neutre (déclaration, schéma XSD, `resheader`) vidé de ses données — jamais pour n'y écrire que du vide.
 
+**`FormGeometryReader` (static)** — lit la géométrie des contrôles d'un formulaire WinForms depuis son `.resx` neutre (`X.Size`, `X.Location`, `X.Font`, `X.AutoSize`, `$this.ClientSize`), pour pouvoir confronter une traduction à la place réellement disponible. Socle de la vérification de débordement ; **aucune mesure ni UI à ce stade**.
+- Ces entrées portent un attribut `type` : elles sont donc déjà exclues des lignes traduisibles par `ResxReader`. Les deux lectures sont complémentaires.
+- **Elles n'existent que dans les `.resx`** : l'export Excel n'expose aucune clé de géométrie (vérifié sur le corpus de référence : 0 sur 22 374 lignes). La vérification de débordement est donc réservée au mode `.resx`.
+- **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide. *Sur le corpus de référence, tous les formulaires le sont* (confirmé par l'auteur) : la signature s'observe déjà dans l'export, où chaque contrôle porte `.AccessibleDescription`, `.AccessibleName` et `.ImageKey`.
+- `FormGeometry.TryGetForKey("btnOk.Text")` retrouve le contrôle porteur d'une clé ; `GetEffectiveFont` applique l'héritage de la police du formulaire.
+- Lit aussi la **filiation** via les métadonnées `>>X.Parent` : les coordonnées étant relatives au conteneur, `EnumerateSiblingGroups()` ne regroupe que des contrôles comparables.
+
 **`Translator` (static)** — appels bruts aux providers :
 - OpenAI via `OpenAI.Chat.ChatClient`.
 - Anthropic via `AnthropicClient` (endpoint normalisé : retrait de `/v1` ou `/v1/messages`), `MaxTokens = 2048`.
@@ -266,6 +277,30 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 ### 6.4 Logic
 
 **`QualityScore`** (static) — format attendu `XXX - commentaire` (3 chiffres, 0..100). Regex `^\s*(\d{3})\s*[-–]\s*`. `GetBackColor(score)` interpole linéairement une palette pastel (rouge < 60 → orange 70 → jaune 80 → vert 90–100).
+
+**`LayoutAnalyzer`** (static) — confronte les textes affichés à la place disponible. **Deux défaillances distinctes, qui s'excluent** :
+- **Troncature** — contrôle à largeur fixe dont le texte dépasse : le texte est coupé, le contrôle ne bouge pas.
+- **Collision** — contrôle en `AutoSize` : il n'est *jamais* tronqué, il s'élargit et recouvre un voisin. Ce sont précisément les contrôles sans largeur sérialisée, d'où l'insuffisance d'un simple test « le texte tient-il ».
+
+Seules les paires de **frères** sont comparées, et une collision n'est retenue que si au moins un des deux contrôles s'élargit : deux contrôles fixes qui se chevauchent sont un défaut de maquette, pas de traduction.
+
+`AnalyzeRegression(source, traduction)` ne retient que les défauts **introduits** par la traduction — un défaut déjà présent en français n'est pas imputable au traducteur et serait signalé pour chaque langue.
+
+La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est `GdiTextWidthMeasurer`, donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe.
+
+**`GdiTextWidthMeasurer`** (`IDisposable`) — implémentation de production, via `TextRenderer.MeasureText`. Trois pièges traités, chacun capable de produire des faux positifs silencieux :
+- **DPI** : la mesure passe par une surface mémoire à 96 ppp, résolution des coordonnées de conception. Sur le contexte de l'écran, un affichage à 150 % gonflerait toutes les largeurs d'un tiers et ferait paraître tout débordé.
+- **Handles GDI** : les `Font` sont mises en cache par (famille, taille, gras) et libérées avec l'instance — en créer une par appel épuiserait les handles sur des dizaines de milliers de lignes × 7 langues.
+- **Multi-lignes** : une valeur de ressource peut contenir des retours à la ligne ; la largeur retenue est celle de la ligne la plus large.
+
+⚠ `extraPadding` (0 par défaut) reste **à calibrer** : la mesure `NoPadding` donne l'encombrement des glyphes, alors qu'un contrôle réserve une marge interne. Sans calibrage, l'analyse sous-détecte.
+
+**`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et **retourne** des `LayoutVerdict`.
+- Il ne modifie **aucune** ligne : les `TranslationRow` sont liés au `DataGridView`, les écrire depuis le thread de fond où tourne l'analyse les exposerait à une lecture concurrente par le rendu. `MainForm` applique les verdicts sur le thread d'interface.
+- Ne traite que les clés `contrôle.Text` : un message, un `ToolTipText` ou un `AccessibleName` n'occupent aucune surface fixe.
+- Une ligne **sans traduction** reste `NotChecked` — la déclarer conforme serait faux.
+- Un formulaire **non localisable** (aucune géométrie) laisse toutes ses lignes `NotChecked` : on ne conclut pas faute de données.
+- Une collision marque **les deux** lignes en cause, corriger l'une ou l'autre résolvant le problème ; une troncature déjà signalée n'est pas masquée par une collision.
 
 **`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
 - `score:none` → lignes sans score parsable
@@ -386,6 +421,13 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
 4. `ExcelService.Merge(...)` applique les résolutions. Les lignes sans divergence source → report systématique de la traduction. Retour : nombre de lignes mises à jour.
 
+### 7.10.bis Vérification de mise en page (source .resx uniquement)
+1. `ITranslationSource.SupportsLayoutCheck` vaut `false` pour l'Excel : l'export ne contient aucune géométrie, l'analyse est simplement sautée.
+2. `MainForm.RefreshLayoutCheckAsync()` pousse d'abord la vue active dans les dictionnaires, puis instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(...)` dans un `Task.Run`. Les verdicts retournés ne sont appliqués qu'au retour, sur le thread d'interface, et seulement si la source et la langue n'ont pas changé entre-temps.
+3. Chaque ligne reçoit un `LayoutStatus` et un libellé, affichés dans la colonne « Mise en page » : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
+4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
+5. Déclenchée au chargement, au changement de langue et au rafraîchissement. Un échec est tracé sans interrompre la traduction : l'analyse est un confort.
+
 ### 7.11 Glossaire
 - **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
 - **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → validation → ajout au glossaire de la langue active.
@@ -459,6 +501,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **La taille du `ConfigForm` est bornée à l'écran au chargement** (`FitToWorkingArea`) — le dialogue dépasse un écran 1080p dès 125 % de mise à l'échelle et les boutons OK / Annuler sortent du champ. La `MinimumSize` doit être bornée **avant** la fenêtre, sinon elle interdit le rétrécissement.
 - **Les champs de fournisseur sont réétirés au chargement** (`StretchProviderFields`) — ancrés gauche+droite dans un `SplitContainer`, ils figent leur distance d'ancrage avant que `EndInit` n'applique le `SplitterDistance`, et s'affichent bien plus étroits que ce que le Designer indique. Élargir les champs dans le Designer ne corrigerait rien.
 - **`ConfigForm.BuildCurrentConfig()` reconstruit un `AppConfig` complet** — tout nouveau champ persistant non édité dans le dialog doit y être recopié depuis `AppConfig.Current`, faute de quoi un clic sur OK le réinitialise (cas vécu avec `WindowWidth/Height` et les `ColumnFillWeights`).
+- **La géométrie se lit dans `<data>` *et* dans `<metadata>`** — le designer écrit dans l'un ou l'autre selon les cas. N'en lire qu'un ferait perdre la filiation `>>X.Parent` sans erreur, et un contrôle sans parent est écarté des groupes de frères : il ne collisionnerait plus jamais, en silence.
 - **Les `.resx` et les `.slnx` sont lus par nom local, jamais par nom qualifié** — un fichier déclarant un espace de noms ne ramènerait alors plus rien, *sans erreur* : il paraîtrait simplement vide. `ResxReader.Children` / `Attribute` et `SolutionReader.ReadSlnxProjectPaths` portent cette règle.
 - **Un chargement .resx qui ne ramène rien doit se dire** — `ResxLoadReport.Describe()` nomme l'étape où la chaîne s'est arrêtée (aucun projet reconnu, aucun `.resx`, toutes les entrées exclues) et `MainForm` l'affiche. Une grille vide seule est indiscernable d'une solution sans traductions.
 - **Écriture .resx : ne jamais toucher le fichier neutre** — le français est en lecture seule dans l'UI ; `ResxReader.Save` n'écrit que les variantes `<stem>.<code>.resx`.
@@ -469,6 +512,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
+- **`RefreshLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
+- **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
+- **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
 
@@ -530,6 +576,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
 | 2026-08-29 | Import de solution : compte rendu de chargement (`ResxLoadReport`) affiché quand aucune ligne n'est trouvée ; `.slnx` lu quel que soit l'espace de noms |
 | 2026-08-29 | Fix import `.resx` : les `<data>`, `<value>`, `<comment>` et leurs attributs sont lus par nom local — un `.resx` déclarant un espace de noms était lu comme vide, sans erreur. Compte rendu enrichi (éléments rencontrés, entrées binaires, métadonnées designer) |
+| 2026-08-29 | **Vérification de mise en page** : `FormGeometryReader` (géométrie + filiation `>>X.Parent`), `LayoutAnalyzer` (troncatures et collisions, régression par rapport au français), `GdiTextWidthMeasurer` (mesure GDI à 96 ppp), colonne et filtre dans la grille. Réservée à la source `.resx` |
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
 
 ---
@@ -565,6 +612,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
+| 🟡 | **Vérification de débordement** | ✅ Chaîne complète : lecture, analyse, mesure GDI, colonne + filtre | Calibrer `extraPadding` contre le rendu réel ; gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le retour à la ligne |
 | 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 

@@ -40,6 +40,7 @@ internal sealed class TranslationRow
     {
         Translation = Translations.GetValueOrDefault(languageCode, string.Empty);
         Comment = Comments.GetValueOrDefault(languageCode, string.Empty);
+        ClearLayoutVerdict();
     }
 
     /// <summary>
@@ -51,6 +52,24 @@ internal sealed class TranslationRow
         Translations[languageCode] = Translation;
         Comments[languageCode] = Comment;
     }
+
+    /// <summary>Verdict de la vérification de mise en page, pour la langue affichée.</summary>
+    public LayoutStatus LayoutStatus { get; private set; } = LayoutStatus.NotChecked;
+
+    /// <summary>Libellé du défaut, affiché dans la grille. Vide si aucun défaut.</summary>
+    public string LayoutIssue { get; private set; } = string.Empty;
+
+    internal void SetLayoutVerdict(LayoutStatus status, string issue)
+    {
+        LayoutStatus = status;
+        LayoutIssue = issue;
+    }
+
+    /// <summary>
+    /// Remet le verdict à « non analysé ». Appelé avant toute analyse et à chaque changement de
+    /// langue : un verdict porte sur une traduction précise, le conserver induirait en erreur.
+    /// </summary>
+    internal void ClearLayoutVerdict() => SetLayoutVerdict(LayoutStatus.NotChecked, string.Empty);
 
     public string GetSyncKey()
         => string.Join("\u001F", Project.Trim(), File.Trim(), Key.Trim());
