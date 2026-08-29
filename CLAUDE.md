@@ -459,6 +459,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **La taille du `ConfigForm` est bornée à l'écran au chargement** (`FitToWorkingArea`) — le dialogue dépasse un écran 1080p dès 125 % de mise à l'échelle et les boutons OK / Annuler sortent du champ. La `MinimumSize` doit être bornée **avant** la fenêtre, sinon elle interdit le rétrécissement.
 - **Les champs de fournisseur sont réétirés au chargement** (`StretchProviderFields`) — ancrés gauche+droite dans un `SplitContainer`, ils figent leur distance d'ancrage avant que `EndInit` n'applique le `SplitterDistance`, et s'affichent bien plus étroits que ce que le Designer indique. Élargir les champs dans le Designer ne corrigerait rien.
 - **`ConfigForm.BuildCurrentConfig()` reconstruit un `AppConfig` complet** — tout nouveau champ persistant non édité dans le dialog doit y être recopié depuis `AppConfig.Current`, faute de quoi un clic sur OK le réinitialise (cas vécu avec `WindowWidth/Height` et les `ColumnFillWeights`).
+- **Un chargement .resx qui ne ramène rien doit se dire** — `ResxLoadReport.Describe()` nomme l'étape où la chaîne s'est arrêtée (aucun projet reconnu, aucun `.resx`, toutes les entrées exclues) et `MainForm` l'affiche. Une grille vide seule est indiscernable d'une solution sans traductions.
 - **Écriture .resx : ne jamais toucher le fichier neutre** — le français est en lecture seule dans l'UI ; `ResxReader.Save` n'écrit que les variantes `<stem>.<code>.resx`.
 - **Écriture .resx chirurgicale** — chargement en `PreserveWhitespace` et réécriture seulement si le contenu a changé : c'est ce qui garantit un diff minimal dans le gestionnaire de sources et une sauvegarde idempotente. Ne pas remplacer par une regénération complète du document.
 - **Une langue est identifiée par son code, pas par une colonne** — `TranslationRow.Translations` / `Comments` sont indexés par code (`« de-DE »`). Le numéro de colonne Excel (`LanguageInfo.Column`) ne doit rester connu que de `ExcelReader`.
@@ -526,6 +527,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-04-20 | Documentation : suivi et sections remis à jour pour les PR #12 à #18 (PR #19) |
 | 2026-08-29 | **Support de la passerelle Bifrost** : deux fournisseurs supplémentaires (`BifrostOpenAI`, `BifrostAnthropic`) à côté des accès directs, clé facultative, listing des modèles factorisé pour les quatre fournisseurs |
 | 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
+| 2026-08-29 | Import de solution : compte rendu de chargement (`ResxLoadReport`) affiché quand aucune ligne n'est trouvée ; `.slnx` lu quel que soit l'espace de noms |
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
 
 ---

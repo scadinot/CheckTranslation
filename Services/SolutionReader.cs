@@ -17,6 +17,15 @@ internal static partial class SolutionReader
     /// solution peut référencer un projet non récupéré (branche, sous-module absent).
     /// </summary>
     public static List<SolutionProject> ReadProjects(string solutionPath)
+        => Scan(solutionPath).Projects;
+
+    /// <summary>
+    /// Même lecture que <see cref="ReadProjects"/>, en conservant de quoi expliquer un résultat
+    /// vide : combien d'entrées la solution déclare, combien sont des projets d'un langage géré,
+    /// et lesquelles pointent vers un fichier absent du disque. Sans ces compteurs, une solution
+    /// qui ne ramène aucun projet est indiscernable d'une solution sans traductions.
+    /// </summary>
+    public static SolutionScan Scan(string solutionPath)
     {
         var solutionDirectory = Path.GetDirectoryName(Path.GetFullPath(solutionPath)) ?? ".";
 
@@ -25,12 +34,20 @@ internal static partial class SolutionReader
             : ReadSlnProjectPaths(solutionPath);
 
         var projects = new List<SolutionProject>();
+        var missing = new List<string>();
+        var unsupported = new List<string>();
         var seenDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var relativePath in relativePaths)
         {
             if (!ProjectExtensions.Contains(Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase))
+            {
+                // Dossiers de solution et projets d'un langage non géré (.vcxproj, .sqlproj,
+                // .shproj…). Ils sont écartés à dessein, mais il faut pouvoir le dire.
+                if (!string.IsNullOrEmpty(Path.GetExtension(relativePath)))
+                    unsupported.Add(relativePath);
                 continue;
+            }
 
             var fullPath = Path.GetFullPath(Path.Combine(solutionDirectory, NormalizeSeparators(relativePath)));
             var directory = Path.GetDirectoryName(fullPath);
@@ -41,6 +58,7 @@ internal static partial class SolutionReader
             if (directory is null || !File.Exists(fullPath))
             {
                 System.Diagnostics.Debug.WriteLine($"[SolutionReader] Projet ignoré (fichier projet absent) : {fullPath}");
+                missing.Add(relativePath);
                 continue;
             }
 
@@ -51,7 +69,7 @@ internal static partial class SolutionReader
             projects.Add(new SolutionProject(Path.GetFileNameWithoutExtension(fullPath), directory));
         }
 
-        return projects;
+        return new SolutionScan(relativePaths.Count, projects, missing, unsupported);
     }
 
     private static List<string> ReadSlnxProjectPaths(string solutionPath)
@@ -59,8 +77,11 @@ internal static partial class SolutionReader
         var document = XDocument.Load(solutionPath);
 
         // Les <Project> peuvent être imbriqués dans des <Folder> : on les prend à tous les niveaux.
-        return document.Descendants("Project")
-            .Select(element => element.Attribute("Path")?.Value)
+        // La comparaison porte sur le nom local : un jour où le format déclarerait un espace de
+        // noms, un filtre sur le nom qualifié ne trouverait plus rien — et silencieusement.
+        return document.Descendants()
+            .Where(element => element.Name.LocalName == "Project")
+            .Select(element => element.Attributes().FirstOrDefault(a => a.Name.LocalName == "Path")?.Value)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path!)
             .ToList();
@@ -91,3 +112,13 @@ internal static partial class SolutionReader
 }
 
 internal sealed record SolutionProject(string Name, string Directory);
+
+/// <summary>
+/// Résultat détaillé de la lecture d'une solution. <paramref name="DeclaredEntries"/> compte
+/// toutes les entrées déclarées, projets et dossiers de solution confondus.
+/// </summary>
+internal sealed record SolutionScan(
+    int DeclaredEntries,
+    List<SolutionProject> Projects,
+    List<string> MissingProjectFiles,
+    List<string> UnsupportedProjects);

@@ -9,6 +9,9 @@ internal sealed class ExcelTranslationSource(string path) : ITranslationSource
 
     public bool SupportsMerge => true;
 
+    // Un classeur vide se lit tel quel : il n'y a pas d'étape intermédiaire à expliquer.
+    public string? LastLoadReport => null;
+
     public List<TranslationRow> Load(IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null)
         => ExcelReader.Load(Path, languages, progress);
 

@@ -38,11 +38,22 @@ internal static partial class ResxReader
     /// correspondance (Projet, Fichier) → chemin disque.
     /// </summary>
     public static List<ResxFileGroup> DiscoverFiles(string solutionPath)
-    {
-        var groups = new List<ResxFileGroup>();
+        => DiscoverFiles(solutionPath, out _);
 
-        foreach (var project in SolutionReader.ReadProjects(solutionPath))
+    /// <summary>
+    /// Même découverte, en conservant de quoi expliquer un résultat vide (voir
+    /// <see cref="ResxDiscovery"/>).
+    /// </summary>
+    public static List<ResxFileGroup> DiscoverFiles(string solutionPath, out ResxDiscovery discovery)
+    {
+        var scan = SolutionReader.Scan(solutionPath);
+        var groups = new List<ResxFileGroup>();
+        var projectsWithoutResx = new List<string>();
+
+        foreach (var project in scan.Projects)
         {
+            int before = groups.Count;
+
             foreach (var resxPath in EnumerateResxFiles(project.Directory).OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
             {
                 // Une variante de culture n'est pas un fichier neutre : elle est rattachée au sien.
@@ -51,8 +62,12 @@ internal static partial class ResxReader
 
                 groups.Add(new ResxFileGroup(project.Name, BuildFileIdentity(project.Directory, resxPath), resxPath));
             }
+
+            if (groups.Count == before)
+                projectsWithoutResx.Add(project.Name);
         }
 
+        discovery = new ResxDiscovery(scan, projectsWithoutResx);
         return groups;
     }
 
@@ -163,9 +178,24 @@ internal static partial class ResxReader
         string solutionPath,
         IReadOnlyList<LanguageInfo> languages,
         IProgress<SourceLoadProgress>? progress = null)
+        => Load(solutionPath, languages, progress, out _);
+
+    /// <summary>
+    /// Même chargement, en produisant un compte rendu de ce qui a été parcouru. Un chargement qui
+    /// ne ramène aucune ligne peut venir de trois endroits très différents — aucun projet reconnu,
+    /// aucun .resx sous les projets, ou toutes les entrées exclues — et l'utilisateur ne peut pas
+    /// les distinguer d'une grille vide.
+    /// </summary>
+    public static List<TranslationRow> Load(
+        string solutionPath,
+        IReadOnlyList<LanguageInfo> languages,
+        IProgress<SourceLoadProgress>? progress,
+        out ResxLoadReport report)
     {
-        var groups = DiscoverFiles(solutionPath);
+        var groups = DiscoverFiles(solutionPath, out var discovery);
         var rows = new List<TranslationRow>();
+        int invariantEntries = 0;
+        int emptyNeutralFiles = 0;
 
         progress?.Report(new SourceLoadProgress(0, groups.Count));
 
@@ -174,7 +204,9 @@ internal static partial class ResxReader
             var group = groups[i];
             var neutralEntries = ReadEntries(group.NeutralPath);
 
-            if (neutralEntries.Count > 0)
+            if (neutralEntries.Count == 0)
+                emptyNeutralFiles++;
+            else
             {
                 var translationsByLanguage = languages.ToDictionary(
                     language => language.Code,
@@ -184,7 +216,10 @@ internal static partial class ResxReader
                 foreach (var entry in neutralEntries)
                 {
                     if (entry.Comment.Contains("@Invariant", StringComparison.OrdinalIgnoreCase))
+                    {
+                        invariantEntries++;
                         continue;
+                    }
 
                     var row = new TranslationRow
                     {
@@ -211,6 +246,7 @@ internal static partial class ResxReader
                 progress?.Report(new SourceLoadProgress(done, groups.Count));
         }
 
+        report = new ResxLoadReport(discovery, groups.Count, emptyNeutralFiles, invariantEntries, rows.Count);
         return rows;
     }
 
@@ -496,6 +532,75 @@ internal static partial class ResxReader
 }
 
 /// <summary>Un fichier .resx neutre et son identité fonctionnelle (projet + chemin relatif).</summary>
+/// <summary>Ce qu'a parcouru la découverte : la lecture de la solution et les projets sans .resx.</summary>
+internal sealed record ResxDiscovery(SolutionScan Solution, List<string> ProjectsWithoutResx);
+
+/// <summary>
+/// Compte rendu d'un chargement .resx, destiné à expliquer un résultat vide en langage clair.
+/// </summary>
+internal sealed record ResxLoadReport(
+    ResxDiscovery Discovery,
+    int NeutralFiles,
+    int EmptyNeutralFiles,
+    int InvariantEntries,
+    int Rows)
+{
+    /// <summary>Texte affiché à l'utilisateur. Nomme l'étape où la chaîne s'est arrêtée.</summary>
+    public string Describe()
+    {
+        var solution = Discovery.Solution;
+        var lines = new List<string>
+        {
+            $"Entrées déclarées par la solution : {solution.DeclaredEntries}",
+            $"Projets retenus (.csproj, .vbproj, .fsproj) : {solution.Projects.Count}",
+        };
+
+        if (solution.UnsupportedProjects.Count > 0)
+            lines.Add($"Projets d'un type non géré, ignorés : {solution.UnsupportedProjects.Count} ({Sample(solution.UnsupportedProjects)})");
+
+        if (solution.MissingProjectFiles.Count > 0)
+            lines.Add($"Projets déclarés mais absents du disque : {solution.MissingProjectFiles.Count} ({Sample(solution.MissingProjectFiles)})");
+
+        lines.Add($"Fichiers .resx neutres trouvés : {NeutralFiles}");
+
+        if (Discovery.ProjectsWithoutResx.Count > 0)
+            lines.Add($"Projets sans aucun .resx : {Discovery.ProjectsWithoutResx.Count} ({Sample(Discovery.ProjectsWithoutResx)})");
+
+        if (EmptyNeutralFiles > 0)
+            lines.Add($"Fichiers sans entrée traduisible (ressources binaires, métadonnées, XML illisible) : {EmptyNeutralFiles}");
+
+        if (InvariantEntries > 0)
+            lines.Add($"Entrées exclues car marquées @Invariant : {InvariantEntries}");
+
+        lines.Add($"Lignes chargées : {Rows}");
+        lines.Add(string.Empty);
+        lines.Add(Diagnose());
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private string Diagnose()
+    {
+        var solution = Discovery.Solution;
+
+        if (solution.DeclaredEntries == 0)
+            return "La solution ne déclare aucun projet lisible : le fichier est peut-être d'un format inattendu.";
+
+        if (solution.Projects.Count == 0)
+            return solution.MissingProjectFiles.Count > 0
+                ? "Aucun projet retenu : les fichiers projet déclarés sont introuvables sur le disque."
+                : "Aucun projet retenu : la solution ne contient aucun projet C#, VB ou F#.";
+
+        if (NeutralFiles == 0)
+            return "Aucun fichier .resx sous les répertoires de projet. S'ils sont liés depuis un répertoire extérieur au projet, ils ne sont pas trouvés — l'exploration part du répertoire du projet.";
+
+        return "Des fichiers .resx ont été lus, mais aucune entrée traduisible n'en est ressortie.";
+    }
+
+    private static string Sample(List<string> values)
+        => string.Join(", ", values.Take(3)) + (values.Count > 3 ? ", …" : string.Empty);
+}
+
 internal sealed record ResxFileGroup(string Project, string File, string NeutralPath);
 
 internal sealed record ResxEntry(string Name, string Value, string Comment);
