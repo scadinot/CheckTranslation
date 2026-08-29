@@ -11,8 +11,9 @@ internal sealed partial class ConfigForm : Form
     private readonly ITranslationService _translationService;
     private bool _isLoading;
     private bool _isUpdatingProvider;
-    private bool _openAiModelsLoaded;
-    private bool _anthropicModelsLoaded;
+    // Un drapeau « modèles déjà chargés » par ComboBox : il y a quatre fournisseurs, et la
+    // liste doit être réinvalidée dès que la clé ou l'URL de CE fournisseur change.
+    private readonly HashSet<ComboBox> _modelsLoaded = [];
     private bool _isLoadingModels;
 
     private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
@@ -103,7 +104,15 @@ internal sealed partial class ConfigForm : Form
             AnthropicUrl = txtAnthropicUrl.Text.Trim(),
             AnthropicModelName = txtAnthropicModelName.Text.Trim(),
 
-            Provider = rbAnthropic.Checked ? AiProvider.Anthropic : AiProvider.OpenAI,
+            BifrostOpenAiKey = txtBifrostOpenAiKey.Text.Trim(),
+            BifrostOpenAiUrl = txtBifrostOpenAiUrl.Text.Trim(),
+            BifrostOpenAiModelName = txtBifrostOpenAiModelName.Text.Trim(),
+
+            BifrostAnthropicKey = txtBifrostAnthropicKey.Text.Trim(),
+            BifrostAnthropicUrl = txtBifrostAnthropicUrl.Text.Trim(),
+            BifrostAnthropicModelName = txtBifrostAnthropicModelName.Text.Trim(),
+
+            Provider = SelectedProvider,
             ShowDetails = current.ShowDetails,
             SelectedLanguageCode = current.SelectedLanguageCode,
             WindowWidth = current.WindowWidth,
@@ -115,44 +124,58 @@ internal sealed partial class ConfigForm : Form
 
         private void InitModelSelectors()
     {
-        txtOpenAiModelName.DropDownStyle = ComboBoxStyle.DropDown;
-        txtOpenAiModelName.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
-        txtOpenAiModelName.AutoCompleteSource = AutoCompleteSource.ListItems;
-
-        txtOpenAiModelName.DropDown += async (_, _) => await TryLoadOpenAiModelsAsync();
-        txtOpenAiModelName.MouseDown += async (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
-                await TryLoadOpenAiModelsAsync();
-        };
-        txtOpenAiKey.TextChanged += (_, _) => _openAiModelsLoaded = false;
-        txtOpenAiUrl.TextChanged += (_, _) => _openAiModelsLoaded = false;
-
-        txtAnthropicModelName.DropDownStyle = ComboBoxStyle.DropDown;
-        txtAnthropicModelName.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
-        txtAnthropicModelName.AutoCompleteSource = AutoCompleteSource.ListItems;
-
-        txtAnthropicModelName.DropDown += async (_, _) => await TryLoadAnthropicModelsAsync();
-        txtAnthropicModelName.MouseDown += async (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
-                await TryLoadAnthropicModelsAsync();
-        };
-        txtAnthropicKey.TextChanged += (_, _) => _anthropicModelsLoaded = false;
-        txtAnthropicUrl.TextChanged += (_, _) => _anthropicModelsLoaded = false;
-
-        txtOpenAiModelName.Items.Clear();
-        txtOpenAiModelName.Items.Add(AppConfig.GetDefaultModelName(AiProvider.OpenAI));
-
-        txtAnthropicModelName.Items.Clear();
-        txtAnthropicModelName.Items.Add(AppConfig.GetDefaultModelName(AiProvider.Anthropic));
+        InitModelSelector(txtOpenAiModelName, txtOpenAiKey, txtOpenAiUrl, AiProvider.OpenAI);
+        InitModelSelector(txtAnthropicModelName, txtAnthropicKey, txtAnthropicUrl, AiProvider.Anthropic);
+        InitModelSelector(txtBifrostOpenAiModelName, txtBifrostOpenAiKey, txtBifrostOpenAiUrl, AiProvider.BifrostOpenAI);
+        InitModelSelector(txtBifrostAnthropicModelName, txtBifrostAnthropicKey, txtBifrostAnthropicUrl, AiProvider.BifrostAnthropic);
     }
 
+    private void InitModelSelector(ComboBox modelBox, TextBox keyBox, TextBox urlBox, AiProvider provider)
+    {
+        modelBox.DropDownStyle = ComboBoxStyle.DropDown;
+        modelBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        modelBox.AutoCompleteSource = AutoCompleteSource.ListItems;
+
+        modelBox.DropDown += async (_, _) => await TryLoadModelsAsync(provider, keyBox, urlBox, modelBox);
+        modelBox.MouseDown += async (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                await TryLoadModelsAsync(provider, keyBox, urlBox, modelBox);
+        };
+
+        keyBox.TextChanged += (_, _) => _modelsLoaded.Remove(modelBox);
+        urlBox.TextChanged += (_, _) => _modelsLoaded.Remove(modelBox);
+
+        modelBox.Items.Clear();
+        modelBox.Items.Add(AppConfig.GetDefaultModelName(provider));
+    }
+
+    // Les quatre RadioButton vivent dans des containers différents (les panneaux des deux
+    // SplitContainer) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main.
+    private (RadioButton Button, AiProvider Provider)[] ProviderButtons =>
+    [
+        (rbOpenAi, AiProvider.OpenAI),
+        (rbAnthropic, AiProvider.Anthropic),
+        (rbBifrostOpenAi, AiProvider.BifrostOpenAI),
+        (rbBifrostAnthropic, AiProvider.BifrostAnthropic),
+    ];
+
+    private AiProvider SelectedProvider
+    {
+        get
+        {
+            foreach (var (button, provider) in ProviderButtons)
+                if (button.Checked)
+                    return provider;
+
+            return AiProvider.OpenAI;
+        }
+    }
 
     private void InitProviderUi()
     {
-        rbOpenAi.CheckedChanged += ProviderChanged;
-        rbAnthropic.CheckedChanged += ProviderChanged;
+        foreach (var (button, _) in ProviderButtons)
+            button.CheckedChanged += ProviderChanged;
     }
 
     private void ProviderChanged(object? sender, EventArgs e)
@@ -160,53 +183,100 @@ internal sealed partial class ConfigForm : Form
         if (_isLoading || _isUpdatingProvider)
             return;
 
-        // Les deux RadioButton sont dans deux containers différents (SplitContainer.Panel1/Panel2),
-        // donc WinForms ne gère pas l'exclusivité automatiquement.
+        if (sender is not RadioButton changed || !changed.Checked)
+            return;
+
         try
         {
             _isUpdatingProvider = true;
-            if (ReferenceEquals(sender, rbOpenAi) && rbOpenAi.Checked)
-                rbAnthropic.Checked = false;
-            else if (ReferenceEquals(sender, rbAnthropic) && rbAnthropic.Checked)
-                rbOpenAi.Checked = false;
+            foreach (var (button, _) in ProviderButtons)
+                if (!ReferenceEquals(button, changed))
+                    button.Checked = false;
         }
         finally
         {
             _isUpdatingProvider = false;
         }
 
-        if (rbOpenAi.Checked)
-        {
-            if (string.IsNullOrWhiteSpace(txtOpenAiUrl.Text))
-                txtOpenAiUrl.Text = AppConfig.GetDefaultUrl(AiProvider.OpenAI);
-
-            if (string.IsNullOrWhiteSpace(txtOpenAiModelName.Text))
-                txtOpenAiModelName.Text = AppConfig.GetDefaultModelName(AiProvider.OpenAI);
-        }
-        else if (rbAnthropic.Checked)
-        {
-            if (string.IsNullOrWhiteSpace(txtAnthropicUrl.Text))
-                txtAnthropicUrl.Text = AppConfig.GetDefaultUrl(AiProvider.Anthropic);
-
-            if (string.IsNullOrWhiteSpace(txtAnthropicModelName.Text))
-                txtAnthropicModelName.Text = AppConfig.GetDefaultModelName(AiProvider.Anthropic);
-        }
+        ApplyProviderDefaults();
     }
 
-        private async Task TryLoadOpenAiModelsAsync()
+    /// <summary>
+    /// Complète l'URL et le modèle du fournisseur sélectionné s'ils sont vides : évite qu'un
+    /// fournisseur jamais configuré soit activé sans point de terminaison.
+    /// </summary>
+    private void ApplyProviderDefaults()
     {
-        if (_isLoading)
+        var provider = SelectedProvider;
+        var (urlBox, modelBox) = provider switch
+        {
+            AiProvider.Anthropic => ((Control)txtAnthropicUrl, (Control)txtAnthropicModelName),
+            AiProvider.BifrostOpenAI => (txtBifrostOpenAiUrl, txtBifrostOpenAiModelName),
+            AiProvider.BifrostAnthropic => (txtBifrostAnthropicUrl, txtBifrostAnthropicModelName),
+            _ => (txtOpenAiUrl, txtOpenAiModelName),
+        };
+
+        if (string.IsNullOrWhiteSpace(urlBox.Text))
+            urlBox.Text = AppConfig.GetDefaultUrl(provider);
+
+        if (string.IsNullOrWhiteSpace(modelBox.Text))
+            modelBox.Text = AppConfig.GetDefaultModelName(provider);
+    }
+
+    /// <summary>
+    /// Charge la liste des modèles du fournisseur, via le SDK correspondant à son dialecte.
+    /// Best effort : en cas d'échec (clé invalide, passerelle éteinte), la liste statique reste.
+    /// </summary>
+    private Task TryLoadModelsAsync(AiProvider provider, TextBox keyBox, TextBox urlBox, ComboBox modelBox)
+        => AppConfig.UsesAnthropicDialect(provider)
+            ? TryLoadAnthropicStyleModelsAsync(provider, keyBox, urlBox, modelBox)
+            : TryLoadOpenAiStyleModelsAsync(provider, keyBox, urlBox, modelBox);
+
+    /// <summary>
+    /// Clé à présenter au SDK pour lister les modèles. Une passerelle Bifrost locale n'en exige
+    /// pas, mais les SDK refusent une chaîne vide : on envoie alors un jeton neutre.
+    /// </summary>
+    private static string? ResolveModelListingKey(AiProvider provider, TextBox keyBox)
+    {
+        var key = keyBox.Text.Trim();
+        if (key.Length > 0)
+            return key;
+
+        return AppConfig.IsBifrost(provider) ? AppConfig.BifrostPlaceholderApiKey : null;
+    }
+
+    private void ApplyLoadedModels(ComboBox modelBox, object[] modelIds, string currentModel)
+    {
+        if (!IsHandleCreated)
             return;
 
-        if (_isLoadingModels || _openAiModelsLoaded)
+        BeginInvoke(() =>
+        {
+            modelBox.BeginUpdate();
+            try
+            {
+                modelBox.Items.Clear();
+                modelBox.Items.AddRange(modelIds);
+                modelBox.Text = currentModel;
+            }
+            finally
+            {
+                modelBox.EndUpdate();
+            }
+        });
+    }
+
+    private async Task TryLoadOpenAiStyleModelsAsync(AiProvider provider, TextBox keyBox, TextBox urlBox, ComboBox modelBox)
+    {
+        if (_isLoading || _isLoadingModels || _modelsLoaded.Contains(modelBox))
             return;
 
-        var key = txtOpenAiKey.Text.Trim();
-        if (string.IsNullOrWhiteSpace(key))
+        var key = ResolveModelListingKey(provider, keyBox);
+        if (key is null)
             return;
 
-        var endpoint = NormalizeOpenAiEndpoint(txtOpenAiUrl.Text);
-        var currentModel = txtOpenAiModelName.Text;
+        var endpoint = NormalizeOpenAiEndpoint(provider, urlBox.Text);
+        var currentModel = modelBox.Text;
 
         try
         {
@@ -230,29 +300,12 @@ internal sealed partial class ConfigForm : Form
             if (modelIds.Length == 0)
                 return;
 
-            _openAiModelsLoaded = true;
-
-            if (IsHandleCreated)
-            {
-                BeginInvoke(() =>
-                {
-                    txtOpenAiModelName.BeginUpdate();
-                    try
-                    {
-                        txtOpenAiModelName.Items.Clear();
-                        txtOpenAiModelName.Items.AddRange(modelIds);
-                        txtOpenAiModelName.Text = currentModel;
-                    }
-                    finally
-                    {
-                        txtOpenAiModelName.EndUpdate();
-                    }
-                });
-            }
+            _modelsLoaded.Add(modelBox);
+            ApplyLoadedModels(modelBox, modelIds, currentModel);
         }
         catch
         {
-            // best effort
+            // best effort : clé invalide, réseau absent, passerelle éteinte -> liste statique
         }
         finally
         {
@@ -260,21 +313,17 @@ internal sealed partial class ConfigForm : Form
         }
     }
 
-
-    private async Task TryLoadAnthropicModelsAsync()
+    private async Task TryLoadAnthropicStyleModelsAsync(AiProvider provider, TextBox keyBox, TextBox urlBox, ComboBox modelBox)
     {
-        if (_isLoading)
+        if (_isLoading || _isLoadingModels || _modelsLoaded.Contains(modelBox))
             return;
 
-        if (_isLoadingModels || _anthropicModelsLoaded)
+        var key = ResolveModelListingKey(provider, keyBox);
+        if (key is null)
             return;
 
-        var key = txtAnthropicKey.Text.Trim();
-        if (string.IsNullOrWhiteSpace(key))
-            return;
-
-        var baseUrl = NormalizeAnthropicBaseUrl(txtAnthropicUrl.Text);
-        var currentModel = txtAnthropicModelName.Text;
+        var baseUrl = NormalizeAnthropicBaseUrl(provider, urlBox.Text);
+        var currentModel = modelBox.Text;
 
         try
         {
@@ -298,29 +347,12 @@ internal sealed partial class ConfigForm : Form
             if (modelIds.Length == 0)
                 return;
 
-            _anthropicModelsLoaded = true;
-
-            if (IsHandleCreated)
-            {
-                BeginInvoke(() =>
-                {
-                    txtAnthropicModelName.BeginUpdate();
-                    try
-                    {
-                        txtAnthropicModelName.Items.Clear();
-                        txtAnthropicModelName.Items.AddRange(modelIds);
-                        txtAnthropicModelName.Text = currentModel;
-                    }
-                    finally
-                    {
-                        txtAnthropicModelName.EndUpdate();
-                    }
-                });
-            }
+            _modelsLoaded.Add(modelBox);
+            ApplyLoadedModels(modelBox, modelIds, currentModel);
         }
         catch
         {
-            // best effort: si la clé est invalide / pas de réseau / etc., on garde la liste statique
+            // best effort : si la clé est invalide / pas de réseau / etc., on garde la liste statique
         }
         finally
         {
@@ -343,10 +375,10 @@ internal sealed partial class ConfigForm : Form
         return p.GetValue(model)?.ToString();
     }
 
-    private static string NormalizeAnthropicBaseUrl(string url)
+    private static string NormalizeAnthropicBaseUrl(AiProvider provider, string url)
     {
         if (string.IsNullOrWhiteSpace(url))
-            return AppConfig.GetDefaultUrl(AiProvider.Anthropic);
+            return AppConfig.GetDefaultUrl(provider);
 
         var trimmed = url.Trim().TrimEnd('/');
         if (trimmed.EndsWith("/v1/messages", StringComparison.OrdinalIgnoreCase))
@@ -357,10 +389,10 @@ internal sealed partial class ConfigForm : Form
         return trimmed;
     }
 
-    private static string NormalizeOpenAiEndpoint(string url)
+    private static string NormalizeOpenAiEndpoint(AiProvider provider, string url)
     {
         if (string.IsNullOrWhiteSpace(url))
-            return AppConfig.GetDefaultUrl(AiProvider.OpenAI);
+            return AppConfig.GetDefaultUrl(provider);
 
         var trimmed = url.Trim().TrimEnd('/');
 
@@ -591,8 +623,8 @@ internal sealed partial class ConfigForm : Form
         _isLoading = true;
         try
         {
-            rbOpenAi.Checked = config.Provider != AiProvider.Anthropic;
-            rbAnthropic.Checked = config.Provider == AiProvider.Anthropic;
+            foreach (var (button, provider) in ProviderButtons)
+                button.Checked = config.Provider == provider;
 
             txtOpenAiKey.Text = config.OpenAiKey;
             txtOpenAiUrl.Text = config.OpenAiUrl;
@@ -601,6 +633,14 @@ internal sealed partial class ConfigForm : Form
             txtAnthropicKey.Text = config.AnthropicKey;
             txtAnthropicUrl.Text = config.AnthropicUrl;
             txtAnthropicModelName.Text = config.AnthropicModelName;
+
+            txtBifrostOpenAiKey.Text = config.BifrostOpenAiKey;
+            txtBifrostOpenAiUrl.Text = config.BifrostOpenAiUrl;
+            txtBifrostOpenAiModelName.Text = config.BifrostOpenAiModelName;
+
+            txtBifrostAnthropicKey.Text = config.BifrostAnthropicKey;
+            txtBifrostAnthropicUrl.Text = config.BifrostAnthropicUrl;
+            txtBifrostAnthropicModelName.Text = config.BifrostAnthropicModelName;
         }
         finally
         {

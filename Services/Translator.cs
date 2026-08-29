@@ -107,10 +107,12 @@ internal static partial class Translator
     {
         return await RetryPipeline.ExecuteAsync(async _ =>
         {
+            // Bifrost expose un chemin par dialecte : on réutilise donc tel quel le client du
+            // dialecte correspondant, seule l'URL de base change.
             return config.Provider switch
             {
-                AiProvider.OpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
-                AiProvider.Anthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
+                AiProvider.OpenAI or AiProvider.BifrostOpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
+                AiProvider.Anthropic or AiProvider.BifrostAnthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
                 _ => throw new NotSupportedException($"Provider '{config.Provider}' not supported."),
             };
         }, CancellationToken.None);
@@ -120,7 +122,7 @@ internal static partial class Translator
     {
         var client = new ChatClient(
             config.ModelName,
-            new ApiKeyCredential(config.Key),
+            new ApiKeyCredential(ResolveApiKey(config)),
             new OpenAIClientOptions { Endpoint = new Uri(config.Url) });
 
         var options = new ChatCompletionOptions
@@ -144,7 +146,7 @@ internal static partial class Translator
         {
             var client = new AnthropicClient
             {
-                ApiKey = config.Key,
+                ApiKey = ResolveApiKey(config),
                 BaseUrl = NormalizeAnthropicEndpoint(config.Url),
             };
 
@@ -224,6 +226,24 @@ internal static partial class Translator
             408 or 429 or 500 or 502 or 503 or 504 => true,
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// Clé transmise au SDK. Une instance Bifrost locale n'exige pas de clé — les clés des
+    /// fournisseurs amont vivent côté passerelle — mais les deux SDK refusent une chaîne vide :
+    /// on leur passe alors un jeton neutre, que la passerelle ignore.
+    ///
+    /// Hors Bifrost, aucune clé n'est fabriquée : on renvoie une chaîne vide pour que l'appel
+    /// échoue localement et explicitement, plutôt que de partir sur le réseau avec un jeton
+    /// bidon ou une valeur faite d'espaces.
+    /// </summary>
+    private static string ResolveApiKey(AppConfig config)
+    {
+        var key = config.Key?.Trim() ?? string.Empty;
+        if (key.Length > 0)
+            return key;
+
+        return AppConfig.IsBifrost(config.Provider) ? AppConfig.BifrostPlaceholderApiKey : string.Empty;
     }
 
     private static string NormalizeAnthropicEndpoint(string url)
