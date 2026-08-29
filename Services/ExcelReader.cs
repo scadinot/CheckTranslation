@@ -3,7 +3,12 @@ using ClosedXML.Excel;
 namespace CheckTranslation;
 
 /// <summary>
-/// Lit le fichier Excel exporté par ResX Manager et retourne les lignes de traduction.
+/// Lit et écrit le fichier Excel exporté par ResX Resource Manager.
+///
+/// Les lignes produites sont indexées par code de langue (comme la source .resx) ; la
+/// correspondance code → colonne Excel est portée par <see cref="LanguageInfo.Column"/> et ne
+/// sort pas de cette classe. Pour une langue en colonne <c>col</c>, son commentaire est en
+/// <c>col - 1</c>.
 /// </summary>
 internal static class ExcelReader
 {
@@ -14,7 +19,7 @@ internal static class ExcelReader
     private const int ColComment = 4;  // D
     private const int ColFrench  = 5;  // E (langue par defaut, sans en-tete)
 
-    public static List<TranslationRow> Load(string filePath, int[] translationColumns, int activeColumn, IProgress<ExcelLoadProgress>? progress = null)
+    public static List<TranslationRow> Load(string filePath, IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null)
     {
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
@@ -23,7 +28,7 @@ internal static class ExcelReader
         int lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
         int totalRows = lastRow - 1;
         if (totalRows > 0)
-            progress?.Report(new ExcelLoadProgress(0, totalRows));
+            progress?.Report(new SourceLoadProgress(0, totalRows));
 
         for (int r = 2; r <= lastRow; r++)
         {
@@ -41,60 +46,55 @@ internal static class ExcelReader
                 French  = worksheet.Cell(r, ColFrench).GetString(),
             };
 
-            foreach (var col in translationColumns)
+            foreach (var language in languages)
             {
-                row.Translations[col] = worksheet.Cell(r, col).GetString();
-                row.Comments[col] = worksheet.Cell(r, col - 1).GetString();
+                row.Translations[language.Code] = worksheet.Cell(r, language.Column).GetString();
+                row.Comments[language.Code] = worksheet.Cell(r, language.Column - 1).GetString();
             }
 
-            row.Translation = row.Translations.GetValueOrDefault(activeColumn, string.Empty);
-            row.Comment = row.Comments.GetValueOrDefault(activeColumn, string.Empty);
             rows.Add(row);
 
             // Progression en "lignes lues" (pas en %). On limite un peu la fréquence
             // des updates UI pour éviter de saturer le thread UI sur les gros fichiers.
             int done = r - 1;
             if (done == 1 || done == totalRows || done % 10 == 0)
-                progress?.Report(new ExcelLoadProgress(done, totalRows));
+                progress?.Report(new SourceLoadProgress(done, totalRows));
         }
 
         return rows;
     }
 
-    public static void Save(string filePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
+    public static void Save(string filePath, IReadOnlyList<TranslationRow> rows, IReadOnlyList<LanguageInfo> languages)
     {
-        // Synchroniser la langue active dans le dictionnaire avant de sauvegarder
-        foreach (var row in rows)
-        {
-            row.Translations[activeColumn] = row.Translation;
-            row.Comments[activeColumn] = row.Comment;
-        }
+        var columnByCode = BuildColumnByCode(languages);
 
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheets.First();
 
         foreach (var row in rows)
         {
-            foreach (var (col, value) in row.Translations)
-                WriteCellValue(worksheet.Cell(row.RowNumber, col), value);
+            foreach (var (code, value) in row.Translations)
+            {
+                if (columnByCode.TryGetValue(code, out var column))
+                    WriteCellValue(worksheet.Cell(row.RowNumber, column), value);
+            }
 
-            foreach (var (col, value) in row.Comments)
-                WriteCellValue(worksheet.Cell(row.RowNumber, col - 1), value);
+            foreach (var (code, value) in row.Comments)
+            {
+                if (columnByCode.TryGetValue(code, out var column))
+                    WriteCellValue(worksheet.Cell(row.RowNumber, column - 1), value);
+            }
         }
 
         workbook.Save();
     }
 
-    public static int Merge(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
-        => Merge(destinationFilePath, activeColumn, rows, new Dictionary<string, MergeDifferenceResolution>(StringComparer.OrdinalIgnoreCase));
+    public static int Merge(string destinationFilePath, LanguageInfo activeLanguage, IReadOnlyList<TranslationRow> rows)
+        => Merge(destinationFilePath, activeLanguage, rows, new Dictionary<string, MergeDifferenceResolution>(StringComparer.OrdinalIgnoreCase));
 
-    public static int Merge(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows, IReadOnlyDictionary<string, MergeDifferenceResolution> sourceDifferenceResolutions)
+    public static int Merge(string destinationFilePath, LanguageInfo activeLanguage, IReadOnlyList<TranslationRow> rows, IReadOnlyDictionary<string, MergeDifferenceResolution> sourceDifferenceResolutions)
     {
-        foreach (var row in rows)
-        {
-            row.Translations[activeColumn] = row.Translation;
-            row.Comments[activeColumn] = row.Comment;
-        }
+        int activeColumn = activeLanguage.Column;
 
         using var workbook = new XLWorkbook(destinationFilePath);
         var worksheet = workbook.Worksheets.First();
@@ -136,8 +136,8 @@ internal static class ExcelReader
 
             if (resolution.UpdateTranslationAndComment)
             {
-                WriteCellValue(worksheet.Cell(r, activeColumn), sourceRow.Translations.GetValueOrDefault(activeColumn, sourceRow.Translation));
-                WriteCellValue(worksheet.Cell(r, activeColumn - 1), sourceRow.Comments.GetValueOrDefault(activeColumn, sourceRow.Comment));
+                WriteCellValue(worksheet.Cell(r, activeColumn), sourceRow.Translations.GetValueOrDefault(activeLanguage.Code, sourceRow.Translation));
+                WriteCellValue(worksheet.Cell(r, activeColumn - 1), sourceRow.Comments.GetValueOrDefault(activeLanguage.Code, sourceRow.Comment));
             }
 
             mergedCount++;
@@ -147,8 +147,10 @@ internal static class ExcelReader
         return mergedCount;
     }
 
-    public static List<MergeDifference> GetMergeSourceDifferences(string destinationFilePath, int activeColumn, IReadOnlyList<TranslationRow> rows)
+    public static List<MergeDifference> GetMergeSourceDifferences(string destinationFilePath, LanguageInfo activeLanguage, IReadOnlyList<TranslationRow> rows)
     {
+        int activeColumn = activeLanguage.Column;
+
         using var workbook = new XLWorkbook(destinationFilePath);
         var worksheet = workbook.Worksheets.First();
 
@@ -216,6 +218,9 @@ internal static class ExcelReader
             worksheet.Cell(rowNumber, ColComment).GetString(),
             worksheet.Cell(rowNumber, activeColumn).GetString(),
             worksheet.Cell(rowNumber, activeColumn - 1).GetString());
+
+    private static Dictionary<string, int> BuildColumnByCode(IReadOnlyList<LanguageInfo> languages)
+        => languages.ToDictionary(language => language.Code, language => language.Column, StringComparer.OrdinalIgnoreCase);
 
     private static string BuildSyncKey(string project, string file, string key)
         => string.Join("\u001F", project.Trim(), file.Trim(), key.Trim());
