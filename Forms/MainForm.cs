@@ -1000,8 +1000,10 @@ public partial class MainForm : Form
         var providerName = config.Provider switch
         {
             AiProvider.Anthropic => "Anthropic",
-            AiProvider.BifrostOpenAI => "Bifrost (OpenAI)",
-            AiProvider.BifrostAnthropic => "Bifrost (Anthropic)",
+            // Libellés alignés sur ceux de la fenêtre de configuration et du README : nommer
+            // le même fournisseur différemment selon l'écran prête à confusion sur le dialecte.
+            AiProvider.BifrostOpenAI => "Bifrost (API OpenAI)",
+            AiProvider.BifrostAnthropic => "Bifrost (API Anthropic)",
             _ => "OpenAI",
         };
         var modelName = config.ModelName;
