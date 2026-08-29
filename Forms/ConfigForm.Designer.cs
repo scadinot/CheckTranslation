@@ -103,7 +103,7 @@ partial class ConfigForm
         // 
         // splitContainer2
         // 
-        splitContainer2.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        splitContainer2.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         splitContainer2.Location = new Point(7, 28);
         splitContainer2.Margin = new Padding(3, 4, 3, 4);
         splitContainer2.Name = "splitContainer2";
