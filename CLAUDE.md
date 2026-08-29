@@ -97,6 +97,7 @@ CheckTranslation/
 │   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
 │   ├── FormGeometryReader.cs                 # Géométrie des contrôles WinForms (socle anti-débordement)
 │   ├── GdiTextWidthMeasurer.cs               # Mesure GDI de la largeur rendue (Windows)
+│   ├── ILayoutCheckService.cs / LayoutCheckService.cs  # Verdict de mise en page par ligne
 │   ├── SolutionReader.cs                     # Liste des projets d'un .sln ou .slnx
 │   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
@@ -294,6 +295,12 @@ La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'e
 
 ⚠ `extraPadding` (0 par défaut) reste **à calibrer** : la mesure `NoPadding` donne l'encombrement des glyphes, alors qu'un contrôle réserve une marge interne. Sans calibrage, l'analyse sous-détecte.
 
+**`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et reporte le verdict sur chaque ligne (`LayoutStatus` + `LayoutIssue`).
+- Ne traite que les clés `contrôle.Text` : un message, un `ToolTipText` ou un `AccessibleName` n'occupent aucune surface fixe.
+- Une ligne **sans traduction** reste `NotChecked` — la déclarer conforme serait faux.
+- Un formulaire **non localisable** (aucune géométrie) laisse toutes ses lignes `NotChecked` : on ne conclut pas faute de données.
+- Une collision marque **les deux** lignes en cause, corriger l'une ou l'autre résolvant le problème ; une troncature déjà signalée n'est pas masquée par une collision.
+
 **`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
 - `score:none` → lignes sans score parsable
 - `score<N` → lignes sans score OU score ≤ N (inclusif)
@@ -413,6 +420,13 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
 4. `ExcelService.Merge(...)` applique les résolutions. Les lignes sans divergence source → report systématique de la traduction. Retour : nombre de lignes mises à jour.
 
+### 7.10.bis Vérification de mise en page (source .resx uniquement)
+1. `ITranslationSource.SupportsLayoutCheck` vaut `false` pour l'Excel : l'export ne contient aucune géométrie, l'analyse est simplement sautée.
+2. `MainForm.RefreshLayoutCheckAsync()` instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(...)` dans un `Task.Run`.
+3. Chaque ligne reçoit un `LayoutStatus` et un libellé, affichés dans la colonne « Mise en page » : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
+4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
+5. Déclenchée au chargement, au changement de langue et au rafraîchissement. Un échec est tracé sans interrompre la traduction : l'analyse est un confort.
+
 ### 7.11 Glossaire
 - **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
 - **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → validation → ajout au glossaire de la langue active.
@@ -491,6 +505,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
+- **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
+- **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
 
@@ -584,7 +600,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
-| 🟡 | **Vérification de débordement** | Lecture + analyse posées (`FormGeometryReader`, `LayoutAnalyzer`) | Brancher la mesure GDI réelle (`TextRenderer`, Windows) puis exposer une colonne + filtre dans la grille |
+| 🟡 | **Vérification de débordement** | ✅ Chaîne complète : lecture, analyse, mesure GDI, colonne + filtre | Calibrer `extraPadding` contre le rendu réel ; gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le retour à la ligne |
 | 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 

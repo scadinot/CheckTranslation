@@ -9,6 +9,8 @@ internal sealed class ExcelTranslationSource(string path) : ITranslationSource
 
     public bool SupportsMerge => true;
 
+    public bool SupportsLayoutCheck => false;
+
     public List<TranslationRow> Load(IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null)
         => ExcelReader.Load(Path, languages, progress);
 

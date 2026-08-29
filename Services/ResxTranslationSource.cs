@@ -12,6 +12,8 @@ internal sealed class ResxTranslationSource(string solutionPath) : ITranslationS
 
     public bool SupportsMerge => false;
 
+    public bool SupportsLayoutCheck => true;
+
     public List<TranslationRow> Load(IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null)
         => ResxReader.Load(Path, languages, progress);
 

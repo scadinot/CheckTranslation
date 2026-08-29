@@ -6,6 +6,7 @@ public partial class MainForm : Form
 {
     private readonly IExcelService _excelService;
     private readonly ITranslationSourceFactory _sourceFactory;
+    private readonly ILayoutCheckService _layoutCheckService;
     private readonly ITranslationService _translationService;
     private readonly IGlossaryService _glossaryService;
     private readonly Func<ConfigForm> _configFormFactory;
@@ -55,10 +56,12 @@ public partial class MainForm : Form
     private DataGridViewTextBoxColumn? colFile;
     private DataGridViewTextBoxColumn? colKey;
     private DataGridViewTextBoxColumn colComment = null!;
+    private DataGridViewTextBoxColumn colLayout = null!;
 
     public MainForm() : this(
         new ExcelService(),
         new TranslationSourceFactory(),
+        new LayoutCheckService(),
         new TranslationService(),
         new GlossaryService(),
         () => new ConfigForm(),
@@ -70,6 +73,7 @@ public partial class MainForm : Form
     internal MainForm(
         IExcelService excelService,
         ITranslationSourceFactory sourceFactory,
+        ILayoutCheckService layoutCheckService,
         ITranslationService translationService,
         IGlossaryService glossaryService,
         Func<ConfigForm> configFormFactory,
@@ -78,6 +82,7 @@ public partial class MainForm : Form
     {
         _excelService = excelService;
         _sourceFactory = sourceFactory;
+        _layoutCheckService = layoutCheckService;
         _translationService = translationService;
         _glossaryService = glossaryService;
         _configFormFactory = configFormFactory;
@@ -98,6 +103,7 @@ public partial class MainForm : Form
         btnConfig.Click += BtnConfig_Click;
         InitDetailsColumns();
         InitCommentColumn();
+        InitLayoutColumn();
         InitDetailsButton();
         InitGlossaryButton();
         InitRefreshButton();
@@ -134,11 +140,18 @@ public partial class MainForm : Form
             return;
 
         var colName = dataGridView.Columns[e.ColumnIndex].Name;
-        if (colName is not "colTranslation" and not "colComment")
+        if (colName is not "colTranslation" and not "colComment" and not "colLayout")
             return;
 
         if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
             return;
+
+        if (colName == "colLayout")
+        {
+            if (e.CellStyle is not null)
+                ApplyLayoutCellStyle(e.CellStyle, row.LayoutStatus);
+            return;
+        }
 
         if (!QualityScore.TryParse(row.Comment, out var score))
             return;
@@ -148,6 +161,28 @@ public partial class MainForm : Form
         e.CellStyle.SelectionBackColor = ControlPaint.Dark(backColor);
         e.CellStyle.ForeColor = SystemColors.ControlText;
         e.CellStyle.SelectionForeColor = SystemColors.ControlText;
+    }
+
+    private static void ApplyLayoutCellStyle(DataGridViewCellStyle style, LayoutStatus status)
+    {
+        // Une troncature coupe le texte, une collision en masque un autre : deux gravités
+        // distinctes, deux teintes distinctes. « Conforme » et « non analysé » restent neutres
+        // pour ne pas colorer toute la grille.
+        var backColor = status switch
+        {
+            LayoutStatus.Truncated => Color.FromArgb(255, 205, 205),
+            LayoutStatus.Collision => Color.FromArgb(255, 228, 196),
+            LayoutStatus.Unverifiable => Color.FromArgb(238, 238, 238),
+            _ => Color.Empty,
+        };
+
+        if (backColor == Color.Empty)
+            return;
+
+        style.BackColor = backColor;
+        style.SelectionBackColor = ControlPaint.Dark(backColor);
+        style.ForeColor = SystemColors.ControlText;
+        style.SelectionForeColor = SystemColors.ControlText;
     }
 
     private void InitDetailsColumns()
@@ -200,6 +235,58 @@ public partial class MainForm : Form
             SortMode = DataGridViewColumnSortMode.Programmatic,
         };
         dataGridView.Columns.Add(colComment);
+    }
+
+    // --- Vérification de mise en page ---
+
+    private void InitLayoutColumn()
+    {
+        colLayout = new DataGridViewTextBoxColumn
+        {
+            Name = "colLayout",
+            DataPropertyName = "LayoutIssue",
+            HeaderText = "Mise en page",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 18,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Programmatic,
+        };
+        dataGridView.Columns.Add(colLayout);
+    }
+
+    /// <summary>
+    /// Relance l'analyse de mise en page pour la langue affichée. Sans objet hors mode .resx :
+    /// la géométrie des contrôles n'existe que dans ces fichiers.
+    /// </summary>
+    private async Task RefreshLayoutCheckAsync()
+    {
+        if (_allRows is null || _currentSource?.SupportsLayoutCheck != true)
+            return;
+
+        var source = _currentSource;
+        var rows = _allRows;
+        var languageCode = _currentLanguage.Code;
+
+        try
+        {
+            // La mesure GDI détient des handles : une instance par passe, libérée aussitôt.
+            var issues = await Task.Run(() =>
+            {
+                using var measurer = new GdiTextWidthMeasurer();
+                return _layoutCheckService.Analyze(source.Path, rows, languageCode, measurer.AsMeasurer());
+            });
+
+            statusRowCount.Text = issues > 0
+                ? $"Lignes : {rows.Count} — {issues} débordement(s)"
+                : $"Lignes : {rows.Count}";
+        }
+        catch (Exception ex)
+        {
+            // L'analyse est un confort : son échec ne doit pas empêcher de traduire.
+            System.Diagnostics.Debug.WriteLine($"[MainForm] Analyse de mise en page abandonnée : {ex.GetType().Name} : {ex.Message}");
+        }
+
+        dataGridView.Invalidate();
     }
 
     private void InitDetailsButton()
@@ -345,6 +432,10 @@ public partial class MainForm : Form
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders
+
+        // Un verdict de mise en page porte sur une traduction précise : SwitchLanguage l'a
+        // invalidé, il faut le recalculer pour la nouvelle langue.
+        _ = RefreshLayoutCheckAsync();
     }
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
@@ -414,6 +505,8 @@ public partial class MainForm : Form
             statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})";
             btnSave.Enabled = true;
             btnMerge.Enabled = source.SupportsMerge;
+
+            await RefreshLayoutCheckAsync();
         }
         catch (Exception ex)
         {
@@ -1865,6 +1958,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             _allRows = refreshedRows;
             ApplyFiltersPreservingSelection();
             RestoreStatusBar();
+            await RefreshLayoutCheckAsync();
         }
         catch (Exception ex)
         {
@@ -1936,8 +2030,26 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
     private const string VerificationScoreFilterPrefix = "score<";
     private readonly Dictionary<string, ComboBox> _filterComboBoxes = new();
 
+    /// <summary>
+    /// Libellé affiché → expression de filtre, par colonne. Porter la correspondance ici évite
+    /// un switch par colonne dans <see cref="CollectSpecialFilters"/>.
+    /// </summary>
+    private readonly Dictionary<string, Dictionary<string, string>> _specialFilterExpressions = new(StringComparer.Ordinal);
+
+    private static readonly Dictionary<string, string> LayoutFilterExpressions = new(StringComparer.Ordinal)
+    {
+        ["Tout défaut"] = "layout:issues",
+        ["Troncatures"] = "layout:truncation",
+        ["Collisions"] = "layout:collision",
+        ["Non vérifiable"] = "layout:unverifiable",
+        ["Conformes"] = "layout:ok",
+    };
+
     private bool TryCreateSpecialFilterControl(DataGridViewColumn col)
     {
+        if (col.DataPropertyName == "LayoutIssue")
+            return CreateChoiceFilter(col, LayoutFilterExpressions);
+
         if (col.DataPropertyName != "Comment")
             return false;
 
@@ -1983,6 +2095,53 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             }
         };
 
+        _filterComboBoxes[col.DataPropertyName] = comboBox;
+        dataGridView.Controls.Add(comboBox);
+        UpdateComboBoxBackColor(comboBox);
+        return true;
+    }
+
+    /// <summary>
+    /// Crée un filtre à choix pour une colonne, sur le même patron que celui du score de
+    /// vérification : ComboBox superposé à l'en-tête, première entrée vide = pas de filtre.
+    /// </summary>
+    private bool CreateChoiceFilter(DataGridViewColumn col, Dictionary<string, string> expressions)
+    {
+        var comboBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font(dataGridView.Font.FontFamily, 8.5f),
+            Tag = col.DataPropertyName,
+        };
+
+        comboBox.Items.Add(string.Empty);
+        foreach (var label in expressions.Keys)
+            comboBox.Items.Add(label);
+
+        comboBox.SelectedIndex = 0;
+        comboBox.SelectedIndexChanged += FilterComboBox_SelectedIndexChanged;
+        comboBox.GotFocus += (s, _) =>
+        {
+            if (s is ComboBox cb)
+                cb.BackColor = Color.FromArgb(255, 255, 230);
+        };
+        comboBox.LostFocus += (s, _) =>
+        {
+            if (s is ComboBox cb)
+                UpdateComboBoxBackColor(cb);
+        };
+        comboBox.KeyDown += (s, args) =>
+        {
+            if (args.KeyCode == Keys.Escape && s is ComboBox cb)
+            {
+                cb.SelectedIndex = 0;
+                dataGridView.Focus();
+                args.SuppressKeyPress = true;
+            }
+        };
+
+        _specialFilterExpressions[col.DataPropertyName] = expressions;
         _filterComboBoxes[col.DataPropertyName] = comboBox;
         dataGridView.Controls.Add(comboBox);
         UpdateComboBoxBackColor(comboBox);
@@ -2061,6 +2220,13 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         {
             if (comboBox.SelectedItem is not string selectedValue || string.IsNullOrWhiteSpace(selectedValue))
                 continue;
+
+            if (_specialFilterExpressions.TryGetValue(prop, out var expressions))
+            {
+                if (expressions.TryGetValue(selectedValue, out var expression))
+                    filters[prop] = expression;
+                continue;
+            }
 
             filters[prop] = selectedValue switch
             {
