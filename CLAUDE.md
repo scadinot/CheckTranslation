@@ -244,7 +244,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 **`FormGeometryReader` (static)** — lit la géométrie des contrôles d'un formulaire WinForms depuis son `.resx` neutre (`X.Size`, `X.Location`, `X.Font`, `X.AutoSize`, `$this.ClientSize`), pour pouvoir confronter une traduction à la place réellement disponible. Socle de la vérification de débordement ; **aucune mesure ni UI à ce stade**.
 - Ces entrées portent un attribut `type` : elles sont donc déjà exclues des lignes traduisibles par `ResxReader`. Les deux lectures sont complémentaires.
 - **Elles n'existent que dans les `.resx`** : l'export Excel n'expose aucune clé de géométrie (vérifié sur le corpus de référence : 0 sur 22 374 lignes). La vérification de débordement est donc réservée au mode `.resx`.
-- **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide.
+- **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide. *Sur le corpus de référence, tous les formulaires le sont* (confirmé par l'auteur) : la signature s'observe déjà dans l'export, où chaque contrôle porte `.AccessibleDescription`, `.AccessibleName` et `.ImageKey`.
 - `FormGeometry.TryGetForKey("btnOk.Text")` retrouve le contrôle porteur d'une clé ; `GetEffectiveFont` applique l'héritage de la police du formulaire.
 - Lit aussi la **filiation** via les métadonnées `>>X.Parent` : les coordonnées étant relatives au conteneur, `EnumerateSiblingGroups()` ne regroupe que des contrôles comparables.
 
