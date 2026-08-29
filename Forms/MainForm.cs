@@ -5,6 +5,7 @@ namespace CheckTranslation;
 public partial class MainForm : Form
 {
     private readonly IExcelService _excelService;
+    private readonly ITranslationSourceFactory _sourceFactory;
     private readonly ITranslationService _translationService;
     private readonly IGlossaryService _glossaryService;
     private readonly Func<ConfigForm> _configFormFactory;
@@ -23,6 +24,9 @@ public partial class MainForm : Form
     ];
 
     private string? _currentFilePath;
+    // Source chargée (Excel ou .resx). Porte le chargement, la sauvegarde et la disponibilité
+    // de la fusion ; null tant qu'aucun fichier n'a été ouvert.
+    private ITranslationSource? _currentSource;
     private LanguageInfo _currentLanguage = Languages[0];
     private List<TranslationRow>? _allRows;
     // Indique qu'une ecriture disque est en cours (Save ou Merge).
@@ -54,6 +58,7 @@ public partial class MainForm : Form
 
     public MainForm() : this(
         new ExcelService(),
+        new TranslationSourceFactory(),
         new TranslationService(),
         new GlossaryService(),
         () => new ConfigForm(),
@@ -64,6 +69,7 @@ public partial class MainForm : Form
 
     internal MainForm(
         IExcelService excelService,
+        ITranslationSourceFactory sourceFactory,
         ITranslationService translationService,
         IGlossaryService glossaryService,
         Func<ConfigForm> configFormFactory,
@@ -71,6 +77,7 @@ public partial class MainForm : Form
         Func<GlossaryExtractionDialog> extractionDialogFactory)
     {
         _excelService = excelService;
+        _sourceFactory = sourceFactory;
         _translationService = translationService;
         _glossaryService = glossaryService;
         _configFormFactory = configFormFactory;
@@ -322,10 +329,8 @@ public partial class MainForm : Form
 
         if (_allRows is not null)
         {
-            int oldCol = _currentLanguage.Column;
-            int newCol = lang.Column;
             foreach (var row in _allRows)
-                row.SwitchLanguage(oldCol, newCol);
+                row.SwitchLanguage(_currentLanguage.Code, lang.Code);
 
             // Effacer le filtre Translation (les données ont changé)
             if (_filterTextBoxes.TryGetValue("Translation", out var tb))
@@ -346,8 +351,8 @@ public partial class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Sélectionner un fichier Excel de traductions",
-            Filter = "Fichiers Excel (*.xlsx)|*.xlsx",
+            Title = "Sélectionner un export Excel ou une solution (.resx)",
+            Filter = _sourceFactory.OpenFileFilter,
             RestoreDirectory = true,
         };
 
@@ -374,10 +379,10 @@ public partial class MainForm : Form
 
         try
         {
-            var allColumns = Languages.Select(l => l.Column).ToArray();
-            var activeColumn = _currentLanguage.Column;
+            // La source est (re)construite à chaque chargement : elle est liée au chemin ouvert.
+            var source = _sourceFactory.Create(filePath);
 
-            var progress = new Progress<ExcelLoadProgress>(p =>
+            var progress = new Progress<SourceLoadProgress>(p =>
             {
                 if (p.Total > 0)
                     statusProgressBar.Maximum = p.Total;
@@ -389,8 +394,14 @@ public partial class MainForm : Form
                     : $"Chargement : {p.Done}";
             });
 
-            var rows = await Task.Run(() => _excelService.LoadWithRowProgress(filePath, allColumns, activeColumn, progress));
+            var rows = await Task.Run(() => source.Load(Languages, progress));
 
+            // La source remplit les dictionnaires par code de langue mais ignore la langue
+            // affichée : c'est l'UI qui décide de la vue active.
+            foreach (var row in rows)
+                row.SelectLanguage(_currentLanguage.Code);
+
+            _currentSource = source;
             _allRows = rows;
             foreach (var textBox in _filterTextBoxes.Values)
                 textBox.Text = string.Empty;
@@ -400,14 +411,15 @@ public partial class MainForm : Form
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             SetViewRefreshPending(false);
             statusRowCount.Text = $"Lignes : {rows.Count}";
+            statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})";
             btnSave.Enabled = true;
-            btnMerge.Enabled = true;
+            btnMerge.Enabled = source.SupportsMerge;
         }
         catch (Exception ex)
         {
             statusRowCount.Text = "Erreur de chargement";
             MessageBox.Show(
-                $"Impossible de charger le fichier Excel :\n\n{ex.Message}",
+                $"Impossible de charger les traductions :\n\n{ex.Message}",
                 "Erreur",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -416,7 +428,7 @@ public partial class MainForm : Form
         {
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
-            btnMerge.Enabled = _allRows is not null;
+            btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
         }
     }
 
@@ -433,7 +445,7 @@ public partial class MainForm : Form
 
     private async void BtnSave_Click(object? sender, EventArgs e)
     {
-        if (_currentFilePath is null || _allRows is null)
+        if (_currentSource is null || _allRows is null)
             return;
 
         dataGridView.EndEdit();
@@ -445,15 +457,20 @@ public partial class MainForm : Form
 
         try
         {
-            var filePath = _currentFilePath;
-            var column = _currentLanguage.Column;
-            await Task.Run(() => _excelService.Save(filePath, column, _allRows));
+            // La vue active n'existe que dans Translation / Comment : la pousser dans les
+            // dictionnaires avant toute écriture, sinon la langue courante ne serait pas sauvegardée.
+            foreach (var row in _allRows)
+                row.CommitActiveLanguage(_currentLanguage.Code);
+
+            var source = _currentSource;
+            var rows = _allRows;
+            await Task.Run(() => source.Save(rows, Languages));
             statusRowCount.Text = $"Lignes : {_allRows.Count} (sauvegardé)";
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Impossible de sauvegarder le fichier Excel :\n\n{ex.Message}",
+                $"Impossible de sauvegarder les traductions :\n\n{ex.Message}",
                 "Erreur",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -469,6 +486,11 @@ public partial class MainForm : Form
     private async void BtnMerge_Click(object? sender, EventArgs e)
     {
         if (_allRows is null || _allRows.Count == 0)
+            return;
+
+        // La fusion n'existe que pour la source Excel : le bouton est deja desactive dans les
+        // autres cas, la garde protege les appels par programme (raccourci, automatisation).
+        if (_currentSource?.SupportsMerge != true)
             return;
 
         dataGridView.EndEdit();
@@ -500,7 +522,12 @@ public partial class MainForm : Form
 
         try
         {
-            var sourceDifferences = await Task.Run(() => _excelService.GetMergeSourceDifferences(dialog.FileName, _currentLanguage.Column, _allRows));
+            // Meme raison que pour la sauvegarde : la vue active doit etre poussee dans les
+            // dictionnaires avant que la fusion ne lise Translations[langue].
+            foreach (var row in _allRows)
+                row.CommitActiveLanguage(_currentLanguage.Code);
+
+            var sourceDifferences = await Task.Run(() => _excelService.GetMergeSourceDifferences(dialog.FileName, _currentLanguage, _allRows));
             var mergeDecision = ConfirmMergeDifferences(sourceDifferences);
             if (mergeDecision.Cancelled)
             {
@@ -509,7 +536,7 @@ public partial class MainForm : Form
             }
 
             statusRowCount.Text = "Fusion en cours...";
-            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage.Column, _allRows, mergeDecision.Resolutions));
+            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage, _allRows, mergeDecision.Resolutions));
             int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.HasAnyChange);
 
             statusRowCount.Text = sourceDifferences.Count > 0
@@ -1778,9 +1805,11 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
         try
         {
-            var allColumns = Languages.Select(l => l.Column).ToArray();
-            var activeColumn = _currentLanguage.Column;
-            var refreshedRows = await Task.Run(() => _excelService.LoadWithRowProgress(_currentFilePath, allColumns, activeColumn));
+            var source = _currentSource ?? _sourceFactory.Create(_currentFilePath);
+            var refreshedRows = await Task.Run(() => source.Load(Languages));
+
+            foreach (var row in refreshedRows)
+                row.SelectLanguage(_currentLanguage.Code);
 
             var changedFrenchRows = refreshedRows
                 .Where(row => previousRowsByKey.TryGetValue(BuildSyncKey(row), out var previousRow)
@@ -1791,8 +1820,8 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             if (changedFrenchRows.Count > 0)
             {
                 var message = changedFrenchRows.Count == 1
-                    ? "Le français ou le commentaire source a été modifié dans le fichier Excel.\n\nVoulez-vous mettre à jour la ligne affichée avec la nouvelle valeur ?"
-                    : $"Le français ou le commentaire source a été modifié pour {changedFrenchRows.Count} ligne(s) dans le fichier Excel.\n\nVoulez-vous mettre à jour les lignes affichées avec les nouvelles valeurs ?";
+                    ? "Le français ou le commentaire source a été modifié dans le fichier d'origine.\n\nVoulez-vous mettre à jour la ligne affichée avec la nouvelle valeur ?"
+                    : $"Le français ou le commentaire source a été modifié pour {changedFrenchRows.Count} ligne(s) dans le fichier d'origine.\n\nVoulez-vous mettre à jour les lignes affichées avec les nouvelles valeurs ?";
 
                 var result = MessageBox.Show(
                     message,
@@ -1819,11 +1848,11 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
                 row.Translation = previousRow.Translation;
                 row.Comment = previousRow.Comment;
 
-                foreach (var (col, value) in previousRow.Translations)
-                    row.Translations[col] = value;
+                foreach (var (code, value) in previousRow.Translations)
+                    row.Translations[code] = value;
 
-                foreach (var (col, value) in previousRow.Comments)
-                    row.Comments[col] = value;
+                foreach (var (code, value) in previousRow.Comments)
+                    row.Comments[code] = value;
             }
 
             _allRows = refreshedRows;
@@ -1833,7 +1862,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Impossible de rafraîchir le fichier Excel :\n\n{ex.Message}",
+                $"Impossible de rafraîchir les traductions :\n\n{ex.Message}",
                 "Erreur",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -1845,7 +1874,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             statusProgressBar.Visible = false;
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
-            btnMerge.Enabled = _allRows is not null;
+            btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
             UpdateRefreshButtonState();
         }
     }
@@ -1885,7 +1914,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         btnRefresh.ToolTipText = _viewRefreshPending
             ? "Réappliquer les filtres et le tri pour refléter les dernières modifications"
             : HasCurrentFileLoaded()
-                ? "Recharger le fichier Excel courant et détecter les changements du français/commentaire"
+                ? "Recharger la source courante et détecter les changements du français/commentaire"
                 : "Tri et filtres déjà à jour";
     }
 

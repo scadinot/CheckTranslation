@@ -26,7 +26,12 @@ Référence complète du projet **CheckTranslation**, destinée aux humains comm
 
 ## 1. Aperçu
 
-CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources (type `.resx`) à partir d'un **export Excel** généré par ResX Resource Manager. L'application charge un fichier `.xlsx`, affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis sauvegarde les modifications dans le fichier Excel.
+CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources `.resx`. Elle sait travailler sur **deux sources** :
+
+- un **export Excel** généré par ResX Resource Manager (`.xlsx`) ;
+- les **fichiers `.resx` directement**, désignés par une solution (`.sln` / `.slnx`).
+
+Dans les deux cas, l'application affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis réécrit la source d'origine.
 
 Elle peut appeler les API **OpenAI** et **Anthropic** pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts. Elle peut aussi fusionner des traductions d'un fichier source vers un fichier destination avec résolution des conflits ligne-par-ligne.
 
@@ -58,7 +63,7 @@ CheckTranslation/
 ├── CheckTranslation.csproj      # Projet (WinExe, net8.0-windows)
 ├── Program.cs                   # Point d'entrée (STAThread, bootstrap DI)
 ├── Forms/
-│   ├── MainForm.cs                           # Logique principale (~2050 lignes, organisée en sections)
+│   ├── MainForm.cs                           # Logique principale (~2080 lignes, organisée en sections)
 │   ├── MainForm.Designer.cs                  # Code généré par le designer
 │   ├── MainForm.resx                         # Ressources du form
 │   ├── ConfigForm.cs                         # Config (prompts, IA, vidage cache)
@@ -83,9 +88,15 @@ CheckTranslation/
 │   ├── Glossary.cs                      # Conteneur du glossaire
 │   └── GlossaryEntry.cs                 # Source / Destination / Context
 ├── Services/
-│   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour ExcelReader
+│   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save / SupportsMerge)
+│   ├── ITranslationSourceFactory.cs / TranslationSourceFactory.cs  # .xlsx → Excel, .sln/.slnx → resx
+│   ├── ExcelTranslationSource.cs             # Source Excel (seule à supporter la fusion)
+│   ├── ResxTranslationSource.cs              # Source .resx
+│   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour la fusion Excel
 │   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
-│   ├── ExcelLoadProgress.cs                  # record struct(Done, Total)
+│   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
+│   ├── SolutionReader.cs                     # Liste des projets d'un .sln ou .slnx
+│   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
 │   ├── Translator.cs                         # Appels bruts OpenAI/Anthropic + Polly
 │   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON par langue + fingerprint SHA256
@@ -117,7 +128,29 @@ Export d'une feuille `ResXResourceManager` (~22 000 lignes). Les colonnes sont 1
 | G | .de-DE (allemand) |
 | H…S | Autres langues : en-US, es-ES, it-IT, nl-NL, pl-PL, zh-CN (chaque langue = une colonne de commentaire précédée d'une colonne de traduction) |
 
-Convention : pour une langue dont la colonne de traduction est `col`, la colonne de commentaire associée est `col - 1`.
+Convention : pour une langue dont la colonne de traduction est `col`, la colonne de commentaire associée est `col - 1`. Cette correspondance code de langue → colonne est portée par `LanguageInfo.Column` et **ne sort pas de `ExcelReader`** : partout ailleurs, une langue est identifiée par son code.
+
+### 4.bis Format .resx (lecture directe)
+
+L'utilisateur ouvre une solution (`.sln` ou `.slnx`) ; `SolutionReader` en extrait les projets, puis `ResxReader` scanne chaque répertoire de projet à la recherche des `.resx`.
+
+| Notion | Origine |
+|---|---|
+| `Project` | Nom du fichier projet sans extension (`ElectricalBusiness.csproj` → `ElectricalBusiness`) |
+| `File` | Chemin du `.resx` **neutre** relatif au projet, sans extension, séparateurs `\` (`Properties\Msg`) |
+| `Key` | Attribut `name` de l'élément `<data>` |
+| Français + commentaire source | `<value>` et `<comment>` du fichier neutre (`Msg.resx`) |
+| Traduction + commentaire par langue | `<value>` et `<comment>` de la variante (`Msg.de-DE.resx`) |
+
+Ces conventions reproduisent **exactement** les colonnes `Project` / `File` / `Key` de l'export Excel : les deux sources produisent donc la même clé de corrélation `Project\|File\|Key`.
+
+Entrées exclues au chargement (mêmes règles que ResX Resource Manager) :
+- commentaire neutre contenant `@Invariant` (~30 % des lignes sur le corpus de référence) ;
+- entrées non textuelles, repérées par un attribut `type` ou `mimetype` (images, icônes, blobs sérialisés) ;
+- métadonnées du designer WinForms, dont la clé commence par `>>` (les clés `$this.Text`, `btnOk.Text`… sont conservées) ;
+- répertoires `bin`, `obj`, `.git`, `.vs`.
+
+Une variante de culture n'est jamais confondue avec un fichier neutre : le suffixe est validé via `CultureInfo`, y compris pour les cultures non gérées par l'application (`Msg.pt-BR.resx` n'est ni chargé, ni traité comme neutre).
 
 ---
 
@@ -163,7 +196,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 ### 6.2 Formulaires
 
-**`Forms/MainForm.cs`** (~2050 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
+**`Forms/MainForm.cs`** (~2080 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
 - Constructeur, InitComponent, init des colonnes / boutons / langues
 - `// --- Indicateur de qualité (couleur) ---` : `DataGridView_CellFormatting` + `QualityScore.GetBackColor`
 - `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms. Les métriques de layout sont calculées au runtime selon le DPI (`_filterControlHeight`, `_columnHeaderTitleHeight`, `FilterIconWidth`, `FilterBottomMargin`) — plus aucune constante en pixels.
@@ -189,7 +222,16 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - `Save(filePath, activeColumn, rows)` : synchronise la vue langue active dans les dictionnaires, puis réécrit cellule par cellule. `WriteCellValue` double une apostrophe de tête pour la préserver.
 - `GetMergeSourceDifferences(...)` et `Merge(...)` : corrélation des lignes via `SyncKey = Project|File|Key` (séparateur `\u001F`), détection des divergences français/commentaire, écriture sélective selon `MergeDifferenceResolution`.
 
-**`ExcelService`** (implémente `IExcelService`) : façade DI, expose `Load`, `LoadWithRowProgress`, `Save`, `Merge`, `GetMergeSourceDifferences`.
+**`ExcelService`** (implémente `IExcelService`) : façade DI **réduite à la fusion** (`Merge`, `GetMergeSourceDifferences`). Le chargement et la sauvegarde passent désormais par `ITranslationSource`.
+
+**`ITranslationSource`** — abstraction des sources. Une instance est liée à un chemin et expose `Path`, `Kind` (« Excel » / « resx », affiché dans la status bar), `SupportsMerge`, `Load(languages, progress)` et `Save(rows, languages)`. Deux implémentations : `ExcelTranslationSource` (`SupportsMerge = true`) et `ResxTranslationSource` (`SupportsMerge = false`). `TranslationSourceFactory.Create(path)` choisit selon l'extension et expose `OpenFileFilter` pour l'`OpenFileDialog`.
+
+**`SolutionReader` (static)** — projets d'une solution, aux deux formats : `.slnx` (XML, `<Project Path>` à tous les niveaux, y compris dans les `<Folder>`) et `.sln` (texte, regex sur les lignes `Project(...)`, les dossiers de solution étant écartés par le filtre d'extension). Les projets absents du disque sont ignorés ; deux projets d'un même répertoire ne sont scannés qu'une fois.
+
+**`ResxReader` (static)** — lecture / écriture directe des `.resx` :
+- `DiscoverFiles(solutionPath)` : énumère les `.resx` neutres et leur identité (Projet, Fichier). Ne lit aucun XML — partagé par le chargement et la sauvegarde pour garantir la même correspondance identité → chemin disque.
+- `Load(...)` : construit les `TranslationRow` depuis le neutre + les variantes de culture, en appliquant les exclusions du §4.bis. Un `.resx` au XML invalide est ignoré (trace `Debug`) sans interrompre le chargement de la solution.
+- `Save(...)` : **n'écrit que les variantes de culture, jamais le fichier neutre** (le français est en lecture seule dans l'UI). Écriture chirurgicale : chargement en `LoadOptions.PreserveWhitespace`, mise à jour ou insertion de l'entrée ciblée, fichier réécrit uniquement s'il a réellement changé (sauvegarde idempotente). Le BOM d'origine est préservé. Un fichier de langue absent est créé à partir de l'en-tête du neutre (déclaration, schéma XSD, `resheader`) vidé de ses données — jamais pour n'y écrire que du vide.
 
 **`Translator` (static)** — appels bruts aux providers :
 - OpenAI via `OpenAI.Chat.ChatClient`.
@@ -267,12 +309,13 @@ Contenu persisté :
 2. `Program.Main` configure la DI et lance `MainForm`.
 3. `MainForm` restaure la taille de la fenêtre et les largeurs de colonnes depuis `AppConfig`.
 
-### 7.2 Ouverture d'un Excel
-1. Dialog `OpenFileDialog` → `_currentFilePath`.
-2. `ExcelService.LoadWithRowProgress(...)` charge les lignes (progress bar alimentée par `ExcelLoadProgress(Done, Total)`).
-3. Les lignes `@Invariant` sont ignorées.
-4. Les filtres de l'UI sont réinitialisés.
-5. `DataSource` de `SortableBindingList<TranslationRow>` assigné au `DataGridView`.
+### 7.2 Ouverture d'une source
+1. Dialog `OpenFileDialog` (filtre fourni par `TranslationSourceFactory.OpenFileFilter` : `.xlsx`, `.sln`, `.slnx`) → `_currentFilePath`.
+2. `TranslationSourceFactory.Create(path)` construit `_currentSource` selon l'extension.
+3. `source.Load(Languages, progress)` charge les lignes (progress bar alimentée par `SourceLoadProgress(Done, Total)` — en lignes lues pour l'Excel, en fichiers neutres traités pour le .resx).
+4. Les entrées `@Invariant` sont ignorées (les deux sources).
+5. `row.SelectLanguage(code)` positionne la vue active : les sources remplissent les dictionnaires par code de langue mais ignorent la langue affichée.
+6. Les filtres de l'UI sont réinitialisés, `DataSource` assigné, et `btnMerge` activé **seulement si** `source.SupportsMerge`.
 
 ### 7.3 Affichage / édition
 - `DataGridView` avec colonnes :
@@ -313,10 +356,13 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 - L'indicateur `Rafraîchir *` (étoile) s'affiche après une édition/traduction/vérification pour signaler qu'une ré-application filtres/tri est utile.
 
 ### 7.9 Sauvegarde
-- `ExcelService.Save(filePath, activeColumn, rows)` synchronise la vue active puis réécrit toutes les traductions + commentaires. Les commentaires de vérification (format score) sont aussi persistés dans les colonnes Excel correspondantes.
+- `MainForm` pousse d'abord la vue active dans les dictionnaires (`row.CommitActiveLanguage(code)`), puis appelle `_currentSource.Save(rows, Languages)`. Sans ce commit, la langue affichée ne serait pas sauvegardée : elle ne vit que dans `Translation` / `Comment`.
+- Source Excel : réécriture des cellules de toutes les langues connues. Les commentaires de vérification (format score) sont aussi persistés dans les colonnes Excel correspondantes.
+- Source .resx : réécriture des seules variantes de culture réellement modifiées ; le fichier neutre n'est jamais touché.
 - Toute la durée de l'opération est encadrée par `SetWritingState(true/false)` (bloc `finally`) : toolbar et grille désactivées, fermeture de la fenêtre refusée, status bar « Sauvegarde en cours… ».
 
-### 7.10 Fusion
+### 7.10 Fusion (source Excel uniquement)
+0. `SupportsMerge` vaut `false` pour la source .resx : le bouton est désactivé et `BtnMerge_Click` sort immédiatement.
 1. Dialog → `_destinationFilePath`, puis `SetWritingState(true)` — le verrou couvre **toute** la fusion (analyse des différences, dialogs de résolution, écriture disque) et est levé dans le `finally`. Les `MergeDifferenceForm` restent utilisables : ce sont des dialogs modaux, la désactivation du parent ne les affecte pas.
 2. `ExcelService.GetMergeSourceDifferences(...)` détecte toutes les lignes où le français ou le commentaire source diffère entre source et destination.
 3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
@@ -392,6 +438,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Écritures disque protégées par `SetWritingState`** — ne PAS revenir à un `btnXxx.Enabled = false` ponctuel dans `BtnSave_Click` / `BtnMerge_Click` : le verrou global est ce qui bloque aussi la fermeture (`_isWriting` lu par `MainForm_FormClosing`). Toujours appeler `SetWritingState(false)` dans un `finally`.
 - **Métriques des filtres calculées au runtime** — pas de constantes en pixels : `InitFilterPanel` mesure police et `TextBox.PreferredHeight`, `UpdateFilterPanelLayout` / `DataGridView_CellPainting` / `TryLayoutSpecialFilterControl` doivent rester synchronisés sur ces champs, sinon les filtres se désalignent en DPI 125/150/200 %.
 - **`ConfigForm.BuildCurrentConfig()` reconstruit un `AppConfig` complet** — tout nouveau champ persistant non édité dans le dialog doit y être recopié depuis `AppConfig.Current`, faute de quoi un clic sur OK le réinitialise (cas vécu avec `WindowWidth/Height` et les `ColumnFillWeights`).
+- **Écriture .resx : ne jamais toucher le fichier neutre** — le français est en lecture seule dans l'UI ; `ResxReader.Save` n'écrit que les variantes `<stem>.<code>.resx`.
+- **Écriture .resx chirurgicale** — chargement en `PreserveWhitespace` et réécriture seulement si le contenu a changé : c'est ce qui garantit un diff minimal dans le gestionnaire de sources et une sauvegarde idempotente. Ne pas remplacer par une regénération complète du document.
+- **Une langue est identifiée par son code, pas par une colonne** — `TranslationRow.Translations` / `Comments` sont indexés par code (`« de-DE »`). Le numéro de colonne Excel (`LanguageInfo.Column`) ne doit rester connu que de `ExcelReader`.
 - **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
 - **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
@@ -451,6 +500,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-04-20 | Fix review Copilot : compteurs de cache tenant compte du fingerprint glossaire, `LoadIcon` tolérant aux erreurs, `catch` typé dans `AppConfig.Load`, pipeline Polly partagé, `BatchSize` partagé, traces de diagnostic sur l'introspection des SDK (PR #16) |
 | 2026-04-20 | Fermeture bloquée : flash non-modal de 3 s dans la status bar à la place du `MessageBox` (PR #17) |
 | 2026-04-20 | `BtnMerge_Click` : protection unifiée sous `SetWritingState` pour toute la fusion, en remplacement des `Enabled` bouton par bouton (PR #18) |
+| 2026-04-20 | Documentation : suivi et sections remis à jour pour les PR #12 à #18 (PR #19) |
+| 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
 
 ---
 
@@ -485,6 +536,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
+| 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 
 ### 13.4 Robustesse & sécurité

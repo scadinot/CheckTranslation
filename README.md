@@ -1,6 +1,11 @@
 # CheckTranslation
 
-Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la traduction et à la vérification des ressources d'un logiciel. Elle lit un fichier Excel exporté par **ResX Resource Manager** (extension Visual Studio), filtre les entrées `@Invariant` et affiche les traductions dans un tableau pour vérification et édition.
+Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la traduction et à la vérification des ressources d'un logiciel. Elle travaille sur **deux sources au choix** :
+
+- un fichier Excel exporté par **ResX Resource Manager** (extension Visual Studio) ;
+- les **fichiers `.resx` du code source directement**, en ouvrant la solution (`.sln` ou `.slnx`).
+
+Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traductions dans un tableau pour vérification et édition.
 
 > **Documentation technique complète (architecture, conventions, suivi, roadmap) :** voir [CLAUDE.md](CLAUDE.md).
 
@@ -8,8 +13,13 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 
 ## Fonctionnalités
 
+### Sources
+- **Export Excel** : ouverture d'un `.xlsx` ResX Resource Manager, progress bar en lignes lues
+- **Fichiers .resx** : ouverture d'une solution `.sln` / `.slnx` — les projets sont parcourus, chaque `.resx` neutre fournit le texte français et ses variantes de culture (`Msg.de-DE.resx`) les traductions
+- Les deux sources produisent la même identité de ligne `Projet | Fichier | Clé`
+- Sont ignorés : les entrées `@Invariant`, les ressources non textuelles (images, icônes), les métadonnées du designer (`>>…`) et les répertoires `bin` / `obj`
+
 ### Affichage et édition
-- **Chargement Excel** : ouverture d'un `.xlsx` ResX Resource Manager, progress bar en lignes lues
 - **Tableau** : français (lecture seule) + traduction (éditable) + commentaire de vérification (score)
 - **Colonnes de détail** : Projet / Fichier / Clé affichables via un bouton bascule (mémorisé)
 - **7 langues** : Anglais, Allemand, Espagnol, Italien, Néerlandais, Polonais, Chinois (boutons drapeaux)
@@ -36,9 +46,9 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 
 ### Fichier : sauvegarde, rafraîchissement, fusion
-- **Sauvegarde** : réécriture des traductions et des commentaires de vérification dans le fichier Excel d'origine
+- **Sauvegarde** : réécriture des traductions et des commentaires de vérification dans la source d'origine. En mode `.resx`, seules les variantes de culture réellement modifiées sont réécrites — le fichier neutre (français) n'est jamais touché, la mise en forme et le BOM d'origine sont préservés
 - **Rafraîchir (F5)** : recharge le fichier du disque en conservant les traductions en mémoire, détecte les changements du français/commentaire source et demande confirmation avant d'écraser
-- **Fusion** : report des traductions d'un fichier source vers un fichier destination via la clé `Projet | Fichier | Clé` ; dialogue de résolution des conflits ligne par ligne
+- **Fusion** *(source Excel uniquement)* : report des traductions d'un fichier source vers un fichier destination via la clé `Projet | Fichier | Clé` ; dialogue de résolution des conflits ligne par ligne. Le bouton est désactivé en mode `.resx`
 
 ### Configuration
 - **Prompts** : traduction + vérification avec aperçu Markdown. Placeholders supportés : `{language}` (langue cible) et `{glossary}` (section glossaire injectée automatiquement)

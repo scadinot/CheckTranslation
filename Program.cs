@@ -17,6 +17,7 @@ internal static class Program
 
         var services = new ServiceCollection();
         services.AddSingleton<IExcelService, ExcelService>();
+        services.AddSingleton<ITranslationSourceFactory, TranslationSourceFactory>();
         services.AddSingleton<ITranslationService, TranslationService>();
         services.AddSingleton<IGlossaryService, GlossaryService>();
 
@@ -31,6 +32,7 @@ internal static class Program
 
         services.AddTransient<MainForm>(sp => new MainForm(
             sp.GetRequiredService<IExcelService>(),
+            sp.GetRequiredService<ITranslationSourceFactory>(),
             sp.GetRequiredService<ITranslationService>(),
             sp.GetRequiredService<IGlossaryService>(),
             sp.GetRequiredService<Func<ConfigForm>>(),
