@@ -52,7 +52,8 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 
 ### Configuration
 - **Prompts** : traduction + vérification avec aperçu Markdown. Placeholders supportés : `{language}` (langue cible) et `{glossary}` (section glossaire injectée automatiquement)
-- **Fournisseur IA** : OpenAI (ChatGPT) ou Anthropic (Claude)
+- **Fournisseur IA** : quatre choix — OpenAI (ChatGPT) et Anthropic (Claude) en direct, ou les mêmes au travers de la passerelle auto-hébergée **Bifrost** (`Bifrost (API OpenAI)` et `Bifrost (API Anthropic)`). Chaque fournisseur garde sa propre clé, URL et modèle : basculer de l'un à l'autre ne demande aucune ressaisie
+- **Bifrost** : URL par défaut `http://localhost:8080/openai/v1` ou `http://localhost:8080/anthropic` selon le dialecte. La clé y est **facultative** (une instance locale n'en exige pas, les clés des fournisseurs amont étant configurées côté passerelle) et le nom de modèle est préfixé par le fournisseur amont : `openai/gpt-5.2`, `anthropic/claude-sonnet-4-6`
 - **Paramètres par provider** : clé API (chiffrée via DPAPI, scope utilisateur), URL, modèle. Liste des modèles chargée via l'API à l'ouverture de la ComboBox
 
 ### Raccourcis & utilitaires

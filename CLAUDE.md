@@ -33,7 +33,7 @@ CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 
 
 Dans les deux cas, l'application affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis réécrit la source d'origine.
 
-Elle peut appeler les API **OpenAI** et **Anthropic** pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts. Elle peut aussi fusionner des traductions d'un fichier source vers un fichier destination avec résolution des conflits ligne-par-ligne.
+Elle peut appeler les API **OpenAI** et **Anthropic**, en direct ou au travers de la passerelle **Bifrost**, pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts. Elle peut aussi fusionner des traductions d'un fichier source vers un fichier destination avec résolution des conflits ligne-par-ligne.
 
 ---
 
@@ -240,6 +240,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 **`Translator` (static)** — appels bruts aux providers :
 - OpenAI via `OpenAI.Chat.ChatClient`.
 - Anthropic via `AnthropicClient` (endpoint normalisé : retrait de `/v1` ou `/v1/messages`), `MaxTokens = 2048`.
+- **Bifrost** (passerelle auto-hébergée) : aucun client dédié. La passerelle expose un chemin par dialecte, donc `BifrostOpenAI` réutilise le client OpenAI et `BifrostAnthropic` le client Anthropic — seule l'URL de base change. `ResolveApiKey` substitue un jeton neutre quand aucune clé n'est saisie : les SDK refusent une chaîne vide, alors qu'une instance Bifrost locale n'exige pas de clé.
 - `TranslateBatchAsync(texts, config, lang, glossarySection)` et `VerifyBatchAsync(pairs, ...)` : construisent une liste numérotée, remplacent `{language}` et `{glossary}` dans le system prompt, demandent une réponse strictement numérotée.
 - `TranslateInBatchesAsync` / `VerifyInBatchesAsync` : découpent en lots de `BatchSize = 20` (constante `internal`, réutilisée par `TranslationService.ChunkResults`), parallélisent avec `Task.WhenAll` + `SemaphoreSlim(FixedParallelBatchRequests = 4)`.
 - Retry Polly (3 tentatives, backoff exponentiel + jitter), pipeline `static readonly RetryPipeline` construit une seule fois (stateless, partagé par tous les appels), sur : `HttpRequestException` transitoire (408/429/5xx + statut nul), `TimeoutException`, `TaskCanceledException`, `ClientResultException` (408/429/5xx).
@@ -296,13 +297,26 @@ Fichier : `%LocalAppData%\CheckTranslation\CheckTranslation.config.json` (lectur
 
 Contenu persisté :
 - Prompts (`TranslatePrompt`, `VerifyPrompt`)
-- Fournisseur sélectionné (`Provider`) et paramètres par provider (`OpenAiKey/Url/ModelName`, `AnthropicKey/Url/ModelName`)
+- Fournisseur sélectionné (`Provider`) et paramètres par provider (`OpenAiKey/Url/ModelName`, `AnthropicKey/Url/ModelName`, `BifrostOpenAiKey/Url/ModelName`, `BifrostAnthropicKey/Url/ModelName`)
 - `ShowDetails`, `SelectedLanguageCode`, `WindowWidth/Height`
 - `ColumnFillWeightsWithDetails` / `ColumnFillWeightsWithoutDetails` : largeurs de colonnes selon le mode détails
 
 **Sécurité** : clés API chiffrées via DPAPI (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`). En cas d'échec de déchiffrement (autre utilisateur, format invalide), retourne la valeur telle quelle plutôt que de planter.
 
-**Compat legacy** : les champs historiques `Key`/`Url`/`ModelName` (OpenAI uniquement) sont toujours reconnus au chargement.
+**Compat legacy** : les champs historiques `Key`/`Url`/`ModelName` (OpenAI uniquement) sont toujours reconnus au chargement. Une configuration antérieure à l'ajout de Bifrost se charge sans perte : les champs absents prennent les valeurs par défaut de la passerelle, et un nom de fournisseur inconnu retombe sur `OpenAI`.
+
+### 6.6.bis Fournisseurs IA
+
+Quatre entrées, chacune avec sa clé, son URL et son modèle persistés séparément — basculer de l'une à l'autre ne demande aucune ressaisie :
+
+| `AiProvider` | Dialecte / client | URL par défaut | Modèle par défaut |
+|---|---|---|---|
+| `OpenAI` | OpenAI, direct | `https://api.openai.com/v1` | `gpt-5.2` |
+| `Anthropic` | Anthropic, direct | `https://api.anthropic.com` | `claude-sonnet-4-6` |
+| `BifrostOpenAI` | OpenAI, via passerelle | `http://localhost:8080/openai/v1` | `openai/gpt-5.2` |
+| `BifrostAnthropic` | Anthropic, via passerelle | `http://localhost:8080/anthropic` | `anthropic/claude-sonnet-4-6` |
+
+Deux prédicats portent cette classification et évitent d'éparpiller les `switch` : `AppConfig.IsBifrost(provider)` (clé facultative) et `AppConfig.UsesAnthropicDialect(provider)` (choix du SDK). En mode Bifrost, le nom de modèle est **préfixé par le fournisseur amont** (`openai/…`, `anthropic/…`), convention propre à la passerelle.
 
 ---
 
@@ -448,6 +462,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
 - **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
+- **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
+- **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
 
@@ -505,6 +521,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-04-20 | Fermeture bloquée : flash non-modal de 3 s dans la status bar à la place du `MessageBox` (PR #17) |
 | 2026-04-20 | `BtnMerge_Click` : protection unifiée sous `SetWritingState` pour toute la fusion, en remplacement des `Enabled` bouton par bouton (PR #18) |
 | 2026-04-20 | Documentation : suivi et sections remis à jour pour les PR #12 à #18 (PR #19) |
+| 2026-08-29 | **Support de la passerelle Bifrost** : deux fournisseurs supplémentaires (`BifrostOpenAI`, `BifrostAnthropic`) à côté des accès directs, clé facultative, listing des modèles factorisé pour les quatre fournisseurs |
 | 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
 
 ---

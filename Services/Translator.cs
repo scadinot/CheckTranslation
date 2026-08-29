@@ -107,10 +107,12 @@ internal static partial class Translator
     {
         return await RetryPipeline.ExecuteAsync(async _ =>
         {
+            // Bifrost expose un chemin par dialecte : on réutilise donc tel quel le client du
+            // dialecte correspondant, seule l'URL de base change.
             return config.Provider switch
             {
-                AiProvider.OpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
-                AiProvider.Anthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
+                AiProvider.OpenAI or AiProvider.BifrostOpenAI => await CallOpenAiAsync(systemPrompt, userMessage, config),
+                AiProvider.Anthropic or AiProvider.BifrostAnthropic => await CallAnthropicAsync(systemPrompt, userMessage, config),
                 _ => throw new NotSupportedException($"Provider '{config.Provider}' not supported."),
             };
         }, CancellationToken.None);
@@ -120,7 +122,7 @@ internal static partial class Translator
     {
         var client = new ChatClient(
             config.ModelName,
-            new ApiKeyCredential(config.Key),
+            new ApiKeyCredential(ResolveApiKey(config)),
             new OpenAIClientOptions { Endpoint = new Uri(config.Url) });
 
         var options = new ChatCompletionOptions
@@ -144,7 +146,7 @@ internal static partial class Translator
         {
             var client = new AnthropicClient
             {
-                ApiKey = config.Key,
+                ApiKey = ResolveApiKey(config),
                 BaseUrl = NormalizeAnthropicEndpoint(config.Url),
             };
 
@@ -225,6 +227,24 @@ internal static partial class Translator
             _ => false,
         };
     }
+
+    /// <summary>
+    /// Clé transmise au SDK. Une instance Bifrost locale n'exige pas de clé — les clés des
+    /// fournisseurs amont vivent côté passerelle — mais les deux SDK refusent une chaîne vide :
+    /// on leur passe alors un jeton neutre, que la passerelle ignore.
+    /// </summary>
+    private static string ResolveApiKey(AppConfig config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.Key))
+            return config.Key;
+
+        if (AppConfig.IsBifrost(config.Provider))
+            return PlaceholderApiKey;
+
+        return config.Key;
+    }
+
+    private const string PlaceholderApiKey = "no-key";
 
     private static string NormalizeAnthropicEndpoint(string url)
     {

@@ -17,15 +17,44 @@ internal sealed class AppConfig
     private const string DefaultAnthropicUrl = "https://api.anthropic.com";
     private const string DefaultAnthropicModelName = "claude-sonnet-4-6";
 
+    // Bifrost est une passerelle auto-hébergée : elle écoute par défaut sur le port 8080 et
+    // expose un chemin par dialecte. Le nom de modèle y est préfixé par le fournisseur amont.
+    private const string DefaultBifrostOpenAiUrl = "http://localhost:8080/openai/v1";
+    private const string DefaultBifrostOpenAiModelName = "openai/gpt-5.2";
+
+    private const string DefaultBifrostAnthropicUrl = "http://localhost:8080/anthropic";
+    private const string DefaultBifrostAnthropicModelName = "anthropic/claude-sonnet-4-6";
+
     private const bool DefaultShowDetails = true;
     private const string DefaultSelectedLanguageCode = "en-US";
     private static readonly Dictionary<string, float> EmptyColumnWidths = new(StringComparer.Ordinal);
 
-    internal static string GetDefaultUrl(AiProvider provider)
-        => provider == AiProvider.Anthropic ? DefaultAnthropicUrl : DefaultOpenAiUrl;
+    internal static string GetDefaultUrl(AiProvider provider) => provider switch
+    {
+        AiProvider.Anthropic => DefaultAnthropicUrl,
+        AiProvider.BifrostOpenAI => DefaultBifrostOpenAiUrl,
+        AiProvider.BifrostAnthropic => DefaultBifrostAnthropicUrl,
+        _ => DefaultOpenAiUrl,
+    };
 
-    internal static string GetDefaultModelName(AiProvider provider)
-        => provider == AiProvider.Anthropic ? DefaultAnthropicModelName : DefaultOpenAiModelName;
+    internal static string GetDefaultModelName(AiProvider provider) => provider switch
+    {
+        AiProvider.Anthropic => DefaultAnthropicModelName,
+        AiProvider.BifrostOpenAI => DefaultBifrostOpenAiModelName,
+        AiProvider.BifrostAnthropic => DefaultBifrostAnthropicModelName,
+        _ => DefaultOpenAiModelName,
+    };
+
+    /// <summary>
+    /// Indique si le fournisseur passe par la passerelle Bifrost. Une instance locale n'exige
+    /// généralement aucune clé : les clés des fournisseurs amont sont configurées côté passerelle.
+    /// </summary>
+    internal static bool IsBifrost(AiProvider provider)
+        => provider is AiProvider.BifrostOpenAI or AiProvider.BifrostAnthropic;
+
+    /// <summary>Dialecte d'API parlé par le fournisseur : détermine le client SDK utilisé.</summary>
+    internal static bool UsesAnthropicDialect(AiProvider provider)
+        => provider is AiProvider.Anthropic or AiProvider.BifrostAnthropic;
 
     private const string DefaultTranslatePrompt = """
         Tu es un expert en traduction technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
@@ -259,6 +288,14 @@ internal sealed class AppConfig
     public string AnthropicUrl { get; set; } = DefaultAnthropicUrl;
     public string AnthropicModelName { get; set; } = DefaultAnthropicModelName;
 
+    public string BifrostOpenAiKey { get; set; } = string.Empty;
+    public string BifrostOpenAiUrl { get; set; } = DefaultBifrostOpenAiUrl;
+    public string BifrostOpenAiModelName { get; set; } = DefaultBifrostOpenAiModelName;
+
+    public string BifrostAnthropicKey { get; set; } = string.Empty;
+    public string BifrostAnthropicUrl { get; set; } = DefaultBifrostAnthropicUrl;
+    public string BifrostAnthropicModelName { get; set; } = DefaultBifrostAnthropicModelName;
+
     public AiProvider Provider { get; set; } = AiProvider.OpenAI;
     public bool ShowDetails { get; set; } = DefaultShowDetails;
     public string SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
@@ -267,9 +304,30 @@ internal sealed class AppConfig
     public Dictionary<string, float> ColumnFillWeightsWithDetails { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, float> ColumnFillWeightsWithoutDetails { get; set; } = new(StringComparer.Ordinal);
 
-    public string Key => Provider == AiProvider.Anthropic ? AnthropicKey : OpenAiKey;
-    public string Url => Provider == AiProvider.Anthropic ? AnthropicUrl : OpenAiUrl;
-    public string ModelName => Provider == AiProvider.Anthropic ? AnthropicModelName : OpenAiModelName;
+    // Vue « fournisseur actif » : c'est ce que lisent Translator et les clés de cache.
+    public string Key => Provider switch
+    {
+        AiProvider.Anthropic => AnthropicKey,
+        AiProvider.BifrostOpenAI => BifrostOpenAiKey,
+        AiProvider.BifrostAnthropic => BifrostAnthropicKey,
+        _ => OpenAiKey,
+    };
+
+    public string Url => Provider switch
+    {
+        AiProvider.Anthropic => AnthropicUrl,
+        AiProvider.BifrostOpenAI => BifrostOpenAiUrl,
+        AiProvider.BifrostAnthropic => BifrostAnthropicUrl,
+        _ => OpenAiUrl,
+    };
+
+    public string ModelName => Provider switch
+    {
+        AiProvider.Anthropic => AnthropicModelName,
+        AiProvider.BifrostOpenAI => BifrostOpenAiModelName,
+        AiProvider.BifrostAnthropic => BifrostAnthropicModelName,
+        _ => OpenAiModelName,
+    };
 
     public void Save()
     {
@@ -287,6 +345,14 @@ internal sealed class AppConfig
             AnthropicKey = EncryptKey(AnthropicKey),
             AnthropicUrl = AnthropicUrl,
             AnthropicModelName = AnthropicModelName,
+
+            BifrostOpenAiKey = EncryptKey(BifrostOpenAiKey),
+            BifrostOpenAiUrl = BifrostOpenAiUrl,
+            BifrostOpenAiModelName = BifrostOpenAiModelName,
+
+            BifrostAnthropicKey = EncryptKey(BifrostAnthropicKey),
+            BifrostAnthropicUrl = BifrostAnthropicUrl,
+            BifrostAnthropicModelName = BifrostAnthropicModelName,
 
             Provider = Provider.ToString(),
             ShowDetails = ShowDetails,
@@ -349,6 +415,14 @@ internal sealed class AppConfig
             AnthropicUrl = string.IsNullOrWhiteSpace(dto.AnthropicUrl) ? DefaultAnthropicUrl : dto.AnthropicUrl,
             AnthropicModelName = string.IsNullOrWhiteSpace(dto.AnthropicModelName) ? DefaultAnthropicModelName : dto.AnthropicModelName,
 
+            BifrostOpenAiKey = DecryptKey(dto.BifrostOpenAiKey ?? string.Empty),
+            BifrostOpenAiUrl = string.IsNullOrWhiteSpace(dto.BifrostOpenAiUrl) ? DefaultBifrostOpenAiUrl : dto.BifrostOpenAiUrl,
+            BifrostOpenAiModelName = string.IsNullOrWhiteSpace(dto.BifrostOpenAiModelName) ? DefaultBifrostOpenAiModelName : dto.BifrostOpenAiModelName,
+
+            BifrostAnthropicKey = DecryptKey(dto.BifrostAnthropicKey ?? string.Empty),
+            BifrostAnthropicUrl = string.IsNullOrWhiteSpace(dto.BifrostAnthropicUrl) ? DefaultBifrostAnthropicUrl : dto.BifrostAnthropicUrl,
+            BifrostAnthropicModelName = string.IsNullOrWhiteSpace(dto.BifrostAnthropicModelName) ? DefaultBifrostAnthropicModelName : dto.BifrostAnthropicModelName,
+
             Provider = provider,
             ShowDetails = dto.ShowDetails ?? DefaultShowDetails,
             SelectedLanguageCode = string.IsNullOrWhiteSpace(dto.SelectedLanguageCode) ? DefaultSelectedLanguageCode : dto.SelectedLanguageCode,
@@ -371,6 +445,14 @@ internal sealed class AppConfig
             config.AnthropicUrl = DefaultAnthropicUrl;
         if (string.IsNullOrWhiteSpace(config.AnthropicModelName))
             config.AnthropicModelName = DefaultAnthropicModelName;
+        if (string.IsNullOrWhiteSpace(config.BifrostOpenAiUrl))
+            config.BifrostOpenAiUrl = DefaultBifrostOpenAiUrl;
+        if (string.IsNullOrWhiteSpace(config.BifrostOpenAiModelName))
+            config.BifrostOpenAiModelName = DefaultBifrostOpenAiModelName;
+        if (string.IsNullOrWhiteSpace(config.BifrostAnthropicUrl))
+            config.BifrostAnthropicUrl = DefaultBifrostAnthropicUrl;
+        if (string.IsNullOrWhiteSpace(config.BifrostAnthropicModelName))
+            config.BifrostAnthropicModelName = DefaultBifrostAnthropicModelName;
 
         Current = config;
         return config;
@@ -424,6 +506,12 @@ internal sealed class AppConfig
         public string? AnthropicKey { get; set; }
         public string? AnthropicUrl { get; set; }
         public string? AnthropicModelName { get; set; }
+        public string? BifrostOpenAiKey { get; set; }
+        public string? BifrostOpenAiUrl { get; set; }
+        public string? BifrostOpenAiModelName { get; set; }
+        public string? BifrostAnthropicKey { get; set; }
+        public string? BifrostAnthropicUrl { get; set; }
+        public string? BifrostAnthropicModelName { get; set; }
 
         public string? Provider { get; set; } = nameof(AiProvider.OpenAI);
         public bool? ShowDetails { get; set; } = DefaultShowDetails;

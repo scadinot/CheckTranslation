@@ -53,11 +53,30 @@ partial class ConfigForm
         btnClearTranslationCache = new Button();
         btnClearVerificationCache = new Button();
         splitContainer1 = new SplitContainer();
+        splitContainer3 = new SplitContainer();
+        rbBifrostOpenAi = new RadioButton();
+        lblBifrostOpenAiKey = new Label();
+        txtBifrostOpenAiKey = new TextBox();
+        lblBifrostOpenAiUrl = new Label();
+        txtBifrostOpenAiUrl = new TextBox();
+        lblBifrostOpenAiModelName = new Label();
+        txtBifrostOpenAiModelName = new ComboBox();
+        rbBifrostAnthropic = new RadioButton();
+        lblBifrostAnthropicKey = new Label();
+        txtBifrostAnthropicKey = new TextBox();
+        lblBifrostAnthropicUrl = new Label();
+        txtBifrostAnthropicUrl = new TextBox();
+        lblBifrostAnthropicModelName = new Label();
+        txtBifrostAnthropicModelName = new ComboBox();
         grpAuth.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer2).BeginInit();
         splitContainer2.Panel1.SuspendLayout();
         splitContainer2.Panel2.SuspendLayout();
         splitContainer2.SuspendLayout();
+        ((System.ComponentModel.ISupportInitialize)splitContainer3).BeginInit();
+        splitContainer3.Panel1.SuspendLayout();
+        splitContainer3.Panel2.SuspendLayout();
+        splitContainer3.SuspendLayout();
         tabTranslatePrompt.SuspendLayout();
         tabTranslatePreview.SuspendLayout();
         tabTranslateEdit.SuspendLayout();
@@ -74,9 +93,10 @@ partial class ConfigForm
         // 
         grpAuth.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         grpAuth.Controls.Add(splitContainer2);
+        grpAuth.Controls.Add(splitContainer3);
         grpAuth.Location = new Point(11, 787);
         grpAuth.Name = "grpAuth";
-        grpAuth.Size = new Size(938, 205);
+        grpAuth.Size = new Size(938, 385);
         grpAuth.TabIndex = 0;
         grpAuth.TabStop = false;
         grpAuth.Text = "Paramètres IA";
@@ -242,6 +262,167 @@ partial class ConfigForm
         txtAnthropicModelName.Size = new Size(378, 28);
         txtAnthropicModelName.TabIndex = 7;
         // 
+        // splitContainer3
+        // 
+        splitContainer3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        splitContainer3.Location = new Point(7, 205);
+        splitContainer3.Margin = new Padding(3, 4, 3, 4);
+        splitContainer3.Name = "splitContainer3";
+        // 
+        // splitContainer3.Panel1
+        // 
+        splitContainer3.Panel1.Controls.Add(rbBifrostOpenAi);
+        splitContainer3.Panel1.Controls.Add(lblBifrostOpenAiKey);
+        splitContainer3.Panel1.Controls.Add(txtBifrostOpenAiKey);
+        splitContainer3.Panel1.Controls.Add(lblBifrostOpenAiUrl);
+        splitContainer3.Panel1.Controls.Add(txtBifrostOpenAiUrl);
+        splitContainer3.Panel1.Controls.Add(lblBifrostOpenAiModelName);
+        splitContainer3.Panel1.Controls.Add(txtBifrostOpenAiModelName);
+        // 
+        // splitContainer3.Panel2
+        // 
+        splitContainer3.Panel2.Controls.Add(rbBifrostAnthropic);
+        splitContainer3.Panel2.Controls.Add(lblBifrostAnthropicKey);
+        splitContainer3.Panel2.Controls.Add(txtBifrostAnthropicKey);
+        splitContainer3.Panel2.Controls.Add(lblBifrostAnthropicUrl);
+        splitContainer3.Panel2.Controls.Add(txtBifrostAnthropicUrl);
+        splitContainer3.Panel2.Controls.Add(lblBifrostAnthropicModelName);
+        splitContainer3.Panel2.Controls.Add(txtBifrostAnthropicModelName);
+        splitContainer3.Size = new Size(925, 171);
+        splitContainer3.SplitterDistance = 460;
+        splitContainer3.SplitterWidth = 5;
+        splitContainer3.TabIndex = 9;
+        // 
+        // rbBifrostOpenAi
+        // 
+        rbBifrostOpenAi.AutoSize = true;
+        rbBifrostOpenAi.Location = new Point(11, 9);
+        rbBifrostOpenAi.Margin = new Padding(3, 4, 3, 4);
+        rbBifrostOpenAi.Name = "rbBifrostOpenAi";
+        rbBifrostOpenAi.Size = new Size(190, 24);
+        rbBifrostOpenAi.TabIndex = 0;
+        rbBifrostOpenAi.Text = "Bifrost (API OpenAI)";
+        rbBifrostOpenAi.UseVisualStyleBackColor = true;
+        // 
+        // lblBifrostOpenAiKey
+        // 
+        lblBifrostOpenAiKey.AutoSize = true;
+        lblBifrostOpenAiKey.Location = new Point(7, 45);
+        lblBifrostOpenAiKey.Name = "lblBifrostOpenAiKey";
+        lblBifrostOpenAiKey.Size = new Size(40, 20);
+        lblBifrostOpenAiKey.TabIndex = 1;
+        lblBifrostOpenAiKey.Text = "Key :";
+        // 
+        // txtBifrostOpenAiKey
+        // 
+        txtBifrostOpenAiKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostOpenAiKey.Location = new Point(78, 41);
+        txtBifrostOpenAiKey.Name = "txtBifrostOpenAiKey";
+        txtBifrostOpenAiKey.PlaceholderText = "facultatif";
+        txtBifrostOpenAiKey.Size = new Size(378, 27);
+        txtBifrostOpenAiKey.TabIndex = 1;
+        txtBifrostOpenAiKey.UseSystemPasswordChar = true;
+        // 
+        // lblBifrostOpenAiUrl
+        // 
+        lblBifrostOpenAiUrl.AutoSize = true;
+        lblBifrostOpenAiUrl.Location = new Point(7, 81);
+        lblBifrostOpenAiUrl.Name = "lblBifrostOpenAiUrl";
+        lblBifrostOpenAiUrl.Size = new Size(35, 20);
+        lblBifrostOpenAiUrl.TabIndex = 2;
+        lblBifrostOpenAiUrl.Text = "Url :";
+        // 
+        // txtBifrostOpenAiUrl
+        // 
+        txtBifrostOpenAiUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostOpenAiUrl.Location = new Point(78, 77);
+        txtBifrostOpenAiUrl.Name = "txtBifrostOpenAiUrl";
+        txtBifrostOpenAiUrl.Size = new Size(378, 27);
+        txtBifrostOpenAiUrl.TabIndex = 2;
+        // 
+        // lblBifrostOpenAiModelName
+        // 
+        lblBifrostOpenAiModelName.AutoSize = true;
+        lblBifrostOpenAiModelName.Location = new Point(7, 117);
+        lblBifrostOpenAiModelName.Name = "lblBifrostOpenAiModelName";
+        lblBifrostOpenAiModelName.Size = new Size(59, 20);
+        lblBifrostOpenAiModelName.TabIndex = 4;
+        lblBifrostOpenAiModelName.Text = "Model :";
+        // 
+        // txtBifrostOpenAiModelName
+        // 
+        txtBifrostOpenAiModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostOpenAiModelName.FormattingEnabled = true;
+        txtBifrostOpenAiModelName.Location = new Point(78, 113);
+        txtBifrostOpenAiModelName.Name = "txtBifrostOpenAiModelName";
+        txtBifrostOpenAiModelName.Size = new Size(378, 28);
+        txtBifrostOpenAiModelName.TabIndex = 4;
+        // 
+        // rbBifrostAnthropic
+        // 
+        rbBifrostAnthropic.AutoSize = true;
+        rbBifrostAnthropic.Location = new Point(11, 9);
+        rbBifrostAnthropic.Margin = new Padding(3, 4, 3, 4);
+        rbBifrostAnthropic.Name = "rbBifrostAnthropic";
+        rbBifrostAnthropic.Size = new Size(200, 24);
+        rbBifrostAnthropic.TabIndex = 0;
+        rbBifrostAnthropic.Text = "Bifrost (API Anthropic)";
+        rbBifrostAnthropic.UseVisualStyleBackColor = true;
+        // 
+        // lblBifrostAnthropicKey
+        // 
+        lblBifrostAnthropicKey.AutoSize = true;
+        lblBifrostAnthropicKey.Location = new Point(7, 45);
+        lblBifrostAnthropicKey.Name = "lblBifrostAnthropicKey";
+        lblBifrostAnthropicKey.Size = new Size(40, 20);
+        lblBifrostAnthropicKey.TabIndex = 1;
+        lblBifrostAnthropicKey.Text = "Key :";
+        // 
+        // txtBifrostAnthropicKey
+        // 
+        txtBifrostAnthropicKey.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostAnthropicKey.Location = new Point(78, 41);
+        txtBifrostAnthropicKey.Name = "txtBifrostAnthropicKey";
+        txtBifrostAnthropicKey.PlaceholderText = "facultatif";
+        txtBifrostAnthropicKey.Size = new Size(378, 27);
+        txtBifrostAnthropicKey.TabIndex = 1;
+        txtBifrostAnthropicKey.UseSystemPasswordChar = true;
+        // 
+        // lblBifrostAnthropicUrl
+        // 
+        lblBifrostAnthropicUrl.AutoSize = true;
+        lblBifrostAnthropicUrl.Location = new Point(7, 81);
+        lblBifrostAnthropicUrl.Name = "lblBifrostAnthropicUrl";
+        lblBifrostAnthropicUrl.Size = new Size(35, 20);
+        lblBifrostAnthropicUrl.TabIndex = 2;
+        lblBifrostAnthropicUrl.Text = "Url :";
+        // 
+        // txtBifrostAnthropicUrl
+        // 
+        txtBifrostAnthropicUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostAnthropicUrl.Location = new Point(78, 77);
+        txtBifrostAnthropicUrl.Name = "txtBifrostAnthropicUrl";
+        txtBifrostAnthropicUrl.Size = new Size(378, 27);
+        txtBifrostAnthropicUrl.TabIndex = 2;
+        // 
+        // lblBifrostAnthropicModelName
+        // 
+        lblBifrostAnthropicModelName.AutoSize = true;
+        lblBifrostAnthropicModelName.Location = new Point(7, 117);
+        lblBifrostAnthropicModelName.Name = "lblBifrostAnthropicModelName";
+        lblBifrostAnthropicModelName.Size = new Size(59, 20);
+        lblBifrostAnthropicModelName.TabIndex = 4;
+        lblBifrostAnthropicModelName.Text = "Model :";
+        // 
+        // txtBifrostAnthropicModelName
+        // 
+        txtBifrostAnthropicModelName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        txtBifrostAnthropicModelName.FormattingEnabled = true;
+        txtBifrostAnthropicModelName.Location = new Point(78, 113);
+        txtBifrostAnthropicModelName.Name = "txtBifrostAnthropicModelName";
+        txtBifrostAnthropicModelName.Size = new Size(378, 28);
+        txtBifrostAnthropicModelName.TabIndex = 4;
+        // 
         // lblPrompt
         // 
         lblPrompt.AutoSize = true;
@@ -382,7 +563,7 @@ partial class ConfigForm
         // 
         btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnOk.DialogResult = DialogResult.OK;
-        btnOk.Location = new Point(779, 997);
+        btnOk.Location = new Point(779, 1177);
         btnOk.Name = "btnOk";
         btnOk.Size = new Size(80, 28);
         btnOk.TabIndex = 4;
@@ -392,7 +573,7 @@ partial class ConfigForm
         //
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location = new Point(870, 997);
+        btnCancel.Location = new Point(870, 1177);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(80, 28);
         btnCancel.TabIndex = 5;
@@ -401,7 +582,7 @@ partial class ConfigForm
         // btnClearTranslationCache
         //
         btnClearTranslationCache.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        btnClearTranslationCache.Location = new Point(11, 997);
+        btnClearTranslationCache.Location = new Point(11, 1177);
         btnClearTranslationCache.Name = "btnClearTranslationCache";
         btnClearTranslationCache.Size = new Size(150, 28);
         btnClearTranslationCache.TabIndex = 2;
@@ -411,7 +592,7 @@ partial class ConfigForm
         // btnClearVerificationCache
         //
         btnClearVerificationCache.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        btnClearVerificationCache.Location = new Point(172, 997);
+        btnClearVerificationCache.Location = new Point(172, 1177);
         btnClearVerificationCache.Name = "btnClearVerificationCache";
         btnClearVerificationCache.Size = new Size(150, 28);
         btnClearVerificationCache.TabIndex = 3;
@@ -443,7 +624,7 @@ partial class ConfigForm
         AutoScaleDimensions = new SizeF(8F, 20F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(965, 1045);
+        ClientSize = new Size(965, 1225);
         Controls.Add(splitContainer1);
         Controls.Add(grpAuth);
         Controls.Add(btnOk);
@@ -452,7 +633,7 @@ partial class ConfigForm
         Controls.Add(btnClearVerificationCache);
         MaximizeBox = false;
         MinimizeBox = false;
-        MinimumSize = new Size(683, 718);
+        MinimumSize = new Size(683, 898);
         Name = "ConfigForm";
         ShowIcon = false;
         ShowInTaskbar = false;
@@ -465,6 +646,12 @@ partial class ConfigForm
         splitContainer2.Panel2.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer2).EndInit();
         splitContainer2.ResumeLayout(false);
+        splitContainer3.Panel1.ResumeLayout(false);
+        splitContainer3.Panel1.PerformLayout();
+        splitContainer3.Panel2.ResumeLayout(false);
+        splitContainer3.Panel2.PerformLayout();
+        ((System.ComponentModel.ISupportInitialize)splitContainer3).EndInit();
+        splitContainer3.ResumeLayout(false);
         tabTranslatePrompt.ResumeLayout(false);
         tabTranslatePreview.ResumeLayout(false);
         tabTranslateEdit.ResumeLayout(false);
@@ -518,4 +705,19 @@ partial class ConfigForm
     private SplitContainer splitContainer1;
     private ImageList tabPromptIcons;
     private SplitContainer splitContainer2;
+    private SplitContainer splitContainer3;
+    private RadioButton rbBifrostOpenAi;
+    private Label lblBifrostOpenAiKey;
+    private TextBox txtBifrostOpenAiKey;
+    private Label lblBifrostOpenAiUrl;
+    private TextBox txtBifrostOpenAiUrl;
+    private Label lblBifrostOpenAiModelName;
+    private ComboBox txtBifrostOpenAiModelName;
+    private RadioButton rbBifrostAnthropic;
+    private Label lblBifrostAnthropicKey;
+    private TextBox txtBifrostAnthropicKey;
+    private Label lblBifrostAnthropicUrl;
+    private TextBox txtBifrostAnthropicUrl;
+    private Label lblBifrostAnthropicModelName;
+    private ComboBox txtBifrostAnthropicModelName;
 }

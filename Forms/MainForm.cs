@@ -1000,6 +1000,8 @@ public partial class MainForm : Form
         var providerName = config.Provider switch
         {
             AiProvider.Anthropic => "Anthropic",
+            AiProvider.BifrostOpenAI => "Bifrost (OpenAI)",
+            AiProvider.BifrostAnthropic => "Bifrost (Anthropic)",
             _ => "OpenAI",
         };
         var modelName = config.ModelName;
@@ -1261,8 +1263,11 @@ public partial class MainForm : Form
         await VerifyRowsAsync(rows);
     }
 
+    // La clé n'est exigée que pour un accès direct : une passerelle Bifrost locale n'en demande
+    // pas, les clés des fournisseurs amont étant configurées de son côté.
     private static bool HasApiConfig(AppConfig config)
-        => !string.IsNullOrWhiteSpace(config.Key) && !string.IsNullOrWhiteSpace(config.Url);
+        => !string.IsNullOrWhiteSpace(config.Url)
+            && (!string.IsNullOrWhiteSpace(config.Key) || AppConfig.IsBifrost(config.Provider));
 
     private void UpdateRowCountStatus()
     {
