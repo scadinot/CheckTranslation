@@ -111,13 +111,22 @@ internal static class FormGeometryReader
             yield break;
         }
 
-        foreach (var element in document.Root?.Elements("data") ?? [])
+        // Le designer écrit selon les cas dans <data> ou dans <metadata> — les entrées du bac à
+        // composants du formulaire de ce dépôt sont des <metadata>. Ne lire que <data> ferait
+        // perdre la filiation sans la moindre erreur, et un contrôle sans parent est écarté des
+        // groupes de frères : il ne collisionnerait alors plus jamais, silencieusement.
+        // Les noms sont comparés en local : un fichier déclarant un espace de noms se lirait
+        // sinon comme vide (même règle que ResxReader).
+        var entries = document.Root?.Elements()
+            .Where(element => element.Name.LocalName is "data" or "metadata") ?? [];
+
+        foreach (var element in entries)
         {
-            var name = element.Attribute("name")?.Value;
+            var name = Attribute(element, "name");
             if (string.IsNullOrEmpty(name))
                 continue;
 
-            var type = element.Attribute("type")?.Value ?? string.Empty;
+            var type = Attribute(element, "type") ?? string.Empty;
             bool isMetadata = name.StartsWith(DesignerMetadataPrefix, StringComparison.Ordinal);
 
             // Une entrée de texte n'est ni typée ni préfixée : elle ne nous concerne pas.
@@ -128,9 +137,14 @@ internal static class FormGeometryReader
             if (!TrySplitKey(key, out var controlName, out var property))
                 continue;
 
-            yield return (controlName, property, isMetadata ? string.Empty : type, element.Element("value")?.Value ?? string.Empty);
+            var value = element.Elements().FirstOrDefault(child => child.Name.LocalName == "value")?.Value ?? string.Empty;
+
+            yield return (controlName, property, isMetadata ? string.Empty : type, value);
         }
     }
+
+    private static string? Attribute(XElement element, string localName)
+        => element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == localName)?.Value;
 
     /// <summary>
     /// Sépare une clé de ressource en (contrôle, propriété) : <c>btnOk.Text</c> → (« btnOk »,
