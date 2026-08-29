@@ -26,6 +26,13 @@ internal interface ITranslationSource
     List<TranslationRow> Load(IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null);
 
     /// <summary>
+    /// Compte rendu du dernier <see cref="Load"/>, ou <c>null</c> si la source n'en produit pas.
+    /// Sert à expliquer un chargement qui ne ramène aucune ligne : sans lui, l'utilisateur voit
+    /// une grille vide sans savoir si la source est vide ou si rien n'a été trouvé.
+    /// </summary>
+    string? LastLoadReport { get; }
+
+    /// <summary>
     /// Réécrit les traductions et les commentaires de vérification. Le texte source (français)
     /// n'est jamais modifié : il est en lecture seule dans l'application.
     /// </summary>

@@ -414,6 +414,20 @@ public partial class MainForm : Form
             statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})";
             btnSave.Enabled = true;
             btnMerge.Enabled = source.SupportsMerge;
+
+            // Une grille vide ne dit pas si la source est vide ou si la chaîne s'est arrêtée en
+            // route (aucun projet reconnu, aucun .resx, toutes les entrées exclues). Le compte
+            // rendu nomme l'étape ; sans lui, l'utilisateur n'a rien à quoi se raccrocher.
+            if (rows.Count == 0 && source.LastLoadReport is { } loadReport)
+            {
+                System.Diagnostics.Debug.WriteLine(loadReport);
+                MessageBox.Show(
+                    this,
+                    "Aucune ligne traduisible n'a été trouvée." + Environment.NewLine + Environment.NewLine + loadReport,
+                    "Chargement vide",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
         }
         catch (Exception ex)
         {

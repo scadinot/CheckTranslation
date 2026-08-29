@@ -12,8 +12,14 @@ internal sealed class ResxTranslationSource(string solutionPath) : ITranslationS
 
     public bool SupportsMerge => false;
 
+    public string? LastLoadReport { get; private set; }
+
     public List<TranslationRow> Load(IReadOnlyList<LanguageInfo> languages, IProgress<SourceLoadProgress>? progress = null)
-        => ResxReader.Load(Path, languages, progress);
+    {
+        var rows = ResxReader.Load(Path, languages, progress, out var report);
+        LastLoadReport = report.Describe();
+        return rows;
+    }
 
     public void Save(IReadOnlyList<TranslationRow> rows, IReadOnlyList<LanguageInfo> languages)
         => ResxReader.Save(Path, rows, languages);
