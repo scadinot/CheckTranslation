@@ -1,4 +1,5 @@
 using Markdig;
+using Markdig.Extensions.GenericAttributes;
 using System.ClientModel;
 using Anthropic;
 using Anthropic.Models.Models;
@@ -16,9 +17,24 @@ internal sealed partial class ConfigForm : Form
     private readonly HashSet<ComboBox> _modelsLoaded = [];
     private bool _isLoadingModels;
 
-    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .Build();
+    private static readonly MarkdownPipeline MarkdownPipeline = BuildPreviewPipeline();
+
+    /// <summary>
+    /// Pipeline de rendu de l'aperçu des prompts.
+    ///
+    /// <c>UseAdvancedExtensions</c> embarque l'extension <i>generic attributes</i>, qui lit
+    /// <c>{...}</c> comme un bloc d'attributs HTML : elle transforme
+    /// « traduire vers {language} » en <c>&lt;p language=""&gt;traduire vers &lt;/p&gt;</c>. Les
+    /// placeholders des prompts disparaissaient donc de l'aperçu — silencieusement, et précisément
+    /// aux endroits où l'utilisateur doit vérifier qu'ils sont bien posés. On la retire en
+    /// conservant tout le reste (tableaux, emphase étendue, listes de tâches…).
+    /// </summary>
+    private static MarkdownPipeline BuildPreviewPipeline()
+    {
+        var builder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
+        builder.Extensions.RemoveAll(extension => extension is GenericAttributesExtension);
+        return builder.Build();
+    }
 
     private const string Css = """
         body { font-family: Segoe UI, Arial, sans-serif; font-size: 10pt; padding: 12px; }
@@ -44,6 +60,72 @@ internal sealed partial class ConfigForm : Form
         btnClearTranslationCache.Click += BtnClearTranslationCache_Click;
         btnClearVerificationCache.Click += BtnClearVerificationCache_Click;
         LoadConfig();
+    }
+
+    // --- Mise en page : ce que le Designer ne peut pas garantir ---
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+
+        // Après base.OnLoad : la mise à l'échelle selon le DPI est faite, les tailles lues ici
+        // sont celles qui seront réellement affichées.
+        StretchProviderFields();
+        FitToWorkingArea();
+    }
+
+    /// <summary>
+    /// Rend aux champs de chaque fournisseur toute la largeur de leur panneau.
+    ///
+    /// Ils sont ancrés à gauche et à droite dans un <see cref="SplitContainer"/>, mais WinForms fige
+    /// les distances d'ancrage à la première mise en page — laquelle intervient avant que
+    /// <c>EndInit</c> n'applique le <c>SplitterDistance</c>. Les champs héritent donc d'une marge
+    /// droite calculée sur une largeur de panneau qui n'est pas la bonne, et finissent bien plus
+    /// étroits que ce que le Designer indique : l'URL s'affiche tronquée alors que la moitié du
+    /// panneau est vide. Réassigner la largeur ici réamorce du même coup les distances d'ancrage,
+    /// donc les redimensionnements ultérieurs restent corrects.
+    /// </summary>
+    private void StretchProviderFields()
+    {
+        var gutter = LogicalToDeviceUnits(4);
+
+        foreach (var split in grpAuth.Controls.OfType<SplitContainer>())
+            foreach (var panel in new[] { split.Panel1, split.Panel2 })
+                foreach (var field in panel.Controls.OfType<Control>())
+                {
+                    if (field is not TextBox and not ComboBox)
+                        continue;
+
+                    var width = panel.ClientSize.Width - field.Left - gutter;
+                    if (width > 0)
+                        field.Width = width;
+                }
+    }
+
+    /// <summary>
+    /// Ramène la fenêtre dans l'écran.
+    ///
+    /// Le dialogue est haut — quatre fournisseurs sous deux éditeurs de prompt — et sa hauteur est
+    /// multipliée par la mise à l'échelle Windows : à 150 %, il dépasse un écran 1080p et les
+    /// boutons OK / Annuler se retrouvent hors champ, donc hors de portée. La
+    /// <see cref="Form.MinimumSize"/> subit la même mise à l'échelle : sans la borner d'abord, elle
+    /// empêcherait la fenêtre de rétrécir et le réglage n'aurait aucun effet.
+    /// </summary>
+    private void FitToWorkingArea()
+    {
+        var working = Screen.FromControl(this).WorkingArea;
+
+        MinimumSize = new Size(
+            Math.Min(MinimumSize.Width, working.Width),
+            Math.Min(MinimumSize.Height, working.Height));
+
+        Size = new Size(
+            Math.Min(Width, working.Width),
+            Math.Min(Height, working.Height));
+
+        Location = new Point(
+            working.Left + Math.Max(0, (working.Width - Width) / 2),
+            working.Top + Math.Max(0, (working.Height - Height) / 2));
     }
 
     private void BtnClearTranslationCache_Click(object? sender, EventArgs e)
