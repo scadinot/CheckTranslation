@@ -96,6 +96,7 @@ CheckTranslation/
 │   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
 │   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
 │   ├── FormGeometryReader.cs                 # Géométrie des contrôles WinForms (socle anti-débordement)
+│   ├── GdiTextWidthMeasurer.cs               # Mesure GDI de la largeur rendue (Windows)
 │   ├── SolutionReader.cs                     # Liste des projets d'un .sln ou .slnx
 │   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
@@ -284,7 +285,14 @@ Seules les paires de **frères** sont comparées, et une collision n'est retenue
 
 `AnalyzeRegression(source, traduction)` ne retient que les défauts **introduits** par la traduction — un défaut déjà présent en français n'est pas imputable au traducteur et serait signalé pour chaque langue.
 
-La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est GDI (`TextRenderer.MeasureText`), donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe.
+La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est `GdiTextWidthMeasurer`, donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe.
+
+**`GdiTextWidthMeasurer`** (`IDisposable`) — implémentation de production, via `TextRenderer.MeasureText`. Trois pièges traités, chacun capable de produire des faux positifs silencieux :
+- **DPI** : la mesure passe par une surface mémoire à 96 ppp, résolution des coordonnées de conception. Sur le contexte de l'écran, un affichage à 150 % gonflerait toutes les largeurs d'un tiers et ferait paraître tout débordé.
+- **Handles GDI** : les `Font` sont mises en cache par (famille, taille, gras) et libérées avec l'instance — en créer une par appel épuiserait les handles sur des dizaines de milliers de lignes × 7 langues.
+- **Multi-lignes** : une valeur de ressource peut contenir des retours à la ligne ; la largeur retenue est celle de la ligne la plus large.
+
+⚠ `extraPadding` (0 par défaut) reste **à calibrer** : la mesure `NoPadding` donne l'encombrement des glyphes, alors qu'un contrôle réserve une marge interne. Sans calibrage, l'analyse sous-détecte.
 
 **`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
 - `score:none` → lignes sans score parsable
