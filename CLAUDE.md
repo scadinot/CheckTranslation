@@ -103,6 +103,7 @@ CheckTranslation/
 │   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON par langue + fingerprint SHA256
 ├── Logic/
 │   ├── QualityScore.cs                       # Parsing score "XXX - ..." + dégradé couleur
+│   ├── LayoutAnalyzer.cs                     # Troncatures + collisions entre contrôles frères
 │   └── TranslationRowFiltering.cs            # Filtrage côté client (texte + score<N, score>=N, score:none)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
@@ -243,6 +244,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - **Elles n'existent que dans les `.resx`** : l'export Excel n'expose aucune clé de géométrie (vérifié sur le corpus de référence : 0 sur 22 374 lignes). La vérification de débordement est donc réservée au mode `.resx`.
 - **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide.
 - `FormGeometry.TryGetForKey("btnOk.Text")` retrouve le contrôle porteur d'une clé ; `GetEffectiveFont` applique l'héritage de la police du formulaire.
+- Lit aussi la **filiation** via les métadonnées `>>X.Parent` : les coordonnées étant relatives au conteneur, `EnumerateSiblingGroups()` ne regroupe que des contrôles comparables.
 
 **`Translator` (static)** — appels bruts aux providers :
 - OpenAI via `OpenAI.Chat.ChatClient`.
@@ -273,6 +275,16 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 ### 6.4 Logic
 
 **`QualityScore`** (static) — format attendu `XXX - commentaire` (3 chiffres, 0..100). Regex `^\s*(\d{3})\s*[-–]\s*`. `GetBackColor(score)` interpole linéairement une palette pastel (rouge < 60 → orange 70 → jaune 80 → vert 90–100).
+
+**`LayoutAnalyzer`** (static) — confronte les textes affichés à la place disponible. **Deux défaillances distinctes, qui s'excluent** :
+- **Troncature** — contrôle à largeur fixe dont le texte dépasse : le texte est coupé, le contrôle ne bouge pas.
+- **Collision** — contrôle en `AutoSize` : il n'est *jamais* tronqué, il s'élargit et recouvre un voisin. Ce sont précisément les contrôles sans largeur sérialisée, d'où l'insuffisance d'un simple test « le texte tient-il ».
+
+Seules les paires de **frères** sont comparées, et une collision n'est retenue que si au moins un des deux contrôles s'élargit : deux contrôles fixes qui se chevauchent sont un défaut de maquette, pas de traduction.
+
+`AnalyzeRegression(source, traduction)` ne retient que les défauts **introduits** par la traduction — un défaut déjà présent en français n'est pas imputable au traducteur et serait signalé pour chaque langue.
+
+La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est GDI (`TextRenderer.MeasureText`), donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe.
 
 **`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
 - `score:none` → lignes sans score parsable
@@ -564,7 +576,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
-| 🟡 | **Vérification de débordement** | Socle de lecture posé (`FormGeometryReader`) | Mesurer la largeur rendue (`TextRenderer`, Windows) et exposer une colonne + filtre dans la grille |
+| 🟡 | **Vérification de débordement** | Lecture + analyse posées (`FormGeometryReader`, `LayoutAnalyzer`) | Brancher la mesure GDI réelle (`TextRenderer`, Windows) puis exposer une colonne + filtre dans la grille |
 | 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 

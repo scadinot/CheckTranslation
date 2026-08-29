@@ -33,6 +33,13 @@ internal static class FormGeometryReader
     private const string BooleanType = "System.Boolean";
 
     /// <summary>
+    /// Préfixe des métadonnées du designer. Elles ne sont pas typées et ne décrivent pas de mise
+    /// en page, mais <c>&gt;&gt;X.Parent</c> porte la hiérarchie : les coordonnées d'un contrôle
+    /// étant relatives à son parent, une collision n'a de sens qu'entre frères.
+    /// </summary>
+    private const string DesignerMetadataPrefix = ">>";
+
+    /// <summary>
     /// Extrait la géométrie d'un .resx neutre de formulaire. Un fichier illisible ou au XML
     /// invalide donne une géométrie vide : comme au chargement des traductions, un fichier
     /// problématique ne doit pas interrompre l'analyse de la solution.
@@ -41,10 +48,18 @@ internal static class FormGeometryReader
     {
         var controls = new Dictionary<string, ControlGeometryBuilder>(StringComparer.Ordinal);
 
-        foreach (var (name, property, type, value) in EnumerateTypedEntries(neutralResxPath))
+        foreach (var (name, property, type, value) in EnumerateEntries(neutralResxPath))
         {
             if (!controls.TryGetValue(name, out var builder))
                 controls[name] = builder = new ControlGeometryBuilder(name);
+
+            if (type.Length == 0)
+            {
+                // Métadonnée du designer : seule la filiation nous intéresse.
+                if (property == "Parent")
+                    builder.Parent = value.Trim();
+                continue;
+            }
 
             switch (property)
             {
@@ -75,7 +90,12 @@ internal static class FormGeometryReader
         return new FormGeometry(form?.Font, byName);
     }
 
-    private static IEnumerable<(string Name, string Property, string Type, string Value)> EnumerateTypedEntries(string path)
+    /// <summary>
+    /// Énumère les entrées utiles : les entrées typées (géométrie) et les métadonnées
+    /// <c>&gt;&gt;…</c> (filiation), ces dernières avec un type vide. Les entrées de texte, non
+    /// typées et sans préfixe, sont ignorées : elles relèvent de <see cref="ResxReader"/>.
+    /// </summary>
+    private static IEnumerable<(string Name, string Property, string Type, string Value)> EnumerateEntries(string path)
     {
         if (!File.Exists(path))
             yield break;
@@ -94,18 +114,21 @@ internal static class FormGeometryReader
         foreach (var element in document.Root?.Elements("data") ?? [])
         {
             var name = element.Attribute("name")?.Value;
-            var type = element.Attribute("type")?.Value;
-
-            // Seules les entrées typées portent la géométrie ; les entrées de texte n'ont pas
-            // d'attribut « type ». Les métadonnées du designer (« >>… ») ne décrivent pas de mise
-            // en page : elles donnent le type CLR et le parent de chaque contrôle.
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(type) || name.StartsWith(">>", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(name))
                 continue;
 
-            if (!TrySplitKey(name, out var controlName, out var property))
+            var type = element.Attribute("type")?.Value ?? string.Empty;
+            bool isMetadata = name.StartsWith(DesignerMetadataPrefix, StringComparison.Ordinal);
+
+            // Une entrée de texte n'est ni typée ni préfixée : elle ne nous concerne pas.
+            if (!isMetadata && type.Length == 0)
                 continue;
 
-            yield return (controlName, property, type, element.Element("value")?.Value ?? string.Empty);
+            var key = isMetadata ? name[DesignerMetadataPrefix.Length..] : name;
+            if (!TrySplitKey(key, out var controlName, out var property))
+                continue;
+
+            yield return (controlName, property, isMetadata ? string.Empty : type, element.Element("value")?.Value ?? string.Empty);
         }
     }
 
@@ -183,13 +206,14 @@ internal static class FormGeometryReader
 
     private sealed class ControlGeometryBuilder(string name)
     {
+        public string? Parent { get; set; }
         public ControlSize? Size { get; set; }
         public ControlSize? ClientSize { get; set; }
         public ControlSize? Location { get; set; }
         public FontDescriptor? Font { get; set; }
         public bool? AutoSize { get; set; }
 
-        public ControlGeometry Build() => new(name, Size ?? ClientSize, Location, Font, AutoSize);
+        public ControlGeometry Build() => new(name, Parent, Size ?? ClientSize, Location, Font, AutoSize);
     }
 }
 
@@ -202,10 +226,18 @@ internal sealed record FontDescriptor(string Family, float? SizeInPoints, bool B
 /// <summary>Géométrie d'un contrôle telle que lue dans le .resx neutre du formulaire.</summary>
 internal sealed record ControlGeometry(
     string Name,
+    string? Parent,
     ControlSize? Size,
     ControlSize? Location,
     FontDescriptor? Font,
-    bool? AutoSize);
+    bool? AutoSize)
+{
+    /// <summary>
+    /// Un contrôle en AutoSize n'est jamais tronqué : il s'élargit pour contenir son texte, et
+    /// c'est son voisin qu'il recouvre. Les deux défaillances s'excluent donc.
+    /// </summary>
+    public bool GrowsWithText => AutoSize == true;
+}
 
 /// <summary>
 /// Géométrie de tous les contrôles d'un formulaire. <paramref name="FormFont"/> est la police du
@@ -218,6 +250,16 @@ internal sealed record FormGeometry(
     public static FormGeometry Empty { get; } = new(null, new Dictionary<string, ControlGeometry>(StringComparer.Ordinal));
 
     public int Count => ControlsByName.Count;
+
+    /// <summary>
+    /// Contrôles regroupés par parent. Les coordonnées étant relatives au conteneur, seules les
+    /// paires de frères peuvent entrer en collision. Les contrôles dont le parent est inconnu
+    /// sont écartés : les comparer reviendrait à confronter des repères différents.
+    /// </summary>
+    public IEnumerable<IGrouping<string, ControlGeometry>> EnumerateSiblingGroups()
+        => ControlsByName.Values
+            .Where(control => !string.IsNullOrEmpty(control.Parent))
+            .GroupBy(control => control.Parent!, StringComparer.Ordinal);
 
     /// <summary>
     /// Retrouve le contrôle porteur d'une clé de ressource (<c>btnOk.Text</c> → contrôle
