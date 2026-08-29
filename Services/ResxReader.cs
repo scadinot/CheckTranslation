@@ -194,6 +194,7 @@ internal static partial class ResxReader
     {
         var groups = DiscoverFiles(solutionPath, out var discovery);
         var rows = new List<TranslationRow>();
+        var stats = new ResxReadStats();
         int invariantEntries = 0;
         int emptyNeutralFiles = 0;
 
@@ -202,7 +203,7 @@ internal static partial class ResxReader
         for (int i = 0; i < groups.Count; i++)
         {
             var group = groups[i];
-            var neutralEntries = ReadEntries(group.NeutralPath);
+            var neutralEntries = ReadEntries(group.NeutralPath, stats);
 
             if (neutralEntries.Count == 0)
                 emptyNeutralFiles++;
@@ -246,11 +247,11 @@ internal static partial class ResxReader
                 progress?.Report(new SourceLoadProgress(done, groups.Count));
         }
 
-        report = new ResxLoadReport(discovery, groups.Count, emptyNeutralFiles, invariantEntries, rows.Count);
+        report = new ResxLoadReport(discovery, groups.Count, emptyNeutralFiles, stats, invariantEntries, rows.Count);
         return rows;
     }
 
-    private static List<ResxEntry> ReadEntries(string path)
+    private static List<ResxEntry> ReadEntries(string path, ResxReadStats? stats = null)
     {
         if (!File.Exists(path))
             return [];
@@ -266,25 +267,59 @@ internal static partial class ResxReader
             // insuffisants, chemin trop long) ne doivent interrompre le chargement de toute la
             // solution : le fichier est ignoré, le reste est chargé.
             System.Diagnostics.Debug.WriteLine($"[ResxReader] Fichier ignoré au chargement : {path} ({ex.GetType().Name} : {ex.Message})");
+            if (stats is not null)
+                stats.UnreadableFiles++;
             return [];
         }
 
         var entries = new List<ResxEntry>();
 
-        foreach (var element in document.Root?.Elements("data") ?? [])
+        foreach (var element in Children(document.Root, "data"))
         {
-            var name = element.Attribute("name")?.Value;
-            if (string.IsNullOrEmpty(name) || !IsTranslatable(element, name))
+            if (stats is not null)
+                stats.DataElements++;
+
+            var name = Attribute(element, "name");
+
+            if (string.IsNullOrEmpty(name))
                 continue;
+
+            if (name.StartsWith(">>", StringComparison.Ordinal))
+            {
+                if (stats is not null)
+                    stats.DesignerMetadata++;
+                continue;
+            }
+
+            if (Attribute(element, "type") is not null || Attribute(element, "mimetype") is not null)
+            {
+                if (stats is not null)
+                    stats.BinaryEntries++;
+                continue;
+            }
 
             entries.Add(new ResxEntry(
                 name,
-                element.Element("value")?.Value ?? string.Empty,
-                element.Element("comment")?.Value ?? string.Empty));
+                Children(element, "value").FirstOrDefault()?.Value ?? string.Empty,
+                Children(element, "comment").FirstOrDefault()?.Value ?? string.Empty));
         }
 
         return entries;
     }
+
+    /// <summary>
+    /// Éléments fils portant ce nom local, quel que soit l'espace de noms.
+    ///
+    /// Un <c>.resx</c> n'en déclare normalement aucun, mais rien ne l'interdit — et un filtre sur
+    /// le nom qualifié ne ramènerait alors plus rien, sans la moindre erreur : le fichier
+    /// paraîtrait simplement vide de traductions. Le nom local est la seule lecture qui ne dépende
+    /// pas de ce détail.
+    /// </summary>
+    private static IEnumerable<XElement> Children(XElement? parent, string localName)
+        => parent?.Elements().Where(element => element.Name.LocalName == localName) ?? [];
+
+    private static string? Attribute(XElement element, string localName)
+        => element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == localName)?.Value;
 
     private static Dictionary<string, ResxEntry> ReadEntriesByName(string path)
     {
@@ -295,16 +330,6 @@ internal static partial class ResxReader
 
         return byName;
     }
-
-    /// <summary>
-    /// Une entrée est traduisible si c'est une chaîne (ni <c>type</c> ni <c>mimetype</c> : ces
-    /// attributs signalent une ressource binaire ou sérialisée) et si ce n'est pas une métadonnée
-    /// du designer WinForms (clés « &gt;&gt;btnOk.Name », « &gt;&gt;btnOk.Type »…).
-    /// </summary>
-    private static bool IsTranslatable(XElement element, string name)
-        => element.Attribute("type") is null
-            && element.Attribute("mimetype") is null
-            && !name.StartsWith(">>", StringComparison.Ordinal);
 
     // --- Sauvegarde ---
 
@@ -538,10 +563,27 @@ internal sealed record ResxDiscovery(SolutionScan Solution, List<string> Project
 /// <summary>
 /// Compte rendu d'un chargement .resx, destiné à expliquer un résultat vide en langage clair.
 /// </summary>
+/// <summary>Compteurs de ce qui a été rencontré en lisant les fichiers neutres.</summary>
+internal sealed class ResxReadStats
+{
+    /// <summary>Fichiers dont le XML n'a pas pu être chargé (invalide, verrouillé, inaccessible).</summary>
+    public int UnreadableFiles;
+
+    /// <summary>Éléments <c>&lt;data&gt;</c> rencontrés, avant tout tri.</summary>
+    public int DataElements;
+
+    /// <summary>Entrées écartées car binaires ou sérialisées (attribut <c>type</c> ou <c>mimetype</c>).</summary>
+    public int BinaryEntries;
+
+    /// <summary>Entrées écartées car métadonnées du designer (clés « &gt;&gt;… »).</summary>
+    public int DesignerMetadata;
+}
+
 internal sealed record ResxLoadReport(
     ResxDiscovery Discovery,
     int NeutralFiles,
     int EmptyNeutralFiles,
+    ResxReadStats Entries,
     int InvariantEntries,
     int Rows)
 {
@@ -567,7 +609,18 @@ internal sealed record ResxLoadReport(
             lines.Add($"Projets sans aucun .resx : {Discovery.ProjectsWithoutResx.Count} ({Sample(Discovery.ProjectsWithoutResx)})");
 
         if (EmptyNeutralFiles > 0)
-            lines.Add($"Fichiers sans entrée traduisible (ressources binaires, métadonnées, XML illisible) : {EmptyNeutralFiles}");
+            lines.Add($"Fichiers sans aucune entrée traduisible : {EmptyNeutralFiles}");
+
+        if (Entries.UnreadableFiles > 0)
+            lines.Add($"Fichiers dont le XML n'a pas pu être lu : {Entries.UnreadableFiles}");
+
+        lines.Add($"Éléments <data> rencontrés : {Entries.DataElements}");
+
+        if (Entries.BinaryEntries > 0)
+            lines.Add($"Entrées écartées car binaires ou sérialisées (type/mimetype) : {Entries.BinaryEntries}");
+
+        if (Entries.DesignerMetadata > 0)
+            lines.Add($"Entrées écartées car métadonnées du designer (>>) : {Entries.DesignerMetadata}");
 
         if (InvariantEntries > 0)
             lines.Add($"Entrées exclues car marquées @Invariant : {InvariantEntries}");
@@ -594,7 +647,16 @@ internal sealed record ResxLoadReport(
         if (NeutralFiles == 0)
             return "Aucun fichier .resx sous les répertoires de projet. S'ils sont liés depuis un répertoire extérieur au projet, ils ne sont pas trouvés — l'exploration part du répertoire du projet.";
 
-        return "Des fichiers .resx ont été lus, mais aucune entrée traduisible n'en est ressortie.";
+        if (Entries.UnreadableFiles == NeutralFiles)
+            return "Tous les fichiers .resx trouvés sont illisibles : XML invalide, fichiers verrouillés, ou droits insuffisants.";
+
+        if (Entries.DataElements == 0)
+            return "Aucun élément <data> n'a été rencontré : les fichiers ont été lus, mais leur structure n'est pas celle attendue d'un .resx.";
+
+        if (Entries.BinaryEntries + Entries.DesignerMetadata >= Entries.DataElements)
+            return $"Les {Entries.DataElements} entrées rencontrées sont toutes des ressources binaires ou des métadonnées du designer : aucun texte à traduire.";
+
+        return "Des entrées ont été lues, mais aucune n'a été retenue.";
     }
 
     private static string Sample(List<string> values)
