@@ -571,6 +571,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-04-20 | Documentation : suivi et sections remis à jour pour les PR #12 à #18 (PR #19) |
 | 2026-08-29 | **Support de la passerelle Bifrost** : deux fournisseurs supplémentaires (`BifrostOpenAI`, `BifrostAnthropic`) à côté des accès directs, clé facultative, listing des modèles factorisé pour les quatre fournisseurs |
 | 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
+| 2026-08-29 | **Vérification de mise en page** : `FormGeometryReader` (géométrie + filiation `>>X.Parent`), `LayoutAnalyzer` (troncatures et collisions, régression par rapport au français), `GdiTextWidthMeasurer` (mesure GDI à 96 ppp), colonne et filtre dans la grille. Réservée à la source `.resx` |
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
 
 ---
