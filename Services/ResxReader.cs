@@ -254,7 +254,19 @@ internal static partial class ResxReader
     private static List<ResxEntry> ReadEntries(string path, ResxReadStats? stats = null)
     {
         if (!File.Exists(path))
+        {
+            // Pour une variante de culture (stats non fournies), l'absence est le cas normal.
+            // Pour un fichier neutre, elle veut dire qu'il a disparu entre la découverte et la
+            // lecture : le compter à part, sinon le compte rendu le rangerait parmi les fichiers
+            // « sans entrée traduisible » et désignerait la mauvaise cause.
+            if (stats is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ResxReader] Fichier disparu depuis la découverte : {path}");
+                stats.MissingFiles++;
+            }
+
             return [];
+        }
 
         XDocument document;
         try
@@ -556,18 +568,17 @@ internal static partial class ResxReader
         => project.Trim() + "|" + file.Trim();
 }
 
-/// <summary>Un fichier .resx neutre et son identité fonctionnelle (projet + chemin relatif).</summary>
 /// <summary>Ce qu'a parcouru la découverte : la lecture de la solution et les projets sans .resx.</summary>
 internal sealed record ResxDiscovery(SolutionScan Solution, List<string> ProjectsWithoutResx);
 
-/// <summary>
-/// Compte rendu d'un chargement .resx, destiné à expliquer un résultat vide en langage clair.
-/// </summary>
 /// <summary>Compteurs de ce qui a été rencontré en lisant les fichiers neutres.</summary>
 internal sealed class ResxReadStats
 {
     /// <summary>Fichiers dont le XML n'a pas pu être chargé (invalide, verrouillé, inaccessible).</summary>
     public int UnreadableFiles;
+
+    /// <summary>Fichiers neutres disparus entre la découverte et la lecture.</summary>
+    public int MissingFiles;
 
     /// <summary>Éléments <c>&lt;data&gt;</c> rencontrés, avant tout tri.</summary>
     public int DataElements;
@@ -579,6 +590,9 @@ internal sealed class ResxReadStats
     public int DesignerMetadata;
 }
 
+/// <summary>
+/// Compte rendu d'un chargement .resx, destiné à expliquer un résultat vide en langage clair.
+/// </summary>
 internal sealed record ResxLoadReport(
     ResxDiscovery Discovery,
     int NeutralFiles,
@@ -614,6 +628,9 @@ internal sealed record ResxLoadReport(
         if (Entries.UnreadableFiles > 0)
             lines.Add($"Fichiers dont le XML n'a pas pu être lu : {Entries.UnreadableFiles}");
 
+        if (Entries.MissingFiles > 0)
+            lines.Add($"Fichiers disparus depuis la découverte : {Entries.MissingFiles}");
+
         lines.Add($"Éléments <data> rencontrés : {Entries.DataElements}");
 
         if (Entries.BinaryEntries > 0)
@@ -647,6 +664,9 @@ internal sealed record ResxLoadReport(
         if (NeutralFiles == 0)
             return "Aucun fichier .resx sous les répertoires de projet. S'ils sont liés depuis un répertoire extérieur au projet, ils ne sont pas trouvés — l'exploration part du répertoire du projet.";
 
+        if (Entries.MissingFiles == NeutralFiles)
+            return "Tous les fichiers .resx découverts ont disparu avant d'être lus : l'arborescence a changé pendant le chargement.";
+
         if (Entries.UnreadableFiles == NeutralFiles)
             return "Tous les fichiers .resx trouvés sont illisibles : XML invalide, fichiers verrouillés, ou droits insuffisants.";
 
@@ -663,6 +683,7 @@ internal sealed record ResxLoadReport(
         => string.Join(", ", values.Take(3)) + (values.Count > 3 ? ", …" : string.Empty);
 }
 
+/// <summary>Un fichier .resx neutre et son identité fonctionnelle (projet + chemin relatif).</summary>
 internal sealed record ResxFileGroup(string Project, string File, string NeutralPath);
 
 internal sealed record ResxEntry(string Name, string Value, string Comment);

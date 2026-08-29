@@ -114,8 +114,11 @@ internal static partial class SolutionReader
 internal sealed record SolutionProject(string Name, string Directory);
 
 /// <summary>
-/// Résultat détaillé de la lecture d'une solution. <paramref name="DeclaredEntries"/> compte
-/// toutes les entrées déclarées, projets et dossiers de solution confondus.
+/// Résultat détaillé de la lecture d'une solution. <paramref name="DeclaredEntries"/> compte les
+/// entrées lues avant tout filtrage, et sa composition dépend du format : un <c>.sln</c> déclare
+/// ses dossiers de solution avec la même syntaxe <c>Project(...)</c> que ses projets, ils y sont
+/// donc inclus, alors qu'un <c>.slnx</c> les porte par des éléments <c>&lt;Folder&gt;</c> distincts,
+/// qui ne sont pas comptés.
 /// </summary>
 internal sealed record SolutionScan(
     int DeclaredEntries,
