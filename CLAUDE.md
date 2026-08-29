@@ -95,6 +95,7 @@ CheckTranslation/
 │   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour la fusion Excel
 │   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
 │   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
+│   ├── FormGeometryReader.cs                 # Géométrie des contrôles WinForms (socle anti-débordement)
 │   ├── SolutionReader.cs                     # Liste des projets d'un .sln ou .slnx
 │   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
@@ -236,6 +237,12 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - `Load(...)` : construit les `TranslationRow` depuis le neutre + les variantes de culture, en appliquant les exclusions du §4.bis. Un `.resx` au XML invalide est ignoré (trace `Debug`) sans interrompre le chargement de la solution.
 - **Asymétrie assumée sur les erreurs d'E/S** : au *chargement*, un `.resx` invalide ou inaccessible (verrouillé par Visual Studio, droits, chemin trop long) est ignoré avec une trace `Debug` — le reste de la solution se charge. À la *sauvegarde*, un fichier en échec n'est **jamais** ignoré en silence : `Save` écrit tout ce qu'il peut, collecte les échecs et lève une `IOException` les listant, que `MainForm` affiche. Ignorer silencieusement à l'écriture ferait croire à l'utilisateur que ses traductions sont enregistrées.
 - `Save(...)` : **n'écrit que les variantes de culture, jamais le fichier neutre** (le français est en lecture seule dans l'UI). Écriture chirurgicale : chargement en `LoadOptions.PreserveWhitespace`, mise à jour ou insertion de l'entrée ciblée, fichier réécrit uniquement s'il a réellement changé (sauvegarde idempotente). Le BOM d'origine est préservé. Un fichier de langue absent est créé à partir de l'en-tête du neutre (déclaration, schéma XSD, `resheader`) vidé de ses données — jamais pour n'y écrire que du vide.
+
+**`FormGeometryReader` (static)** — lit la géométrie des contrôles d'un formulaire WinForms depuis son `.resx` neutre (`X.Size`, `X.Location`, `X.Font`, `X.AutoSize`, `$this.ClientSize`), pour pouvoir confronter une traduction à la place réellement disponible. Socle de la vérification de débordement ; **aucune mesure ni UI à ce stade**.
+- Ces entrées portent un attribut `type` : elles sont donc déjà exclues des lignes traduisibles par `ResxReader`. Les deux lectures sont complémentaires.
+- **Elles n'existent que dans les `.resx`** : l'export Excel n'expose aucune clé de géométrie (vérifié sur le corpus de référence : 0 sur 22 374 lignes). La vérification de débordement est donc réservée au mode `.resx`.
+- **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide.
+- `FormGeometry.TryGetForKey("btnOk.Text")` retrouve le contrôle porteur d'une clé ; `GetEffectiveFont` applique l'héritage de la police du formulaire.
 
 **`Translator` (static)** — appels bruts aux providers :
 - OpenAI via `OpenAI.Chat.ChatClient`.
@@ -557,6 +564,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
+| 🟡 | **Vérification de débordement** | Socle de lecture posé (`FormGeometryReader`) | Mesurer la largeur rendue (`TextRenderer`, Windows) et exposer une colonne + filtre dans la grille |
 | 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 
