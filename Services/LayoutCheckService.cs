@@ -1,27 +1,29 @@
 namespace CheckTranslation;
 
 /// <summary>
-/// Confronte les traductions à la place disponible dans les formulaires d'une solution, et reporte
-/// le verdict sur chaque ligne.
+/// Confronte les traductions à la place disponible dans les formulaires d'une solution.
 ///
 /// Ne concerne que les libellés réellement affichés dans un contrôle, c'est-à-dire les clés
 /// <c>contrôle.Text</c> d'un fichier de formulaire. Une chaîne de message, un
 /// <c>ToolTipText</c> ou un <c>AccessibleName</c> n'occupent aucune surface fixe : les analyser
-/// n'aurait pas de sens, et les lignes correspondantes restent <see cref="LayoutStatus.NotChecked"/>.
+/// n'aurait pas de sens, et les lignes correspondantes ne reçoivent aucun verdict.
+///
+/// Le service ne modifie aucune ligne : voir <see cref="ILayoutCheckService.Analyze"/>.
 /// </summary>
 internal sealed class LayoutCheckService : ILayoutCheckService
 {
     private const string DisplayedTextProperty = "Text";
 
-    public int Analyze(string solutionPath, IReadOnlyList<TranslationRow> rows, string languageCode, TextWidthMeasurer measure)
+    public IReadOnlyList<LayoutVerdict> Analyze(
+        string solutionPath,
+        IReadOnlyList<TranslationRow> rows,
+        string languageCode,
+        TextWidthMeasurer measure)
     {
-        foreach (var row in rows)
-            row.ClearLayoutVerdict();
-
         var neutralPathByIdentity = ResxReader.DiscoverFiles(solutionPath)
             .ToDictionary(group => BuildIdentity(group.Project, group.File), group => group.NeutralPath, StringComparer.OrdinalIgnoreCase);
 
-        int issues = 0;
+        var verdicts = new List<LayoutVerdict>();
 
         foreach (var fileRows in rows.GroupBy(row => BuildIdentity(row.Project, row.File), StringComparer.OrdinalIgnoreCase))
         {
@@ -32,17 +34,18 @@ internal sealed class LayoutCheckService : ILayoutCheckService
             if (geometry.Count == 0)
                 continue;   // formulaire non localisable : rien à confronter, on ne conclut pas
 
-            issues += AnalyzeForm(geometry, fileRows, languageCode, measure);
+            AnalyzeForm(geometry, fileRows, languageCode, measure, verdicts);
         }
 
-        return issues;
+        return verdicts;
     }
 
-    private static int AnalyzeForm(
+    private static void AnalyzeForm(
         FormGeometry geometry,
         IEnumerable<TranslationRow> fileRows,
         string languageCode,
-        TextWidthMeasurer measure)
+        TextWidthMeasurer measure,
+        List<LayoutVerdict> verdicts)
     {
         var rowByControl = new Dictionary<string, TranslationRow>(StringComparer.Ordinal);
         var sourceTexts = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -56,7 +59,7 @@ internal sealed class LayoutCheckService : ILayoutCheckService
 
             var translation = row.Translations.GetValueOrDefault(languageCode, string.Empty);
 
-            // Sans traduction, il n'y a rien à confronter : la ligne reste « non analysée »
+            // Sans traduction, il n'y a rien à confronter : la ligne ne reçoit pas de verdict
             // plutôt que d'être déclarée conforme à tort.
             if (string.IsNullOrEmpty(translation))
                 continue;
@@ -67,56 +70,50 @@ internal sealed class LayoutCheckService : ILayoutCheckService
         }
 
         if (rowByControl.Count == 0)
-            return 0;
+            return;
 
         var analysis = LayoutAnalyzer.AnalyzeRegression(geometry, sourceTexts, translatedTexts, measure);
 
         // Tout ce qui a pu être confronté est conforme jusqu'à preuve du contraire.
-        foreach (var row in rowByControl.Values)
-            row.SetLayoutVerdict(LayoutStatus.Ok, string.Empty);
+        var byControl = rowByControl.Keys.ToDictionary(
+            name => name,
+            _ => (Status: LayoutStatus.Ok, Issue: string.Empty),
+            StringComparer.Ordinal);
 
         foreach (var name in analysis.Unverifiable)
-            if (rowByControl.TryGetValue(name, out var row))
-                row.SetLayoutVerdict(LayoutStatus.Unverifiable, "Non vérifiable");
-
-        int issues = 0;
+            if (byControl.ContainsKey(name))
+                byControl[name] = (LayoutStatus.Unverifiable, "Non vérifiable");
 
         foreach (var issue in analysis.Truncations)
-        {
-            if (!rowByControl.TryGetValue(issue.Control, out var row))
-                continue;
-
-            row.SetLayoutVerdict(LayoutStatus.Truncated, $"Troncature : +{issue.OverflowPixels} px");
-            issues++;
-        }
+            if (byControl.ContainsKey(issue.Control))
+                byControl[issue.Control] = (LayoutStatus.Truncated, $"Troncature : +{issue.OverflowPixels} px");
 
         foreach (var issue in analysis.Collisions)
         {
             // Une collision met en cause deux contrôles ; les deux lignes sont marquées, car
             // corriger l'un ou l'autre résout le problème.
-            issues += MarkCollision(rowByControl, issue.Control, issue.OtherControl, issue.OverflowPixels);
-            issues += MarkCollision(rowByControl, issue.OtherControl, issue.Control, issue.OverflowPixels);
+            MarkCollision(byControl, issue.Control, issue.OtherControl, issue.OverflowPixels);
+            MarkCollision(byControl, issue.OtherControl, issue.Control, issue.OverflowPixels);
         }
 
-        return issues;
+        foreach (var (name, verdict) in byControl)
+            verdicts.Add(new LayoutVerdict(rowByControl[name], verdict.Status, verdict.Issue));
     }
 
-    private static int MarkCollision(
-        IReadOnlyDictionary<string, TranslationRow> rowByControl,
+    private static void MarkCollision(
+        Dictionary<string, (LayoutStatus Status, string Issue)> byControl,
         string? control,
         string? other,
         int overlap)
     {
-        if (control is null || !rowByControl.TryGetValue(control, out var row))
-            return 0;
+        if (control is null || !byControl.TryGetValue(control, out var current))
+            return;
 
         // Une troncature déjà signalée est plus directe à corriger : ne pas la masquer.
-        if (row.LayoutStatus == LayoutStatus.Truncated)
-            return 0;
+        if (current.Status == LayoutStatus.Truncated)
+            return;
 
-        bool alreadyCounted = row.LayoutStatus == LayoutStatus.Collision;
-        row.SetLayoutVerdict(LayoutStatus.Collision, $"Collision avec « {other} » : {overlap} px");
-        return alreadyCounted ? 0 : 1;
+        byControl[control] = (LayoutStatus.Collision, $"Collision avec « {other} » : {overlap} px");
     }
 
     private static string BuildIdentity(string project, string file)

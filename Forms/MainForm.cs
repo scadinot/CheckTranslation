@@ -267,26 +267,50 @@ public partial class MainForm : Form
         var rows = _allRows;
         var languageCode = _currentLanguage.Code;
 
+        // La vue active (Translation) n'est poussée dans les dictionnaires qu'au changement de
+        // langue ou avant une écriture. Sans ce commit, l'analyse porterait sur la valeur d'avant
+        // l'édition et afficherait un verdict en désaccord avec ce que montre la grille.
+        foreach (var row in rows)
+            row.CommitActiveLanguage(languageCode);
+
+        IReadOnlyList<LayoutVerdict> verdicts;
         try
         {
             // La mesure GDI détient des handles : une instance par passe, libérée aussitôt.
-            var issues = await Task.Run(() =>
+            verdicts = await Task.Run(() =>
             {
                 using var measurer = new GdiTextWidthMeasurer();
                 return _layoutCheckService.Analyze(source.Path, rows, languageCode, measurer.AsMeasurer());
             });
-
-            statusRowCount.Text = issues > 0
-                ? $"Lignes : {rows.Count} — {issues} débordement(s)"
-                : $"Lignes : {rows.Count}";
         }
         catch (Exception ex)
         {
             // L'analyse est un confort : son échec ne doit pas empêcher de traduire.
             System.Diagnostics.Debug.WriteLine($"[MainForm] Analyse de mise en page abandonnée : {ex.GetType().Name} : {ex.Message}");
+            return;
         }
 
-        dataGridView.Invalidate();
+        // Le chargement d'une autre source pendant l'analyse rendrait ces verdicts caducs.
+        if (!ReferenceEquals(_allRows, rows) || _currentLanguage.Code != languageCode)
+            return;
+
+        // Les verdicts ne sont appliqués qu'ici, sur le thread d'interface : les TranslationRow
+        // sont liés au DataGridView, les écrire depuis la tâche de fond les exposerait à une
+        // lecture concurrente par le rendu de la grille.
+        foreach (var row in rows)
+            row.ClearLayoutVerdict();
+
+        foreach (var verdict in verdicts)
+            verdict.Row.SetLayoutVerdict(verdict.Status, verdict.Issue);
+
+        var issues = verdicts.Count(verdict => verdict.IsIssue);
+        statusRowCount.Text = issues > 0
+            ? $"Lignes : {rows.Count} — {issues} débordement(s)"
+            : $"Lignes : {rows.Count}";
+
+        // TranslationRow n'implémente pas INotifyPropertyChanged : comme ailleurs dans ce
+        // fichier après mise à jour d'une propriété liée, on force la relecture.
+        dataGridView.Refresh();
     }
 
     private void InitDetailsButton()

@@ -49,15 +49,16 @@ internal static class LayoutAnalyzer
 
             if (control.GrowsWithText)
             {
-                // Le contrôle s'adapte : sa largeur devient celle du texte. Sans position connue,
-                // on ne peut situer personne — le cas est signalé plutôt qu'ignoré.
-                if (control.Location is not { } location)
+                // Le contrôle s'adapte : sa largeur devient celle du texte. Il faut sa position
+                // ET sa hauteur : une hauteur supposée nulle ne croiserait jamais personne, et
+                // le contrôle sortirait silencieusement du champ de la détection.
+                if (control.Location is not { } location || control.Size is not { } grown)
                 {
                     unverifiable.Add(name);
                     continue;
                 }
 
-                boxes[name] = new ControlBox(location.Width, location.Height, width, control.Size?.Height ?? 0);
+                boxes[name] = new ControlBox(location.Width, location.Height, width, grown.Height);
                 continue;
             }
 

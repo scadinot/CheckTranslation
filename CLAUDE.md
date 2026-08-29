@@ -295,7 +295,8 @@ La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'e
 
 ⚠ `extraPadding` (0 par défaut) reste **à calibrer** : la mesure `NoPadding` donne l'encombrement des glyphes, alors qu'un contrôle réserve une marge interne. Sans calibrage, l'analyse sous-détecte.
 
-**`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et reporte le verdict sur chaque ligne (`LayoutStatus` + `LayoutIssue`).
+**`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et **retourne** des `LayoutVerdict`.
+- Il ne modifie **aucune** ligne : les `TranslationRow` sont liés au `DataGridView`, les écrire depuis le thread de fond où tourne l'analyse les exposerait à une lecture concurrente par le rendu. `MainForm` applique les verdicts sur le thread d'interface.
 - Ne traite que les clés `contrôle.Text` : un message, un `ToolTipText` ou un `AccessibleName` n'occupent aucune surface fixe.
 - Une ligne **sans traduction** reste `NotChecked` — la déclarer conforme serait faux.
 - Un formulaire **non localisable** (aucune géométrie) laisse toutes ses lignes `NotChecked` : on ne conclut pas faute de données.
@@ -422,7 +423,7 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 
 ### 7.10.bis Vérification de mise en page (source .resx uniquement)
 1. `ITranslationSource.SupportsLayoutCheck` vaut `false` pour l'Excel : l'export ne contient aucune géométrie, l'analyse est simplement sautée.
-2. `MainForm.RefreshLayoutCheckAsync()` instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(...)` dans un `Task.Run`.
+2. `MainForm.RefreshLayoutCheckAsync()` pousse d'abord la vue active dans les dictionnaires, puis instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(...)` dans un `Task.Run`. Les verdicts retournés ne sont appliqués qu'au retour, sur le thread d'interface, et seulement si la source et la langue n'ont pas changé entre-temps.
 3. Chaque ligne reçoit un `LayoutStatus` et un libellé, affichés dans la colonne « Mise en page » : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
 4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
 5. Déclenchée au chargement, au changement de langue et au rafraîchissement. Un échec est tracé sans interrompre la traduction : l'analyse est un confort.
@@ -505,6 +506,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
+- **`RefreshLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
 - **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
 - **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
