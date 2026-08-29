@@ -232,19 +232,19 @@ internal static partial class Translator
     /// Clé transmise au SDK. Une instance Bifrost locale n'exige pas de clé — les clés des
     /// fournisseurs amont vivent côté passerelle — mais les deux SDK refusent une chaîne vide :
     /// on leur passe alors un jeton neutre, que la passerelle ignore.
+    ///
+    /// Hors Bifrost, aucune clé n'est fabriquée : on renvoie une chaîne vide pour que l'appel
+    /// échoue localement et explicitement, plutôt que de partir sur le réseau avec un jeton
+    /// bidon ou une valeur faite d'espaces.
     /// </summary>
     private static string ResolveApiKey(AppConfig config)
     {
-        if (!string.IsNullOrWhiteSpace(config.Key))
-            return config.Key;
+        var key = config.Key?.Trim() ?? string.Empty;
+        if (key.Length > 0)
+            return key;
 
-        if (AppConfig.IsBifrost(config.Provider))
-            return PlaceholderApiKey;
-
-        return config.Key;
+        return AppConfig.IsBifrost(config.Provider) ? AppConfig.BifrostPlaceholderApiKey : string.Empty;
     }
-
-    private const string PlaceholderApiKey = "no-key";
 
     private static string NormalizeAnthropicEndpoint(string url)
     {

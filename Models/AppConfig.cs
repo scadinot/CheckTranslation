@@ -56,6 +56,14 @@ internal sealed class AppConfig
     internal static bool UsesAnthropicDialect(AiProvider provider)
         => provider is AiProvider.Anthropic or AiProvider.BifrostAnthropic;
 
+    /// <summary>
+    /// Jeton transmis aux SDK lorsqu'aucune clé n'est saisie pour un fournisseur Bifrost : les
+    /// deux SDK refusent une chaîne vide, alors qu'une instance locale n'exige pas de clé. La
+    /// passerelle l'ignore. Partagé entre l'appel IA et le listing des modèles, qui doivent
+    /// présenter le même jeton.
+    /// </summary>
+    internal const string BifrostPlaceholderApiKey = "no-key";
+
     private const string DefaultTranslatePrompt = """
         Tu es un expert en traduction technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
 

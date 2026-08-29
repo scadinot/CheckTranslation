@@ -239,10 +239,10 @@ internal sealed partial class ConfigForm : Form
     private static string? ResolveModelListingKey(AiProvider provider, TextBox keyBox)
     {
         var key = keyBox.Text.Trim();
-        if (!string.IsNullOrWhiteSpace(key))
+        if (key.Length > 0)
             return key;
 
-        return AppConfig.IsBifrost(provider) ? "no-key" : null;
+        return AppConfig.IsBifrost(provider) ? AppConfig.BifrostPlaceholderApiKey : null;
     }
 
     private void ApplyLoadedModels(ComboBox modelBox, object[] modelIds, string currentModel)
