@@ -110,10 +110,16 @@ internal sealed partial class ConfigForm : Form
     /// boutons OK / Annuler se retrouvent hors champ, donc hors de portée. La
     /// <see cref="Form.MinimumSize"/> subit la même mise à l'échelle : sans la borner d'abord, elle
     /// empêcherait la fenêtre de rétrécir et le réglage n'aurait aucun effet.
+    ///
+    /// L'écran de référence est celui du propriétaire, pas celui du dialogue : le dialogue est
+    /// modal (<c>ShowDialog(this)</c>) et n'a pas encore été recentré sur son parent au moment du
+    /// chargement. Se fier à sa propre position ferait dimensionner et recentrer sur l'écran
+    /// principal une fenêtre qui doit s'afficher sur celui du parent.
     /// </summary>
     private void FitToWorkingArea()
     {
-        var working = Screen.FromControl(this).WorkingArea;
+        var reference = Owner ?? (Control)this;
+        var working = Screen.FromControl(reference).WorkingArea;
 
         MinimumSize = new Size(
             Math.Min(MinimumSize.Width, working.Width),
