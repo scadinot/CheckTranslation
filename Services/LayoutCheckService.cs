@@ -46,7 +46,7 @@ internal sealed class LayoutCheckService : ILayoutCheckService
         var fallbackScale = MedianScale(forms, measure);
 
         var verdicts = new List<LayoutVerdict>();
-        foreach (var form in forms)
+        foreach (var form in forms.Where(form => form.RowByControl.Count > 0))
             AnalyzeForm(form, measure, fallbackScale, verdicts);
 
         return verdicts;
@@ -71,6 +71,11 @@ internal sealed class LayoutCheckService : ILayoutCheckService
     /// Rassemble ce qu'il faut pour analyser un formulaire. Les textes source sont collectés pour
     /// <b>tous</b> les libellés, y compris ceux sans traduction : ils ne reçoivent aucun verdict,
     /// mais ils étoffent l'étalonnage.
+    ///
+    /// Un formulaire entièrement non traduit est retourné malgré tout, sans aucune ligne à juger :
+    /// il ne produira pas de verdict, mais son échelle compte dans le repli de la solution. Une
+    /// langue dont les traductions ne couvrent encore que des formulaires sans contrôle
+    /// <c>AutoSize</c> resterait sinon sans étalon, alors que le reste de la solution en fournit un.
     /// </summary>
     private static FormAnalysisInput? BuildInput(
         FormGeometry geometry,
@@ -100,7 +105,7 @@ internal sealed class LayoutCheckService : ILayoutCheckService
             translatedTexts[controlName] = translation;
         }
 
-        return rowByControl.Count == 0
+        return sourceTexts.Count == 0
             ? null
             : new FormAnalysisInput(geometry, rowByControl, sourceTexts, translatedTexts);
     }
