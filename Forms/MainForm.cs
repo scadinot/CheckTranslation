@@ -427,15 +427,30 @@ public partial class MainForm : Form
             textBox.Text = string.Empty;
         ResetSpecialFilters();
 
-        if (_filterTextBoxes.TryGetValue(drillDown.Column, out var box))
+        // Les zones de filtre existent pour toutes les colonnes, y compris masquees : sans cela,
+        // un filtre sur Projet ou Fichier s'appliquerait pendant que la grille n'en montre aucune
+        // trace, et l'utilisateur verrait un sous-ensemble sans savoir pourquoi.
+        if (drillDown.Filters.Keys.Any(column => column is "Project" or "File" or "Key")
+            && btnDetails?.Checked == false)
         {
-            box.Text = drillDown.Value;
+            btnDetails.Checked = true;
+            ApplyShowDetails(true);
+            AppConfig.Current.ShowDetails = true;
+            AppConfig.Current.Save();
         }
-        else if (_filterComboBoxes.TryGetValue(drillDown.Column, out var comboBox))
+
+        foreach (var (column, value) in drillDown.Filters)
         {
-            int index = comboBox.Items.IndexOf(drillDown.Value);
-            if (index >= 0)
-                comboBox.SelectedIndex = index;
+            if (_filterTextBoxes.TryGetValue(column, out var box))
+            {
+                box.Text = value;
+            }
+            else if (_filterComboBoxes.TryGetValue(column, out var comboBox))
+            {
+                int index = comboBox.Items.IndexOf(value);
+                if (index >= 0)
+                    comboBox.SelectedIndex = index;
+            }
         }
 
         ApplyFilters();

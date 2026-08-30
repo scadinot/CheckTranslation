@@ -53,8 +53,8 @@ internal sealed partial class DashboardForm : Form
         gridProjects.CellPainting += Grid_CellPainting;
         gridFiles.CellPainting += Grid_CellPainting;
         gridLayout.CellContentClick += GridLayout_CellContentClick;
-        gridProjects.CellDoubleClick += (_, e) => DrillIntoGroup(gridProjects, e.RowIndex, "Project");
-        gridFiles.CellDoubleClick += (_, e) => DrillIntoGroup(gridFiles, e.RowIndex, "File");
+        gridProjects.CellDoubleClick += (_, e) => DrillIntoGroup(gridProjects, e.RowIndex, GroupBy.Project);
+        gridFiles.CellDoubleClick += (_, e) => DrillIntoGroup(gridFiles, e.RowIndex, GroupBy.File);
         cmbGroupLanguage.SelectedIndexChanged += (_, _) => RefreshGroupGrids();
         btnCopy.Click += BtnCopy_Click;
     }
@@ -363,7 +363,7 @@ internal sealed partial class DashboardForm : Form
         if (gridLanguages.Rows[e.RowIndex].Tag is not string languageCode)
             return;
 
-        Close(new DashboardDrillDown(languageCode, action.Column, action.Value));
+        CloseWith(DashboardDrillDown.Single(languageCode, action.Column, action.Value));
     }
 
     private void GridLayout_CellContentClick(object? sender, DataGridViewCellEventArgs e)
@@ -380,31 +380,50 @@ internal sealed partial class DashboardForm : Form
         if (RowCount(gridLayout, e.RowIndex) == 0)
             return;
 
-        Close(new DashboardDrillDown(layout.LanguageCode, "LayoutIssue", filterLabel));
+        CloseWith(DashboardDrillDown.Single(layout.LanguageCode, "LayoutIssue", filterLabel));
     }
 
     /// <summary>
     /// Double-clic sur une ligne de projet ou de fichier : filtre la grille sur ce groupe, dans la
-    /// langue choisie. Le nom d'un fichier est préfixé de son projet dans l'affichage ; seule la
-    /// partie utile part dans le filtre.
+    /// langue choisie.
+    ///
+    /// Un fichier est identifié par <b>son projet et son chemin</b>, pas par son chemin seul : le
+    /// même <c>Properties\Msg</c> existe dans plusieurs projets, et le compteur du tableau n'en
+    /// compte qu'un. Le filtre porte donc sur les deux colonnes, en égalité exacte.
     /// </summary>
-    private void DrillIntoGroup(DataGridView grid, int rowIndex, string column)
+    private void DrillIntoGroup(DataGridView grid, int rowIndex, GroupBy groupBy)
     {
         if (rowIndex < 0 || grid.Rows[rowIndex].Cells[0].Value is not string name)
             return;
 
-        var value = column == "File" && name.Contains('›')
-            ? name[(name.IndexOf('›') + 1)..].Trim()
-            : name;
+        var filters = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        Close(new DashboardDrillDown(SelectedGroupLanguageCode(), column, value));
+        if (groupBy == GroupBy.Project)
+        {
+            filters["Project"] = "=" + name;
+        }
+        else
+        {
+            int separator = name.IndexOf('›');
+            if (separator < 0)
+                return;
+
+            filters["Project"] = "=" + name[..separator].Trim();
+            filters["File"] = "=" + name[(separator + 1)..].Trim();
+        }
+
+        CloseWith(new DashboardDrillDown(SelectedGroupLanguageCode(), filters));
     }
 
     /// <summary>Compteur de la colonne « Lignes » d'une ligne de verdict, ou 0 si elle n'en porte pas.</summary>
     private static int RowCount(DataGridView grid, int rowIndex)
         => grid.Rows[rowIndex].Cells[1].Value is int count ? count : 0;
 
-    private void Close(DashboardDrillDown drillDown)
+    /// <summary>
+    /// Nommée <c>CloseWith</c> et non <c>Close</c> : une surcharge de <see cref="Form.Close"/> se
+    /// lit mal et invite à la confusion avec l'appel hérité qu'elle contient.
+    /// </summary>
+    private void CloseWith(DashboardDrillDown drillDown)
     {
         DrillDown = drillDown;
         DialogResult = DialogResult.OK;
@@ -441,7 +460,14 @@ internal sealed partial class DashboardForm : Form
 }
 
 /// <summary>
-/// Filtre demandé depuis le tableau de bord. <paramref name="Value"/> est ce qu'attend le contrôle
-/// de filtre de la colonne : le texte d'une zone de saisie, ou l'entrée d'une liste déroulante.
+/// Filtre demandé depuis le tableau de bord. Chaque valeur est ce qu'attend le contrôle de filtre
+/// de sa colonne : le texte d'une zone de saisie, ou l'entrée d'une liste déroulante.
+///
+/// Plusieurs colonnes peuvent être nécessaires — un fichier n'est identifié que par son projet
+/// <i>et</i> son chemin — d'où un dictionnaire plutôt qu'un couple unique.
 /// </summary>
-internal sealed record DashboardDrillDown(string LanguageCode, string Column, string Value);
+internal sealed record DashboardDrillDown(string LanguageCode, IReadOnlyDictionary<string, string> Filters)
+{
+    public static DashboardDrillDown Single(string languageCode, string column, string value)
+        => new(languageCode, new Dictionary<string, string>(StringComparer.Ordinal) { [column] = value });
+}
