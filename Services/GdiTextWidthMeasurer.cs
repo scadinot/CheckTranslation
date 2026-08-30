@@ -6,15 +6,14 @@ namespace CheckTranslation;
 /// GDI. C'est l'implémentation de production de <see cref="TextWidthMeasurer"/> ; l'analyse
 /// elle-même reste indépendante et éprouvable avec une mesure déterministe.
 ///
-/// Trois points méritent l'attention, chacun capable de produire des faux positifs silencieux :
+/// Trois points méritent l'attention :
 ///
-/// <b>DPI</b> — les coordonnées lues dans le <c>.resx</c> sont figées à la résolution du poste qui
-/// a dessiné le formulaire, en pratique 96 ppp. Mesurer sur le contexte de l'écran donnerait, sur
-/// un affichage à 150 %, des largeurs supérieures d'un tiers aux tailles de contrôle : tout
-/// paraîtrait déborder, indépendamment des traductions. La mesure passe donc par une surface de
-/// référence à 96 ppp — résolution par défaut d'un <see cref="Bitmap"/> créé en mémoire — pour
-/// rester dans le même repère que la géométrie. Un formulaire dessiné à une autre résolution
-/// décalerait les deux repères : c'est une hypothèse, pas une garantie.
+/// <b>Repère</b> — la mesure passe par une surface de référence à 96 ppp, résolution par défaut
+/// d'un <see cref="Bitmap"/> créé en mémoire, plutôt que par le contexte de l'écran : sur un
+/// affichage à 150 %, ce dernier gonflerait toutes les largeurs d'un tiers. Peu importe que ce
+/// repère corresponde à celui du poste qui a dessiné le formulaire — <see cref="LayoutAnalyzer"/>
+/// ne compare que des rapports de mesures, et l'échelle s'y annule. Ce qui compte est qu'une même
+/// instance mesure tout dans le même repère.
 ///
 /// <b>Handles GDI</b> — une <see cref="Font"/> détient une ressource système. En créer une par
 /// appel, sur des dizaines de milliers de lignes multipliées par sept langues, épuiserait les
@@ -36,22 +35,18 @@ internal sealed class GdiTextWidthMeasurer : IDisposable
     private readonly Dictionary<FontKey, Font> _fonts = [];
     // System.Threading.Lock est .NET 9+ ; le projet cible net8.0-windows.
     private readonly object _gate = new();
-    private readonly int _extraPadding;
     private bool _disposed;
 
-    /// <param name="extraPadding">
-    /// Marge ajoutée à chaque mesure, en pixels. Les contrôles réservent une marge interne que
-    /// GDI ne connaît pas : un texte large d'exactement la largeur du contrôle est déjà tronqué à
-    /// l'écran. La valeur juste se calibre en confrontant l'analyse au rendu réel.
-    /// </param>
-    public GdiTextWidthMeasurer(int extraPadding = 0)
+    public GdiTextWidthMeasurer()
     {
-        _extraPadding = extraPadding;
         _referenceSurface = new Bitmap(1, 1);
         _referenceContext = Graphics.FromImage(_referenceSurface);
     }
 
-    /// <summary>Largeur rendue, en pixels à 96 ppp. Un texte vide occupe zéro.</summary>
+    /// <summary>
+    /// Largeur rendue, dans le repère de référence de l'instance. Un texte vide occupe zéro —
+    /// <see cref="LayoutAnalyzer"/> traite ce cas comme non calibrable plutôt que comme nul.
+    /// </summary>
     public int Measure(string text, FontDescriptor? descriptor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -71,7 +66,7 @@ internal sealed class GdiTextWidthMeasurer : IDisposable
                     widest = width;
             }
 
-            return widest + _extraPadding;
+            return widest;
         }
     }
 
