@@ -53,8 +53,8 @@ public partial class MainForm : Form
     private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
-    // Dernier message affiche par FlashStatus : sert a ne restaurer le texte que s'il est
-    // toujours a l'ecran, sans supposer lequel des messages possibles a ete pose.
+    // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
+    // toujours à l'écran, sans supposer lequel des messages possibles a été posé.
     private string? _flashedMessage;
     private DataGridViewTextBoxColumn? colProject;
     private DataGridViewTextBoxColumn? colFile;
@@ -452,6 +452,11 @@ public partial class MainForm : Form
                     comboBox.SelectedIndex = index;
             }
         }
+
+        // Chaque affectation de TextBox.Text a relance le timer de debounce : sans ce Stop, le
+        // filtrage repasserait 300 ms apres celui-ci, pour rien — et sur une grosse source ce
+        // second passage se voit.
+        _filterDebounceTimer?.Stop();
 
         ApplyFilters();
         UpdateFilterPanelLayout();

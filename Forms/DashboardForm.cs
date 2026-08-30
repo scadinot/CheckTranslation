@@ -15,6 +15,9 @@ internal sealed partial class DashboardForm : Form
 {
     private const string ClickableTag = "clickable";
 
+    /// <summary>Les moyennes sont calculées au dixième : elles doivent s'afficher au dixième.</summary>
+    private const string ScoreFormat = "N1";
+
     private readonly IReadOnlyList<TranslationRow> _rows;
     private readonly IReadOnlyList<LanguageInfo> _languages;
     private readonly string _activeLanguageCode;
@@ -140,7 +143,7 @@ internal sealed partial class DashboardForm : Form
         _languageGridActions[AddNumberColumn(gridLanguages, "Non vérifiées")] =
             new(Translated) { ["Comment"] = "Non vérifiés" };
 
-        AddNumberColumn(gridLanguages, "Score moyen");
+        AddNumberColumn(gridLanguages, "Score moyen", ScoreFormat);
 
         // Le libellé sert à la fois d'en-tête de colonne et d'entrée à sélectionner dans le
         // filtre de la grille : un seul vocabulaire, donc aucun risque de divergence.
@@ -226,7 +229,7 @@ internal sealed partial class DashboardForm : Form
         AddNumberColumn(grid, "Non traduites");
         AddNumberColumn(grid, "Vérifiées");
         AddRatioColumn(grid, "% vérifié");
-        AddNumberColumn(grid, "Score moyen");
+        AddNumberColumn(grid, "Score moyen", ScoreFormat);
     }
 
     private void RefreshGroupGrids()
@@ -267,7 +270,12 @@ internal sealed partial class DashboardForm : Form
             SortMode = DataGridViewColumnSortMode.Automatic,
         });
 
-    private static int AddNumberColumn(DataGridView grid, string header)
+    /// <param name="format">
+    /// Format d'affichage. « N0 » pour un compteur, « N1 » pour une moyenne : afficher au dixième
+    /// une valeur calculée au dixième. Avec « N0 », une moyenne de 72,5 s'affichait « 73 » alors
+    /// que le presse-papiers en copiait 72,5 — l'écran et la copie ne disaient pas la même chose.
+    /// </param>
+    private static int AddNumberColumn(DataGridView grid, string header, string format = "N0")
         => grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = header,
@@ -276,7 +284,7 @@ internal sealed partial class DashboardForm : Form
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 Alignment = DataGridViewContentAlignment.MiddleRight,
-                Format = "N0",
+                Format = format,
             },
         });
 
