@@ -208,9 +208,12 @@ internal sealed partial class DashboardForm : Form
         AddNumberColumn(gridLayout, "Analysées");
 
         // Aucune analyse : le dire, plutôt qu'aligner des zéros qui se liraient « rien à signaler ».
+        // Le message reste volontairement ouvert : les causes sont multiples — source Excel, aucun
+        // formulaire localisable, aucune traduction encore posée sur un libellé de contrôle — et en
+        // nommer deux ferait passer les autres pour impossibles.
         if (_overview.Layouts.Count == 0)
         {
-            gridLayout.Rows.Add("Aucune ligne analysée — source Excel, ou aucun formulaire localisable.");
+            gridLayout.Rows.Add("Aucune ligne n'a pu être analysée (source Excel, formulaires non localisables, ou aucun libellé de contrôle traduit).");
             return;
         }
 

@@ -53,7 +53,7 @@ public partial class MainForm : Form
     private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
-    // Empeche deux analyses simultanees : la seconde ecraserait les verdicts de la premiere.
+    // Empêche deux analyses simultanées : la seconde écraserait les verdicts de la première.
     private bool _isCheckingLayout;
     // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
     // toujours à l'écran, sans supposer lequel des messages possibles a été posé.
@@ -261,6 +261,21 @@ public partial class MainForm : Form
         dataGridView.Columns.Add(colLayout);
     }
 
+    private const string LayoutCheckStatus = "Analyse de la mise en page…";
+
+    /// <summary>
+    /// Rend la status bar à ce qu'elle disait avant la passe, <b>et seulement si personne n'a
+    /// écrit depuis</b> : un chargement concurrent tient sa propre status bar, l'écraser avec la
+    /// nôtre y afficherait le décompte de la source précédente. Sans cette restauration, un
+    /// abandon laissait « Analyse de la mise en page… » figé, donnant à croire à une passe encore
+    /// en cours.
+    /// </summary>
+    private void RestoreStatusAfterLayoutCheck(string? previousStatus)
+    {
+        if (statusRowCount.Text == LayoutCheckStatus)
+            statusRowCount.Text = previousStatus;
+    }
+
     /// <summary>
     /// Analyse la mise en page de <b>toutes</b> les langues, en une passe, et applique les verdicts.
     ///
@@ -291,15 +306,16 @@ public partial class MainForm : Form
 
         _isCheckingLayout = true;
         var previousStatus = statusRowCount.Text;
-        statusRowCount.Text = "Analyse de la mise en page…";
+        statusRowCount.Text = LayoutCheckStatus;
 
-        // La passe lit les dictionnaires des lignes depuis un thread de fond. Laisser la grille
-        // éditable pendant ce temps ouvre deux failles à la fois : CellEndEdit écrit dans
-        // Translations pendant que l'analyse le parcourt — un Dictionary ne le supporte pas — et
-        // le verdict calculé sur l'ancien texte viendrait ensuite écraser l'invalidation faite par
-        // l'édition, affichant un jugement sur une valeur qui n'existe plus. La passe se compte en
-        // centaines de millisecondes : la fenêtre est étroite, mais elle existe.
+        // La passe lit les dictionnaires des lignes depuis un thread de fond, et rien de ce que
+        // l'interface propose pendant ce temps n'est inoffensif : éditer une cellule appelle
+        // CommitActiveLanguage, changer de langue appelle SwitchLanguage, rafraîchir remplace les
+        // lignes — tous écrivent dans les Dictionary que l'analyse parcourt, ce qu'un Dictionary
+        // ne supporte pas. La grille ET la toolbar sont donc gelées, pas seulement la grille.
+        // La passe se compte en centaines de millisecondes : la fenêtre est étroite, elle existe.
         dataGridView.EndEdit();
+        toolStrip.Enabled = false;
         dataGridView.Enabled = false;
         UseWaitCursor = true;
         try
@@ -316,20 +332,31 @@ public partial class MainForm : Form
             // L'analyse est un confort : son échec ne doit pas empêcher de traduire ni faire
             // échouer le chargement. Mais une colonne vide sans explication ne dit rien — le signaler.
             System.Diagnostics.Debug.WriteLine($"[MainForm] Analyse de mise en page abandonnée : {ex.GetType().Name} : {ex.Message}");
-            statusRowCount.Text = previousStatus;
+            RestoreStatusAfterLayoutCheck(previousStatus);
             FlashStatus($"Analyse de mise en page impossible : {ex.Message}");
             return;
         }
         finally
         {
             _isCheckingLayout = false;
-            dataGridView.Enabled = true;
             UseWaitCursor = false;
+
+            // Ne pas rendre la main si une écriture disque a pris le relais : c'est
+            // SetWritingState qui décide alors de l'état des containers, et le forcer ici
+            // rouvrirait la grille en pleine sauvegarde.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
         }
 
         // Le chargement d'une autre source pendant l'analyse rendrait ces verdicts caducs.
         if (!ReferenceEquals(_allRows, rows))
+        {
+            RestoreStatusAfterLayoutCheck(previousStatus);
             return;
+        }
 
         // Les verdicts ne sont appliqués qu'ici, sur le thread d'interface : les TranslationRow
         // sont liés au DataGridView, les écrire depuis la tâche de fond les exposerait à une
