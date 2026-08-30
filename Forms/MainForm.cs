@@ -53,6 +53,9 @@ public partial class MainForm : Form
     private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
+    private ToolStripButton? btnLayoutCheck;
+    // Empeche deux analyses simultanees : la seconde ecraserait les verdicts de la premiere.
+    private bool _isCheckingLayout;
     // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
     // toujours à l'écran, sans supposer lequel des messages possibles a été posé.
     private string? _flashedMessage;
@@ -111,6 +114,7 @@ public partial class MainForm : Form
         InitDetailsButton();
         InitGlossaryButton();
         InitDashboardButton();
+        InitLayoutCheckButton();
         InitRefreshButton();
         InitLanguageButtons();
         ArrangeToolStripItems();
@@ -260,12 +264,15 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Relance l'analyse de mise en page pour la langue affichée. Sans objet hors mode .resx :
-    /// la géométrie des contrôles n'existe que dans ces fichiers.
+    /// Lance l'analyse de mise en page pour la langue affichée. <b>À la demande uniquement</b> :
+    /// elle relit la géométrie de tous les formulaires de la solution, ce qui alourdissait
+    /// nettement le chargement alors que la plupart des sessions n'en ont pas besoin.
+    ///
+    /// Sans objet hors mode .resx : la géométrie des contrôles n'existe que dans ces fichiers.
     /// </summary>
-    private async Task RefreshLayoutCheckAsync()
+    private async Task RunLayoutCheckAsync()
     {
-        if (_allRows is null || _currentSource?.SupportsLayoutCheck != true)
+        if (_allRows is null || _currentSource?.SupportsLayoutCheck != true || _isCheckingLayout)
             return;
 
         var source = _currentSource;
@@ -279,6 +286,11 @@ public partial class MainForm : Form
             row.CommitActiveLanguage(languageCode);
 
         IReadOnlyList<LayoutVerdict> verdicts;
+
+        // L'analyse est maintenant déclenchée par l'utilisateur : elle doit se voir. Le bouton est
+        // désactivé le temps de la passe, la status bar dit ce qui se passe, et le curseur d'attente
+        // signale que l'application travaille — sans bloquer la grille, l'analyse tournant à part.
+        SetLayoutCheckRunning(true);
         try
         {
             // La mesure GDI détient des handles : une instance par passe, libérée aussitôt.
@@ -290,9 +302,16 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            // L'analyse est un confort : son échec ne doit pas empêcher de traduire.
+            // L'analyse est un confort : son échec ne doit pas empêcher de traduire. Mais elle a
+            // été demandée explicitement — le dire, plutôt que de laisser la colonne vide sans
+            // explication comme lorsqu'elle tournait toute seule.
             System.Diagnostics.Debug.WriteLine($"[MainForm] Analyse de mise en page abandonnée : {ex.GetType().Name} : {ex.Message}");
+            FlashStatus($"Analyse de mise en page impossible : {ex.Message}");
             return;
+        }
+        finally
+        {
+            SetLayoutCheckRunning(false);
         }
 
         // Le chargement d'une autre source pendant l'analyse rendrait ces verdicts caducs.
@@ -308,14 +327,98 @@ public partial class MainForm : Form
         foreach (var verdict in verdicts)
             verdict.Row.SetLayoutVerdict(verdict.Status, verdict.Issue);
 
+        // Le compte rendu distingue « aucun défaut » de « rien n'a pu être analysé » : sur une
+        // solution dont aucun formulaire n'est localisable, un simple « 0 débordement » se lirait
+        // comme un satisfecit alors que rien n'a été vérifié.
         var issues = verdicts.Count(verdict => verdict.IsIssue);
-        statusRowCount.Text = issues > 0
-            ? $"Lignes : {rows.Count} — {issues} débordement(s)"
-            : $"Lignes : {rows.Count}";
+        statusRowCount.Text = verdicts.Count == 0
+            ? $"Lignes : {rows.Count} — aucune ligne n'a pu être analysée"
+            : issues > 0
+                ? $"Lignes : {rows.Count} — {issues} débordement(s) sur {verdicts.Count} ligne(s) analysée(s)"
+                : $"Lignes : {rows.Count} — aucun débordement sur {verdicts.Count} ligne(s) analysée(s)";
 
         // TranslationRow n'implémente pas INotifyPropertyChanged : comme ailleurs dans ce
         // fichier après mise à jour d'une propriété liée, on force la relecture.
         dataGridView.Refresh();
+    }
+
+    private void InitLayoutCheckButton()
+    {
+        btnLayoutCheck = new ToolStripButton
+        {
+            Image = LoadLayoutCheckIcon(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            ToolTipText = "Vérifier la mise en page (langue affichée)",
+            Enabled = false,
+        };
+        btnLayoutCheck.Click += BtnLayoutCheck_Click;
+    }
+
+    /// <summary>
+    /// Icône du bouton : un cadre dont le texte déborde. Aucun visuel n'est fourni avec le projet,
+    /// on la dessine — même repli que le glossaire et le tableau de bord.
+    /// </summary>
+    private static Bitmap LoadLayoutCheckIcon()
+    {
+        var customPath = Path.Combine(ResourceDir, "layout.png");
+        if (File.Exists(customPath))
+            return LoadIcon("layout.png", 24);
+
+        var bitmap = new Bitmap(24, 24);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+
+        using var frame = new Pen(Color.FromArgb(90, 90, 90), 2);
+        using var text = new SolidBrush(Color.FromArgb(120, 120, 120));
+        using var overflow = new SolidBrush(Color.FromArgb(211, 47, 47));
+
+        graphics.DrawRectangle(frame, 3, 6, 13, 12);
+        graphics.FillRectangle(text, 6, 10, 8, 2);
+        graphics.FillRectangle(text, 6, 14, 8, 2);
+        graphics.FillRectangle(overflow, 16, 10, 5, 2);
+
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Le bouton n'est actif que si une analyse est possible : une source .resx chargée, et aucune
+    /// passe en cours.
+    /// </summary>
+    private void UpdateLayoutCheckButton()
+    {
+        if (btnLayoutCheck is null)
+            return;
+
+        btnLayoutCheck.Enabled = !_isCheckingLayout
+            && _allRows is not null
+            && _currentSource?.SupportsLayoutCheck == true;
+    }
+
+    private void SetLayoutCheckRunning(bool running)
+    {
+        _isCheckingLayout = running;
+        UpdateLayoutCheckButton();
+        UseWaitCursor = running;
+
+        if (running)
+            statusRowCount.Text = "Analyse de la mise en page…";
+    }
+
+    private async void BtnLayoutCheck_Click(object? sender, EventArgs e)
+    {
+        if (_allRows is null)
+        {
+            FlashStatus("Ouvrez d'abord une solution pour vérifier la mise en page.");
+            return;
+        }
+
+        if (_currentSource?.SupportsLayoutCheck != true)
+        {
+            FlashStatus("La vérification de mise en page n'existe qu'en mode .resx : l'export Excel ne contient aucune géométrie.");
+            return;
+        }
+
+        await RunLayoutCheckAsync();
     }
 
     private void InitDetailsButton()
@@ -466,7 +569,8 @@ public partial class MainForm : Form
 
     private void ArrangeToolStripItems()
     {
-        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null)
+        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null
+            || btnLayoutCheck is null)
             return;
 
         toolStrip.Items.Clear();
@@ -480,6 +584,8 @@ public partial class MainForm : Form
         toolStrip.Items.Add(btnGlossary);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnDashboard);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnLayoutCheck);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnConfig);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -581,9 +687,10 @@ public partial class MainForm : Form
         UpdateVerificationCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders
 
-        // Un verdict de mise en page porte sur une traduction précise : SwitchLanguage l'a
-        // invalidé, il faut le recalculer pour la nouvelle langue.
-        _ = RefreshLayoutCheckAsync();
+        // SwitchLanguage a invalidé les verdicts de mise en page : ils portaient sur la traduction
+        // précédente. On ne relance pas l'analyse pour autant — elle est à la demande. La colonne
+        // se vide, ce qui dit exactement la vérité : plus rien n'a été vérifié pour cette langue.
+        UpdateLayoutCheckButton();
     }
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
@@ -668,7 +775,7 @@ public partial class MainForm : Form
                     MessageBoxIcon.Information);
             }
 
-            await RefreshLayoutCheckAsync();
+            UpdateLayoutCheckButton();
         }
         catch (Exception ex)
         {
@@ -2127,7 +2234,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             _allRows = refreshedRows;
             ApplyFiltersPreservingSelection();
             RestoreStatusBar();
-            await RefreshLayoutCheckAsync();
+            UpdateLayoutCheckButton();
         }
         catch (Exception ex)
         {

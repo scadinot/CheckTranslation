@@ -45,6 +45,12 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 
+### Vérification de mise en page *(source `.resx` uniquement)*
+- **Bouton toolbar dédié** : confronte chaque libellé de contrôle à la place réellement disponible dans son formulaire, pour la langue affichée — troncatures des contrôles à largeur fixe, collisions des contrôles `AutoSize` avec leurs voisins
+- **À la demande, jamais automatique** : l'analyse relit la géométrie de tous les formulaires de la solution. La lancer au chargement alourdissait l'ouverture alors que la plupart des sessions n'en ont pas besoin
+- **Un verdict porte sur une traduction précise** : changer de langue ou rafraîchir (F5) vide la colonne, puisque plus rien n'a été vérifié pour ce qui est désormais affiché. Le bouton est là pour relancer
+- **Compte rendu** : nombre de débordements *sur le nombre de lignes réellement analysées* — « aucun débordement sur 0 ligne analysée » n'est pas un satisfecit
+
 ### Tableau de bord
 - **Bouton toolbar dédié** : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
 - **Par langue** : traduites, non traduites, **identiques au français**, vérifiées, score moyen et distribution des scores par tranche (0–59, 60–69, 70–79, 80–89, 90–100), avec barres d'avancement
