@@ -286,14 +286,25 @@ Seules les paires de **frères** sont comparées, et une collision n'est retenue
 
 `AnalyzeRegression(source, traduction)` ne retient que les défauts **introduits** par la traduction — un défaut déjà présent en français n'est pas imputable au traducteur et serait signalé pour chaque langue.
 
-La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est `GdiTextWidthMeasurer`, donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe.
+**Tout est raisonné en rapport, jamais en valeur absolue.** Les coordonnées d'un `.resx` sont figées à la résolution du poste qui a dessiné le formulaire — sur le corpus de référence un `Label` fait 32 px de haut là où 96 ppp en donnerait 15. Confronter une mesure prise à l'exécution à ces coordonnées mélangerait deux repères et sous-détecterait d'un facteur voisin de deux. Il n'existe pas non plus de marge interne universelle : elle dépend du type de contrôle.
+
+L'étalon est donc pris dans le fichier lui-même :
+
+| Contrôle | Étalon | Largeur attendue |
+|---|---|---|
+| `AutoSize` | sa `Size` sérialisée **est** la largeur rendue du texte français | `Size.Width × mesure(traduction) / mesure(français)` |
+| taille fixe | échelle du formulaire = médiane des `Size.Width / mesure(français)` de ses `AutoSize` | `échelle × mesure(traduction)`, comparée à `Size.Width` |
+
+L'échelle et la marge interne s'annulent dans le rapport : **aucune constante à calibrer, aucune hypothèse sur le DPI**. Un formulaire sans contrôle `AutoSize` exploitable se rabat sur la médiane des échelles des autres formulaires de la solution (`LayoutCheckService`) — la résolution de conception est une propriété du poste, pas du formulaire — et reste non vérifiable si la solution entière n'en fournit aucune.
+
+La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est `GdiTextWidthMeasurer`, donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe. Son unité n'a pas d'importance, seule compte sa cohérence d'un appel à l'autre.
 
 **`GdiTextWidthMeasurer`** (`IDisposable`) — implémentation de production, via `TextRenderer.MeasureText`. Trois pièges traités, chacun capable de produire des faux positifs silencieux :
 - **DPI** : la mesure passe par une surface mémoire à 96 ppp, résolution des coordonnées de conception. Sur le contexte de l'écran, un affichage à 150 % gonflerait toutes les largeurs d'un tiers et ferait paraître tout débordé.
 - **Handles GDI** : les `Font` sont mises en cache par (famille, taille, gras) et libérées avec l'instance — en créer une par appel épuiserait les handles sur des dizaines de milliers de lignes × 7 langues.
 - **Multi-lignes** : une valeur de ressource peut contenir des retours à la ligne ; la largeur retenue est celle de la ligne la plus large.
 
-⚠ `extraPadding` (0 par défaut) reste **à calibrer** : la mesure `NoPadding` donne l'encombrement des glyphes, alors qu'un contrôle réserve une marge interne. Sans calibrage, l'analyse sous-détecte.
+Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne compare que des rapports, l'échelle s'y annule. C'est ce qui a permis de supprimer le paramètre `extraPadding`, qui aurait dû être calibré à la main.
 
 **`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et **retourne** des `LayoutVerdict`.
 - Il ne modifie **aucune** ligne : les `TranslationRow` sont liés au `DataGridView`, les écrire depuis le thread de fond où tourne l'analyse les exposerait à une lecture concurrente par le rendu. `MainForm` applique les verdicts sur le thread d'interface.
@@ -514,6 +525,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
 - **`RefreshLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
 - **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
+- **L'analyse de mise en page ne compare que des rapports** — la `Size` sérialisée d'un contrôle `AutoSize` sert d'étalon, l'échelle du formulaire s'en déduit pour les contrôles fixes. Ne pas réintroduire de comparaison directe entre une mesure et une coordonnée du `.resx` : les deux ne sont pas dans le même repère, et l'écart observé sur le corpus est d'un facteur voisin de deux.
 - **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
@@ -578,6 +590,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-29 | Fix import `.resx` : les `<data>`, `<value>`, `<comment>` et leurs attributs sont lus par nom local — un `.resx` déclarant un espace de noms était lu comme vide, sans erreur. Compte rendu enrichi (éléments rencontrés, entrées binaires, métadonnées designer) |
 | 2026-08-29 | **Vérification de mise en page** : `FormGeometryReader` (géométrie + filiation `>>X.Parent`), `LayoutAnalyzer` (troncatures et collisions, régression par rapport au français), `GdiTextWidthMeasurer` (mesure GDI à 96 ppp), colonne et filtre dans la grille. Réservée à la source `.resx` |
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
+| 2026-08-30 | Mise en page : mesure **en rapport** plutôt qu'en absolu — la `Size` sérialisée des contrôles `AutoSize` sert d'étalon par formulaire, avec repli sur la médiane de la solution. Supprime `extraPadding` et l'hypothèse d'un `.resx` à 96 ppp |
 
 ---
 
@@ -612,7 +625,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
 | 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
-| 🟡 | **Vérification de débordement** | ✅ Chaîne complète : lecture, analyse, mesure GDI, colonne + filtre | Calibrer `extraPadding` contre le rendu réel ; gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le retour à la ligne |
+| 🟡 | **Vérification de débordement** | ✅ Chaîne complète, étalonnée sur le fichier lui-même (aucune constante) | Gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le retour à la ligne |
 | 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
 | 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 
