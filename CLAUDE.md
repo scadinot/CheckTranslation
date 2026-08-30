@@ -313,6 +313,7 @@ La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'e
 Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne compare que des rapports, l'échelle s'y annule. C'est ce qui a permis de supprimer le paramètre `extraPadding`, qui aurait dû être calibré à la main.
 
 **`LayoutCheckService`** (implémente `ILayoutCheckService`) — orchestre la vérification sur une solution : regroupe les lignes par fichier, lit la géométrie de chaque formulaire, compare la traduction au français et **retourne** des `LayoutVerdict`.
+- **Toutes les langues en une seule passe** (`Analyze(..., IReadOnlyList<string> languageCodes, ...)`). Le coût dominant — `ResxReader.DiscoverFiles`, la lecture XML de chaque formulaire, le calcul de l'échelle à partir du français — ne dépend pas de la langue : le refaire par langue serait du gâchis pur. Mesuré sur une solution synthétique de 474 formulaires × 25 contrôles : ×1,8 pour passer d'une langue à sept en une passe, contre ×4,1 en relançant une passe par langue.
 - Il ne modifie **aucune** ligne : les `TranslationRow` sont liés au `DataGridView`, les écrire depuis le thread de fond où tourne l'analyse les exposerait à une lecture concurrente par le rendu. `MainForm` applique les verdicts sur le thread d'interface.
 - Ne traite que les clés `contrôle.Text` : un message, un `ToolTipText` ou un `AccessibleName` n'occupent aucune surface fixe.
 - Une ligne **sans traduction** reste `NotChecked` — la déclarer conforme serait faux.
@@ -320,7 +321,7 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 - Une collision marque **les deux** lignes en cause, corriger l'une ou l'autre résolvant le problème ; une troncature déjà signalée n'est pas masquée par une collision.
 
 **`TranslationStatistics`** (static) — calcule l'état d'avancement, sans aucune dépendance à l'interface : c'est ce qui le rend éprouvable hors WinForms.
-- `Compute(rows, languages, langueActive)` → `TranslationOverview` : lignes, projets, fichiers, un `LanguageStatistics` par langue, et l'état de mise en page **de la seule langue affichée** (le verdict est porté par la ligne, pas par un dictionnaire).
+- `Compute(rows, languages)` → `TranslationOverview` : lignes, projets, fichiers, un `LanguageStatistics` par langue, et un `LayoutStatistics` **par langue analysée** (`Layouts`, vide si rien n'a été analysé). `TotalLayoutIssues` est nul — et non zéro — dans ce cas : zéro se lirait « aucun défaut ».
 - Par langue : traduites, non traduites, **identiques au français**, vérifiées, score moyen, distribution par tranche. Vérifications, moyennes et tranches ne se comptent qu'**à l'intérieur des lignes traduites** : un score resté sur une ligne vidée est périmé.
 - `ComputeGroups(rows, langue, GroupBy.Project | GroupBy.File)` : mêmes indicateurs par projet ou par fichier, **triés du moins avancé au plus avancé**.
 - `ScoreBuckets()` est l'**unique source de vérité** des tranches : le tableau de bord en fait ses colonnes, la liste déroulante de la colonne Commentaire en fait ses entrées.
@@ -338,7 +339,7 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 - Identité : `RowNumber` (ligne Excel), `Project`, `File`, `Key`.
 - Source : `French`, `FrenchComment`.
 - Vue langue active : `Translation`, `Comment` (modifiées directement par l'UI).
-- Multi-langues : `Translations: Dictionary<int,string>`, `Comments: Dictionary<int,string>` (clé = numéro de colonne Excel).
+- Multi-langues : `Translations`, `Comments` et les **verdicts de mise en page**, tous indexés par code de langue. Un verdict décrit une traduction précise, donc une langue précise : le stocker par langue est ce qui permet d'analyser les sept en une passe et de basculer sans rien recalculer. `SelectLayoutVerdict(code)` charge la vue active (`LayoutStatus` / `LayoutIssue`), `GetLayoutStatus(code)` lit celle d'une autre langue, `InvalidateLayoutVerdict(code)` périme la seule langue éditée.
 - `SwitchLanguage(oldCol, newCol)` : pousse la vue active dans le dictionnaire sous `oldCol`, recharge depuis `newCol`. Évite le rechargement Excel à chaque switch de langue.
 - `GetSyncKey()` : `Project|File|Key` avec séparateur `\u001F`.
 
@@ -448,10 +449,11 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 
 ### 7.10.bis Vérification de mise en page (source .resx uniquement)
 1. `ITranslationSource.SupportsLayoutCheck` vaut `false` pour l'Excel : l'export ne contient aucune géométrie, l'analyse est simplement sautée.
-2. `MainForm.RefreshLayoutCheckAsync()` pousse d'abord la vue active dans les dictionnaires, puis instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(...)` dans un `Task.Run`. Les verdicts retournés ne sont appliqués qu'au retour, sur le thread d'interface, et seulement si la source et la langue n'ont pas changé entre-temps.
-3. Chaque ligne reçoit un `LayoutStatus` et un libellé, affichés dans la colonne « Mise en page » : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
+2. **L'analyse est lancée au chargement de la solution, pour toutes les langues à la fois.** `MainForm.RunLayoutCheckAsync()` pousse d'abord la vue active dans les dictionnaires, puis instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(source.Path, rows, tous les codes, …)` dans un `Task.Run`. Les verdicts retournés ne sont appliqués qu'au retour, sur le thread d'interface, et seulement si la source n'a pas changé entre-temps.
+3. Chaque ligne reçoit un `LayoutStatus` **par langue** et un libellé ; la colonne « Mise en page » affiche celui de la langue courante : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
 4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
-5. Déclenchée au chargement, au changement de langue et au rafraîchissement. Un échec est tracé sans interrompre la traduction : l'analyse est un confort.
+5. **Changer de langue ne relance rien** : `SelectLanguage` rebascule sur les verdicts déjà calculés de la nouvelle langue. Éditer une traduction périme le verdict de cette ligne pour cette seule langue (`InvalidateLayoutVerdict`) ; rafraîchir (F5) reconstruit les lignes depuis le disque et rejoue donc l'analyse.
+6. Un échec est tracé **et signalé dans la status bar** : l'analyse reste un confort et ne doit pas faire échouer le chargement, mais une colonne vide sans explication ne dit rien.
 
 ### 7.11.bis Tableau de bord
 1. Bouton toolbar → `MainForm` pousse d'abord la vue active dans les dictionnaires (`CommitActiveLanguage`), sans quoi les éditions en cours manqueraient au décompte.
@@ -548,8 +550,10 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Les tranches de score ont une seule définition** — `TranslationStatistics.ScoreBuckets()`. Le tableau de bord en fait ses colonnes et `MainForm` en fait les entrées du filtre Commentaire : les faire diverger ferait qu'un clic sur « 42 » ne ramènerait pas 42 lignes.
 - **Un filtre texte préfixé de `=` est une égalité exacte** — c'est ce qui permet au tableau de bord de tenir sa promesse : un fichier n'est identifié que par son projet *et* son chemin, et `Properties\Msg` ne doit pas ramener `Properties\Msg2`. La saisie manuelle reste un « contient ».
 - **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux.
-- **`RefreshLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
-- **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
+- **`RunLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
+- **La vérification de mise en page couvre toutes les langues en une passe** — `LayoutCheckService.Analyze` prend une liste de codes, pas un code. Ne pas revenir à une passe par langue : la lecture de la géométrie, qui domine le coût, serait refaite à l'identique sept fois (×4,1 mesuré, contre ×1,8 pour la passe unique).
+- **Elle est lancée au chargement et au rafraîchissement, jamais au changement de langue** — les sept langues sont déjà calculées, `SwitchToLanguage` n'a qu'à rebasculer la vue active. Rebrancher l'analyse sur ce chemin ne ferait que recalculer ce qui existe déjà.
+- **Un verdict de mise en page vit sous son code de langue** — comme `Translations` et `Comments`. Ne pas le ramener à un champ unique : c'est ce qui obligeait à tout effacer à chaque bascule et à relancer l'analyse.
 - **L'analyse de mise en page ne compare que des rapports** — la `Size` sérialisée d'un contrôle `AutoSize` sert d'étalon, l'échelle du formulaire s'en déduit pour les contrôles fixes. Ne pas réintroduire de comparaison directe entre une mesure et une coordonnée du `.resx` : les deux ne sont pas dans le même repère, et l'écart observé sur le corpus est d'un facteur voisin de deux.
 - **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
@@ -617,6 +621,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
 | 2026-08-30 | Mise en page : mesure **en rapport** plutôt qu'en absolu — la `Size` sérialisée des contrôles `AutoSize` sert d'étalon par formulaire, avec repli sur la médiane de la solution. Supprime `extraPadding` et l'hypothèse d'un `.resx` à 96 ppp |
 | 2026-08-30 | **Tableau de bord de l'état des traductions** : `TranslationStatistics` (calcul pur) + `DashboardForm` (cartes, par langue / projet / fichier / mise en page, barres d'avancement). Chiffres cliquables : un clic bascule la langue et filtre la grille. Pseudo-filtres `translation:none` / `done` / `same` et tranches de score fermées |
+| 2026-08-30 | Vérification de mise en page **multi-langues en une passe** : verdicts stockés par code de langue dans `TranslationRow`, analyse lancée au chargement et au rafraîchissement pour les sept langues à la fois (×1,8 au lieu de ×4,1), plus aucun recalcul au changement de langue. Onglet « Mise en page » du tableau de bord comparant les sept langues. Compte rendu distinguant « aucun défaut » de « rien n'a pu être analysé » |
 
 ---
 

@@ -45,11 +45,18 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 
+### Vérification de mise en page *(source `.resx` uniquement)*
+- **Automatique, au chargement de la solution** : confronte chaque libellé de contrôle à la place réellement disponible dans son formulaire — troncatures des contrôles à largeur fixe, collisions des contrôles `AutoSize` avec leurs voisins
+- **Toutes les langues en une seule passe** : le coût dominant — découvrir les `.resx`, lire la géométrie de chaque formulaire, en déduire l'échelle — ne dépend pas de la langue. Sur une solution synthétique de 474 formulaires, passer d'une langue à sept coûte ×1,8, contre ×4,1 en relançant une passe par langue
+- **Changer de langue n'analyse rien** : les verdicts sont stockés par code de langue, comme les traductions. La colonne bascule simplement sur ceux de la langue affichée
+- **Un verdict porte sur une traduction précise** : éditer une traduction vide le verdict de cette ligne, pour cette langue seulement. Rafraîchir (F5) rejoue l'analyse
+- **Compte rendu** : nombre de débordements *sur le nombre de vérifications réellement faites* — « aucun débordement sur 0 ligne analysée » n'est pas un satisfecit
+
 ### Tableau de bord
 - **Bouton toolbar dédié** : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
 - **Par langue** : traduites, non traduites, **identiques au français**, vérifiées, score moyen et distribution des scores par tranche (0–59, 60–69, 70–79, 80–89, 90–100), avec barres d'avancement
 - **Par projet / par fichier** : mêmes indicateurs pour la langue choisie, **triés du moins avancé au plus avancé** — ce qui reste à faire arrive en tête
-- **Mise en page** : troncatures, collisions, conformes et non vérifiables *(source `.resx` uniquement, pour la langue affichée)*
+- **Mise en page** : troncatures, collisions, non vérifiables et conformes **pour chaque langue effectivement analysée**, triées de la plus défectueuse à la moins — c'est là qu'on voit laquelle déborde le plus. Une langue dont aucun libellé de contrôle n'est encore traduit n'y figure pas : elle n'a rien à montrer *(source `.resx` uniquement)*
 - **Chiffres cliquables** : un clic sur un nombre souligné bascule sur la langue concernée et filtre la grille sur ces lignes exactement — le tableau de bord est un point de départ de travail, pas une image. Double-clic sur une ligne de projet ou de fichier pour le même effet
 - **Copier** : le tableau affiché part dans le presse-papiers au format tabulé, collable dans un tableur
 

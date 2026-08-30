@@ -54,7 +54,7 @@ internal sealed partial class DashboardForm : Form
         _rows = rows;
         _languages = languages;
         _activeLanguageCode = activeLanguageCode;
-        _overview = TranslationStatistics.Compute(rows, languages, activeLanguageCode);
+        _overview = TranslationStatistics.Compute(rows, languages);
 
         InitializeComponent();
 
@@ -87,10 +87,15 @@ internal sealed partial class DashboardForm : Form
         if (_overview.LeastAdvanced is { } least)
             AddCard("Langue la moins avancée", least.Name, $"{Percent(least.TranslatedRatio)} traduit");
 
-        if (_overview.Layout is { } layout)
+        // L'analyse couvre les sept langues en une passe : la carte totalise, et nomme celle qui
+        // déborde le plus — c'est elle qui décide où regarder d'abord.
+        if (_overview.TotalLayoutIssues is { } totalIssues)
         {
-            var name = _languages.FirstOrDefault(language => language.Code == layout.LanguageCode)?.Name ?? layout.LanguageCode;
-            AddCard("Défauts de mise en page", layout.Issues.ToString("N0"), $"{name} — sur {layout.Analyzed:N0} analysées");
+            var detail = _overview.WorstLayout is { Issues: > 0 } worst
+                ? $"sur {_overview.TotalLayoutChecked:N0} vérifications — surtout {worst.LanguageName}"
+                : $"sur {_overview.TotalLayoutChecked:N0} vérifications";
+
+            AddCard("Défauts de mise en page", totalIssues.ToString("N0"), detail);
         }
     }
 
@@ -195,29 +200,46 @@ internal sealed partial class DashboardForm : Form
 
     private void BuildLayoutGrid()
     {
-        AddTextColumn(gridLayout, "Verdict", 260);
-        _layoutGridActions[AddNumberColumn(gridLayout, "Lignes")] = new();
+        AddTextColumn(gridLayout, "Langue", 140);
+        _layoutGridActions[AddNumberColumn(gridLayout, "Troncatures")] = LayoutFilter("Troncatures");
+        _layoutGridActions[AddNumberColumn(gridLayout, "Collisions")] = LayoutFilter("Collisions");
+        _layoutGridActions[AddNumberColumn(gridLayout, "Non vérifiable")] = LayoutFilter("Non vérifiable");
+        _layoutGridActions[AddNumberColumn(gridLayout, "Conformes")] = LayoutFilter("Conformes");
+        AddNumberColumn(gridLayout, "Analysées");
 
-        if (_overview.Layout is not { } layout)
+        // Aucune analyse : le dire, plutôt qu'aligner des zéros qui se liraient « rien à signaler ».
+        // Le message reste volontairement ouvert : les causes sont multiples — source Excel, aucun
+        // formulaire localisable, aucune traduction encore posée sur un libellé de contrôle — et en
+        // nommer deux ferait passer les autres pour impossibles.
+        if (_overview.Layouts.Count == 0)
         {
-            gridLayout.Rows.Add("Aucune ligne analysée — source Excel, ou analyse pas encore passée.", null);
+            gridLayout.Rows.Add("Aucune ligne n'a pu être analysée (source Excel, formulaires non localisables, ou aucun libellé de contrôle traduit).");
             return;
         }
 
-        AddLayoutRow("Troncatures", layout.Truncated, "Troncatures");
-        AddLayoutRow("Collisions", layout.Collision, "Collisions");
-        AddLayoutRow("Conformes", layout.Ok, "Conformes");
-        AddLayoutRow("Non vérifiable", layout.Unverifiable, "Non vérifiable");
-    }
+        // Du plus défectueux au moins : ce qu'on cherche ici, c'est la langue à reprendre.
+        foreach (var layout in _overview.Layouts.OrderByDescending(layout => layout.Issues))
+        {
+            int index = gridLayout.Rows.Add(
+                layout.LanguageName,
+                layout.Truncated,
+                layout.Collision,
+                layout.Unverifiable,
+                layout.Ok,
+                layout.Analyzed);
 
-    private void AddLayoutRow(string verdict, int count, string filterLabel)
-    {
-        int index = gridLayout.Rows.Add(verdict, count);
-        gridLayout.Rows[index].Tag = filterLabel;
-
-        if (count > 0)
+            gridLayout.Rows[index].Tag = layout.LanguageCode;
             StyleClickableCells(gridLayout.Rows[index], _layoutGridActions.Keys);
+        }
     }
+
+    /// <summary>
+    /// Filtre de la colonne « Mise en page » de la grille principale. Le libellé est celui de la
+    /// liste déroulante de cette colonne : un seul vocabulaire, donc aucun risque de divergence
+    /// entre le chiffre affiché ici et les lignes ramenées là-bas.
+    /// </summary>
+    private static Dictionary<string, string> LayoutFilter(string label)
+        => new(StringComparer.Ordinal) { ["LayoutIssue"] = label };
 
     // --- Tableaux par projet et par fichier ---
 
@@ -406,18 +428,17 @@ internal sealed partial class DashboardForm : Form
     private void GridLayout_CellContentClick(object? sender, DataGridViewCellEventArgs e)
     {
         if (e.RowIndex < 0
-            || !_layoutGridActions.ContainsKey(e.ColumnIndex)
-            || gridLayout.Rows[e.RowIndex].Tag is not string filterLabel
-            || _overview.Layout is not { } layout)
+            || !_layoutGridActions.TryGetValue(e.ColumnIndex, out var filters)
+            || gridLayout.Rows[e.RowIndex].Tag is not string languageCode)
             return;
 
         // Même règle que pour le tableau des langues : un zéro ne mène nulle part. Sans cette
         // garde, la cellule n'est certes pas soulignée, mais elle reste cliquable — et referme le
         // tableau de bord sur une grille vide.
-        if (RowCount(gridLayout, e.RowIndex) == 0)
+        if (gridLayout.Rows[e.RowIndex].Cells[e.ColumnIndex].Value is not int count || count == 0)
             return;
 
-        CloseWith(DashboardDrillDown.Single(layout.LanguageCode, "LayoutIssue", filterLabel));
+        CloseWith(new DashboardDrillDown(languageCode, filters));
     }
 
     /// <summary>
@@ -451,10 +472,6 @@ internal sealed partial class DashboardForm : Form
 
         CloseWith(new DashboardDrillDown(SelectedGroupLanguageCode(), filters));
     }
-
-    /// <summary>Compteur de la colonne « Lignes » d'une ligne de verdict, ou 0 si elle n'en porte pas.</summary>
-    private static int RowCount(DataGridView grid, int rowIndex)
-        => grid.Rows[rowIndex].Cells[1].Value is int count ? count : 0;
 
     /// <summary>
     /// Nommée <c>CloseWith</c> et non <c>Close</c> : une surcharge de <see cref="Form.Close"/> se
@@ -515,8 +532,4 @@ internal sealed partial class DashboardForm : Form
 /// Plusieurs colonnes peuvent être nécessaires — un fichier n'est identifié que par son projet
 /// <i>et</i> son chemin — d'où un dictionnaire plutôt qu'un couple unique.
 /// </summary>
-internal sealed record DashboardDrillDown(string LanguageCode, IReadOnlyDictionary<string, string> Filters)
-{
-    public static DashboardDrillDown Single(string languageCode, string column, string value)
-        => new(languageCode, new Dictionary<string, string>(StringComparer.Ordinal) { [column] = value });
-}
+internal sealed record DashboardDrillDown(string LanguageCode, IReadOnlyDictionary<string, string> Filters);

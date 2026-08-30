@@ -53,6 +53,8 @@ public partial class MainForm : Form
     private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
+    // Empêche deux analyses simultanées : la seconde écraserait les verdicts de la première.
+    private bool _isCheckingLayout;
     // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
     // toujours à l'écran, sans supposer lequel des messages possibles a été posé.
     private string? _flashedMessage;
@@ -259,59 +261,128 @@ public partial class MainForm : Form
         dataGridView.Columns.Add(colLayout);
     }
 
+    private const string LayoutCheckStatus = "Analyse de la mise en page…";
+
     /// <summary>
-    /// Relance l'analyse de mise en page pour la langue affichée. Sans objet hors mode .resx :
-    /// la géométrie des contrôles n'existe que dans ces fichiers.
+    /// Rend la status bar à ce qu'elle disait avant la passe, <b>et seulement si personne n'a
+    /// écrit depuis</b> : un chargement concurrent tient sa propre status bar, l'écraser avec la
+    /// nôtre y afficherait le décompte de la source précédente. Sans cette restauration, un
+    /// abandon laissait « Analyse de la mise en page… » figé, donnant à croire à une passe encore
+    /// en cours.
     /// </summary>
-    private async Task RefreshLayoutCheckAsync()
+    private void RestoreStatusAfterLayoutCheck(string? previousStatus)
     {
-        if (_allRows is null || _currentSource?.SupportsLayoutCheck != true)
+        if (statusRowCount.Text == LayoutCheckStatus)
+            statusRowCount.Text = previousStatus;
+    }
+
+    /// <summary>
+    /// Analyse la mise en page de <b>toutes</b> les langues, en une passe, et applique les verdicts.
+    ///
+    /// Lancée aux deux moments où les lignes changent d'objet : le chargement d'une source et le
+    /// rafraîchissement (F5). Pas au changement de langue — c'est justement ce que le stockage des
+    /// verdicts par langue rend inutile : les sept sont déjà calculées.
+    ///
+    /// Sans objet hors mode .resx : la géométrie des contrôles n'existe que dans ces fichiers.
+    /// </summary>
+    private async Task RunLayoutCheckAsync()
+    {
+        if (_allRows is null || _currentSource?.SupportsLayoutCheck != true || _isCheckingLayout)
             return;
 
         var source = _currentSource;
         var rows = _allRows;
         var languageCode = _currentLanguage.Code;
+        var languageCodes = Languages.Select(language => language.Code).ToList();
 
         // La vue active (Translation) n'est poussée dans les dictionnaires qu'au changement de
-        // langue ou avant une écriture. Sans ce commit, l'analyse porterait sur la valeur d'avant
-        // l'édition et afficherait un verdict en désaccord avec ce que montre la grille.
+        // langue ou avant une écriture. L'analyse ne lit que les dictionnaires : sans ce commit,
+        // elle porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord
+        // avec ce que montre la grille.
         foreach (var row in rows)
             row.CommitActiveLanguage(languageCode);
 
         IReadOnlyList<LayoutVerdict> verdicts;
+
+        _isCheckingLayout = true;
+        var previousStatus = statusRowCount.Text;
+        statusRowCount.Text = LayoutCheckStatus;
+
+        // La passe lit les dictionnaires des lignes depuis un thread de fond, et rien de ce que
+        // l'interface propose pendant ce temps n'est inoffensif : éditer une cellule appelle
+        // CommitActiveLanguage, changer de langue appelle SwitchLanguage, rafraîchir remplace les
+        // lignes — tous écrivent dans les Dictionary que l'analyse parcourt, ce qu'un Dictionary
+        // ne supporte pas. La grille ET la toolbar sont donc gelées, pas seulement la grille.
+        // La passe se compte en centaines de millisecondes : la fenêtre est étroite, elle existe.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
+        UseWaitCursor = true;
         try
         {
             // La mesure GDI détient des handles : une instance par passe, libérée aussitôt.
             verdicts = await Task.Run(() =>
             {
                 using var measurer = new GdiTextWidthMeasurer();
-                return _layoutCheckService.Analyze(source.Path, rows, languageCode, measurer.AsMeasurer());
+                return _layoutCheckService.Analyze(source.Path, rows, languageCodes, measurer.AsMeasurer());
             });
         }
         catch (Exception ex)
         {
-            // L'analyse est un confort : son échec ne doit pas empêcher de traduire.
+            // L'analyse est un confort : son échec ne doit pas empêcher de traduire ni faire
+            // échouer le chargement. Mais une colonne vide sans explication ne dit rien — le signaler.
             System.Diagnostics.Debug.WriteLine($"[MainForm] Analyse de mise en page abandonnée : {ex.GetType().Name} : {ex.Message}");
+            RestoreStatusAfterLayoutCheck(previousStatus);
+            FlashStatus($"Analyse de mise en page impossible : {ex.Message}");
             return;
+        }
+        finally
+        {
+            _isCheckingLayout = false;
+            UseWaitCursor = false;
+
+            // Ne pas rendre la main si une écriture disque a pris le relais : c'est
+            // SetWritingState qui décide alors de l'état des containers, et le forcer ici
+            // rouvrirait la grille en pleine sauvegarde.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
         }
 
         // Le chargement d'une autre source pendant l'analyse rendrait ces verdicts caducs.
-        if (!ReferenceEquals(_allRows, rows) || _currentLanguage.Code != languageCode)
+        if (!ReferenceEquals(_allRows, rows))
+        {
+            RestoreStatusAfterLayoutCheck(previousStatus);
             return;
+        }
 
         // Les verdicts ne sont appliqués qu'ici, sur le thread d'interface : les TranslationRow
         // sont liés au DataGridView, les écrire depuis la tâche de fond les exposerait à une
         // lecture concurrente par le rendu de la grille.
         foreach (var row in rows)
-            row.ClearLayoutVerdict();
+            row.ClearLayoutVerdicts();
 
         foreach (var verdict in verdicts)
-            verdict.Row.SetLayoutVerdict(verdict.Status, verdict.Issue);
+            verdict.Row.SetLayoutVerdict(verdict.LanguageCode, verdict.Status, verdict.Issue);
 
+        // La langue affichée a pu changer pendant l'analyse : c'est la sienne qu'il faut montrer,
+        // pas celle demandée au départ.
+        var displayedCode = _currentLanguage.Code;
+        foreach (var row in rows)
+            row.SelectLayoutVerdict(displayedCode);
+
+        // Le compte rendu distingue « aucun défaut » de « rien n'a pu être analysé » : sur une
+        // solution dont aucun formulaire n'est localisable, un simple « 0 débordement » se lirait
+        // comme un satisfecit alors que rien n'a été vérifié. Il porte sur toutes les langues —
+        // c'est ce que la passe a couvert — le détail par langue est dans le tableau de bord.
         var issues = verdicts.Count(verdict => verdict.IsIssue);
-        statusRowCount.Text = issues > 0
-            ? $"Lignes : {rows.Count} — {issues} débordement(s)"
-            : $"Lignes : {rows.Count}";
+        statusRowCount.Text = verdicts.Count == 0
+            ? $"Lignes : {rows.Count} — aucune ligne n'a pu être analysée"
+            : issues > 0
+                ? $"Lignes : {rows.Count} — {issues} débordement(s) sur {verdicts.Count} vérification(s), {languageCodes.Count} langues"
+                : $"Lignes : {rows.Count} — aucun débordement sur {verdicts.Count} vérification(s), {languageCodes.Count} langues";
 
         // TranslationRow n'implémente pas INotifyPropertyChanged : comme ailleurs dans ce
         // fichier après mise à jour d'une propriété liée, on force la relecture.
@@ -581,9 +652,8 @@ public partial class MainForm : Form
         UpdateVerificationCacheCountStatus();
         UpdateFilterPanelLayout(); // Mettre à jour les placeholders
 
-        // Un verdict de mise en page porte sur une traduction précise : SwitchLanguage l'a
-        // invalidé, il faut le recalculer pour la nouvelle langue.
-        _ = RefreshLayoutCheckAsync();
+        // Aucune analyse à relancer : les verdicts sont stockés par langue, SwitchLanguage a
+        // simplement rebasculé la vue active sur ceux de la nouvelle langue.
     }
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
@@ -668,7 +738,7 @@ public partial class MainForm : Form
                     MessageBoxIcon.Information);
             }
 
-            await RefreshLayoutCheckAsync();
+            await RunLayoutCheckAsync();
         }
         catch (Exception ex)
         {
@@ -1095,6 +1165,12 @@ public partial class MainForm : Form
 
         if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
             return;
+
+        // Le verdict de mise en page portait sur le texte d'avant l'édition : le garder
+        // afficherait un jugement sur une valeur qui n'existe plus. La colonne se vide pour cette
+        // ligne jusqu'au prochain rafraîchissement (F5), qui rejoue l'analyse.
+        row.CommitActiveLanguage(_currentLanguage.Code);
+        row.InvalidateLayoutVerdict(_currentLanguage.Code);
 
         var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
         _translationService.UpdateTranslationCache(row.French, row.Translation, AppConfig.Current, _currentLanguage.Name, fingerprint);
@@ -2127,7 +2203,11 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             _allRows = refreshedRows;
             ApplyFiltersPreservingSelection();
             RestoreStatusBar();
-            await RefreshLayoutCheckAsync();
+
+            // Le rafraîchissement reconstruit les lignes depuis le disque : les verdicts précédents
+            // portaient sur d'autres objets. Rejouer l'analyse est le seul moyen que la colonne
+            // reste vraie, et c'est le même moment qu'un chargement.
+            await RunLayoutCheckAsync();
         }
         catch (Exception ex)
         {
