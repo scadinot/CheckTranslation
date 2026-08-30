@@ -112,8 +112,13 @@ internal sealed class TranslationRow
         SelectLayoutVerdict(languageCode);
     }
 
-    /// <summary>Verdict stocké. <c>default</c> vaut <see cref="LayoutStatus.NotChecked"/>.</summary>
-    private readonly record struct LayoutVerdictEntry(LayoutStatus Status, string Issue);
+    /// <summary>
+    /// Verdict stocké. Une langue absente du dictionnaire rend <c>default</c>, dont
+    /// <see cref="Status"/> vaut <see cref="LayoutStatus.NotChecked"/> et <see cref="Issue"/>
+    /// vaut <c>null</c> — d'où le type nullable, qui dit la vérité plutôt que de promettre une
+    /// chaîne que la valeur par défaut ne porte pas.
+    /// </summary>
+    private readonly record struct LayoutVerdictEntry(LayoutStatus Status, string? Issue);
 
     public string GetSyncKey()
         => string.Join("\u001F", Project.Trim(), File.Trim(), Key.Trim());

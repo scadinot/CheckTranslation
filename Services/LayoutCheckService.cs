@@ -116,8 +116,11 @@ internal sealed class LayoutCheckService : ILayoutCheckService
             var translation = row.Translations.GetValueOrDefault(languageCode, string.Empty);
 
             // Sans traduction, il n'y a rien à confronter : la ligne ne reçoit pas de verdict
-            // plutôt que d'être déclarée conforme à tort.
-            if (string.IsNullOrEmpty(translation))
+            // plutôt que d'être déclarée conforme à tort. « Traduite » se dit ici comme partout
+            // ailleurs — filtres et tableau de bord — c'est-à-dire hors blancs : sans quoi une
+            // valeur réduite à des espaces serait comptée non traduite d'un côté et jugée de
+            // l'autre.
+            if (string.IsNullOrWhiteSpace(translation))
                 continue;
 
             rowByControl[controlName] = row;
