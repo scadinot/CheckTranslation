@@ -55,8 +55,7 @@ internal static class TranslationStatistics
 
     public static TranslationOverview Compute(
         IReadOnlyList<TranslationRow> rows,
-        IReadOnlyList<LanguageInfo> languages,
-        string activeLanguageCode)
+        IReadOnlyList<LanguageInfo> languages)
     {
         var languageStats = languages
             .Select(language => ComputeLanguage(rows, language))
@@ -67,7 +66,10 @@ internal static class TranslationStatistics
             Projects: rows.Select(row => row.Project).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             Files: rows.Select(row => row.Project + "|" + row.File).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             Languages: languageStats,
-            Layout: ComputeLayout(rows, activeLanguageCode));
+            Layouts: languages
+                .Select(language => ComputeLayout(rows, language))
+                .OfType<LayoutStatistics>()
+                .ToList());
     }
 
     private static LanguageStatistics ComputeLanguage(IReadOnlyList<TranslationRow> rows, LanguageInfo language)
@@ -126,18 +128,20 @@ internal static class TranslationStatistics
     }
 
     /// <summary>
-    /// État de la mise en page. Il ne vaut que pour la langue affichée : le verdict est porté par
-    /// la ligne, pas par un dictionnaire, et l'analyse ne tourne que sur la langue en cours.
-    /// Retourne <c>null</c> si aucune ligne n'a été analysée — source Excel, ou analyse pas encore
-    /// passée — plutôt que des zéros qui se liraient comme « aucun défaut ».
+    /// État de la mise en page d'une langue. L'analyse les couvre toutes en une passe, chaque
+    /// verdict étant stocké sous son code de langue : le tableau de bord peut donc les comparer,
+    /// et c'est précisément là qu'on veut voir laquelle déborde le plus.
+    ///
+    /// Retourne <c>null</c> si aucune ligne de cette langue n'a été analysée — source Excel,
+    /// langue pas encore traduite — plutôt que des zéros qui se liraient comme « aucun défaut ».
     /// </summary>
-    private static LayoutStatistics? ComputeLayout(IReadOnlyList<TranslationRow> rows, string activeLanguageCode)
+    private static LayoutStatistics? ComputeLayout(IReadOnlyList<TranslationRow> rows, LanguageInfo language)
     {
         int ok = 0, truncated = 0, collision = 0, unverifiable = 0;
 
         foreach (var row in rows)
         {
-            switch (row.LayoutStatus)
+            switch (row.GetLayoutStatus(language.Code))
             {
                 case LayoutStatus.Ok: ok++; break;
                 case LayoutStatus.Truncated: truncated++; break;
@@ -148,7 +152,7 @@ internal static class TranslationStatistics
 
         return ok + truncated + collision + unverifiable == 0
             ? null
-            : new LayoutStatistics(activeLanguageCode, ok, truncated, collision, unverifiable);
+            : new LayoutStatistics(language.Code, language.Name, ok, truncated, collision, unverifiable);
     }
 
     /// <summary>
@@ -246,6 +250,7 @@ internal sealed record GroupStatistics(
 /// <summary>Verdicts de mise en page pour la langue affichée.</summary>
 internal sealed record LayoutStatistics(
     string LanguageCode,
+    string LanguageName,
     int Ok,
     int Truncated,
     int Collision,
@@ -261,8 +266,19 @@ internal sealed record TranslationOverview(
     int Projects,
     int Files,
     IReadOnlyList<LanguageStatistics> Languages,
-    LayoutStatistics? Layout)
+    IReadOnlyList<LayoutStatistics> Layouts)
 {
+    /// <summary>
+    /// Total des défauts, toutes langues analysées confondues. Nul — et non zéro — si rien n'a
+    /// été analysé : zéro se lirait « aucun défaut », ce qui n'est pas la même information.
+    /// </summary>
+    public int? TotalLayoutIssues => Layouts.Count == 0 ? null : Layouts.Sum(layout => layout.Issues);
+
+    public int TotalLayoutChecked => Layouts.Sum(layout => layout.Analyzed);
+
+    /// <summary>Langue qui déborde le plus, en nombre de défauts. Nulle si rien n'a été analysé.</summary>
+    public LayoutStatistics? WorstLayout => Layouts.Count == 0 ? null : Layouts.MaxBy(layout => layout.Issues);
+
     /// <summary>
     /// Part traduite toutes langues confondues : le total des cases remplies sur le total des
     /// cases à remplir. Un chiffre unique pour dire « où en est le chantier ».
