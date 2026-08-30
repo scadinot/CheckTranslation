@@ -247,7 +247,10 @@ internal sealed record GroupStatistics(
     public double VerifiedRatio => Translated == 0 ? 0 : (double)Verified / Translated;
 }
 
-/// <summary>Verdicts de mise en page pour la langue affichée.</summary>
+/// <summary>
+/// Verdicts de mise en page d'<b>une</b> langue. L'analyse les couvre toutes en une passe : le
+/// tableau de bord en aligne une par langue et les compare.
+/// </summary>
 internal sealed record LayoutStatistics(
     string LanguageCode,
     string LanguageName,

@@ -292,6 +292,16 @@ public partial class MainForm : Form
         _isCheckingLayout = true;
         var previousStatus = statusRowCount.Text;
         statusRowCount.Text = "Analyse de la mise en page…";
+
+        // La passe lit les dictionnaires des lignes depuis un thread de fond. Laisser la grille
+        // éditable pendant ce temps ouvre deux failles à la fois : CellEndEdit écrit dans
+        // Translations pendant que l'analyse le parcourt — un Dictionary ne le supporte pas — et
+        // le verdict calculé sur l'ancien texte viendrait ensuite écraser l'invalidation faite par
+        // l'édition, affichant un jugement sur une valeur qui n'existe plus. La passe se compte en
+        // centaines de millisecondes : la fenêtre est étroite, mais elle existe.
+        dataGridView.EndEdit();
+        dataGridView.Enabled = false;
+        UseWaitCursor = true;
         try
         {
             // La mesure GDI détient des handles : une instance par passe, libérée aussitôt.
@@ -313,6 +323,8 @@ public partial class MainForm : Form
         finally
         {
             _isCheckingLayout = false;
+            dataGridView.Enabled = true;
+            UseWaitCursor = false;
         }
 
         // Le chargement d'une autre source pendant l'analyse rendrait ces verdicts caducs.
