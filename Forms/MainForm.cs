@@ -430,13 +430,15 @@ public partial class MainForm : Form
         // Les zones de filtre existent pour toutes les colonnes, y compris masquees : sans cela,
         // un filtre sur Projet ou Fichier s'appliquerait pendant que la grille n'en montre aucune
         // trace, et l'utilisateur verrait un sous-ensemble sans savoir pourquoi.
+        //
+        // L'affichage est revele, mais le reglage n'est PAS persiste : l'utilisateur n'a pas
+        // demande a changer sa preference, il a clique un chiffre. Ecrire AppConfig ici rendrait le
+        // drill-down destructif pour un reglage choisi ailleurs, et la prochaine ouverture de
+        // l'application garderait un mode que personne n'a demande.
         if (drillDown.Filters.Keys.Any(column => column is "Project" or "File" or "Key")
             && btnDetails?.Checked == false)
         {
-            btnDetails.Checked = true;
             ApplyShowDetails(true);
-            AppConfig.Current.ShowDetails = true;
-            AppConfig.Current.Save();
         }
 
         foreach (var (column, value) in drillDown.Filters)

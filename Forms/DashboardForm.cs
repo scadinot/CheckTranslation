@@ -18,6 +18,10 @@ internal sealed partial class DashboardForm : Form
     /// <summary>Les moyennes sont calculées au dixième : elles doivent s'afficher au dixième.</summary>
     private const string ScoreFormat = "N1";
 
+    /// <summary>Place réservée au pourcentage à droite de la barre, et marge de part et d'autre.</summary>
+    private const int TrackTextWidth = 58;
+    private const int TrackPadding = 6;
+
     /// <summary>
     /// Police soulignée des cellules cliquables, créée une seule fois. Une <see cref="Font"/>
     /// détient un handle GDI : en instancier une par cellule — onze colonnes cliquables par langue —
@@ -337,8 +341,12 @@ internal sealed partial class DashboardForm : Form
 
         e.Paint(e.CellBounds, DataGridViewPaintParts.Background | DataGridViewPaintParts.Border);
 
+        // Les largeurs sont bornées : les colonnes d'un DataGridView sont redimensionnables, et une
+        // colonne rétrécie donnait un rectangle de largeur négative — barre incohérente, et zone de
+        // texte débordant sur la cellule voisine.
         var bounds = e.CellBounds;
-        var track = new Rectangle(bounds.X + 6, bounds.Y + (bounds.Height - 14) / 2, bounds.Width - 70, 14);
+        int trackWidth = Math.Max(0, bounds.Width - TrackTextWidth - TrackPadding * 2);
+        var track = new Rectangle(bounds.X + TrackPadding, bounds.Y + (bounds.Height - 14) / 2, trackWidth, 14);
 
         if (track.Width > 0)
         {
@@ -353,7 +361,8 @@ internal sealed partial class DashboardForm : Form
             }
         }
 
-        var textArea = new Rectangle(track.Right + 4, bounds.Y, bounds.Right - track.Right - 8, bounds.Height);
+        int textLeft = Math.Clamp(track.Right + 4, bounds.X, bounds.Right);
+        var textArea = Rectangle.FromLTRB(textLeft, bounds.Y, Math.Max(textLeft, bounds.Right - 4), bounds.Bottom);
         TextRenderer.DrawText(e.Graphics!, Percent(ratio), grid.Font, textArea, grid.ForeColor,
             TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
