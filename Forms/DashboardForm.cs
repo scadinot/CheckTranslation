@@ -18,6 +18,14 @@ internal sealed partial class DashboardForm : Form
     /// <summary>Les moyennes sont calculées au dixième : elles doivent s'afficher au dixième.</summary>
     private const string ScoreFormat = "N1";
 
+    /// <summary>
+    /// Police soulignée des cellules cliquables, créée une seule fois. Une <see cref="Font"/>
+    /// détient un handle GDI : en instancier une par cellule — onze colonnes cliquables par langue —
+    /// en produisait des dizaines à chaque ouverture, jamais libérées explicitement. Même règle que
+    /// pour <see cref="GdiTextWidthMeasurer"/>, où le cache de polices existe pour cette raison.
+    /// </summary>
+    private Font? _clickableFont;
+
     private readonly IReadOnlyList<TranslationRow> _rows;
     private readonly IReadOnlyList<LanguageInfo> _languages;
     private readonly string _activeLanguageCode;
@@ -45,6 +53,8 @@ internal sealed partial class DashboardForm : Form
         _overview = TranslationStatistics.Compute(rows, languages, activeLanguageCode);
 
         InitializeComponent();
+
+        _clickableFont = new Font(Font, FontStyle.Underline);
 
         BuildSummary();
         BuildLanguageGrid();
@@ -304,14 +314,14 @@ internal sealed partial class DashboardForm : Form
         grid.Columns[index].Tag = "ratio";
     }
 
-    private static void StyleClickableCells(DataGridViewRow row, IEnumerable<int> columns)
+    private void StyleClickableCells(DataGridViewRow row, IEnumerable<int> columns)
     {
         foreach (var column in columns)
         {
             var cell = row.Cells[column];
             cell.Tag = ClickableTag;
             cell.Style.ForeColor = Color.FromArgb(0, 102, 204);
-            cell.Style.Font = new Font(row.DataGridView!.Font, FontStyle.Underline);
+            cell.Style.Font = _clickableFont;
         }
     }
 
@@ -446,6 +456,18 @@ internal sealed partial class DashboardForm : Form
         DrillDown = drillDown;
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    /// <summary>
+    /// La police soulignée est libérée à la fermeture plutôt que dans <c>Dispose(bool)</c> : ce
+    /// dernier appartient au fichier du concepteur, qu'on ne modifie pas à la main.
+    /// </summary>
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        base.OnFormClosed(e);
+
+        _clickableFont?.Dispose();
+        _clickableFont = null;
     }
 
     // --- Copie ---

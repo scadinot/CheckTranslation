@@ -49,13 +49,15 @@ partial class DashboardForm
         //
         // summaryPanel
         //
+        summaryPanel.AutoSize = true;
+        summaryPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         summaryPanel.Dock = DockStyle.Top;
         summaryPanel.Location = new Point(0, 0);
         summaryPanel.Name = "summaryPanel";
         summaryPanel.Padding = new Padding(10, 10, 10, 4);
         summaryPanel.Size = new Size(1120, 104);
         summaryPanel.TabIndex = 0;
-        summaryPanel.WrapContents = false;
+        summaryPanel.WrapContents = true;
         //
         // tabs
         //
