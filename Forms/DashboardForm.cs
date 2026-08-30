@@ -374,6 +374,12 @@ internal sealed partial class DashboardForm : Form
             || _overview.Layout is not { } layout)
             return;
 
+        // Même règle que pour le tableau des langues : un zéro ne mène nulle part. Sans cette
+        // garde, la cellule n'est certes pas soulignée, mais elle reste cliquable — et referme le
+        // tableau de bord sur une grille vide.
+        if (RowCount(gridLayout, e.RowIndex) == 0)
+            return;
+
         Close(new DashboardDrillDown(layout.LanguageCode, "LayoutIssue", filterLabel));
     }
 
@@ -393,6 +399,10 @@ internal sealed partial class DashboardForm : Form
 
         Close(new DashboardDrillDown(SelectedGroupLanguageCode(), column, value));
     }
+
+    /// <summary>Compteur de la colonne « Lignes » d'une ligne de verdict, ou 0 si elle n'en porte pas.</summary>
+    private static int RowCount(DataGridView grid, int rowIndex)
+        => grid.Rows[rowIndex].Cells[1].Value is int count ? count : 0;
 
     private void Close(DashboardDrillDown drillDown)
     {

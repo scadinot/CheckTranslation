@@ -157,11 +157,13 @@ internal static class TranslationStatistics
                      StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                int translated = 0, verified = 0;
+                int total = 0, translated = 0, verified = 0;
                 long scoreSum = 0;
 
                 foreach (var row in group)
                 {
+                    total++;
+
                     if (!string.IsNullOrWhiteSpace(row.Translations.GetValueOrDefault(languageCode, string.Empty)))
                         translated++;
 
@@ -174,7 +176,7 @@ internal static class TranslationStatistics
 
                 return new GroupStatistics(
                     group.Key,
-                    Total: group.Count(),
+                    Total: total,
                     Translated: translated,
                     Verified: verified,
                     AverageScore: verified == 0 ? null : (double)scoreSum / verified);
