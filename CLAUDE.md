@@ -77,7 +77,10 @@ CheckTranslation/
 │   ├── GlossaryForm.resx
 │   ├── GlossaryExtractionDialog.cs           # Extraction IA assistée (validation terme par terme)
 │   ├── GlossaryExtractionDialog.Designer.cs
-│   └── GlossaryExtractionDialog.resx
+│   ├── GlossaryExtractionDialog.resx
+│   ├── DashboardForm.cs                      # Tableau de bord de l'état des traductions
+│   ├── DashboardForm.Designer.cs
+│   └── DashboardForm.resx
 ├── Models/
 │   ├── TranslationRow.cs                # Ligne de traduction + dictionnaires par colonne
 │   ├── AiProvider.cs                    # Enum OpenAI / Anthropic
@@ -106,7 +109,8 @@ CheckTranslation/
 ├── Logic/
 │   ├── QualityScore.cs                       # Parsing score "XXX - ..." + dégradé couleur
 │   ├── LayoutAnalyzer.cs                     # Troncatures + collisions entre contrôles frères
-│   └── TranslationRowFiltering.cs            # Filtrage côté client (texte + score<N, score>=N, score:none)
+│   ├── TranslationRowFiltering.cs            # Filtrage côté client (texte + pseudo-filtres score / traduction / layout)
+│   └── TranslationStatistics.cs              # Calcul de l'état d'avancement (tableau de bord)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
 ├── Resources/                                # Icônes PNG (drapeaux, toolbar, tabs)
@@ -315,8 +319,16 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 - Un formulaire **non localisable** (aucune géométrie) laisse toutes ses lignes `NotChecked` : on ne conclut pas faute de données.
 - Une collision marque **les deux** lignes en cause, corriger l'une ou l'autre résolvant le problème ; une troncature déjà signalée n'est pas masquée par une collision.
 
-**`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Comment`, supporte les pseudo-filtres :
+**`TranslationStatistics`** (static) — calcule l'état d'avancement, sans aucune dépendance à l'interface : c'est ce qui le rend éprouvable hors WinForms.
+- `Compute(rows, languages, langueActive)` → `TranslationOverview` : lignes, projets, fichiers, un `LanguageStatistics` par langue, et l'état de mise en page **de la seule langue affichée** (le verdict est porté par la ligne, pas par un dictionnaire).
+- Par langue : traduites, non traduites, **identiques au français**, vérifiées, score moyen, distribution par tranche.
+- `ComputeGroups(rows, langue, GroupBy.Project | GroupBy.File)` : mêmes indicateurs par projet ou par fichier, **triés du moins avancé au plus avancé**.
+- `ScoreBuckets()` est l'**unique source de vérité** des tranches : le tableau de bord en fait ses colonnes, la liste déroulante de la colonne Commentaire en fait ses entrées.
+- Deux choix de lecture : la moyenne est nulle et non zéro quand rien n'est vérifié (zéro se lirait « toutes mauvaises ») ; la part vérifiée est rapportée aux lignes **traduites** et non au total, sinon l'indicateur plafonnerait sans que personne n'y puisse rien.
+
+**`TranslationRowFiltering`** (static) — `Filter(allRows, filters)` sur toutes les colonnes. Pour `Translation` : `translation:none`, `translation:done`, `translation:same` (identique au français — un signal, pas une erreur). Pour `Comment`, supporte les pseudo-filtres :
 - `score:none` → lignes sans score parsable
+- `score:60-69` → tranche fermée (partagée avec le tableau de bord)
 - `score<N` → lignes sans score OU score ≤ N (inclusif)
 - `score>=N` → lignes avec score ≥ N
 
@@ -441,6 +453,12 @@ En multi-sélection : mêmes actions sur toute la sélection. Progress bar alime
 4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
 5. Déclenchée au chargement, au changement de langue et au rafraîchissement. Un échec est tracé sans interrompre la traduction : l'analyse est un confort.
 
+### 7.11.bis Tableau de bord
+1. Bouton toolbar → `MainForm` pousse d'abord la vue active dans les dictionnaires (`CommitActiveLanguage`), sans quoi les éditions en cours manqueraient au décompte.
+2. `DashboardForm` calcule via `TranslationStatistics` et affiche : bandeau de cartes, onglets *Par langue* / *Par projet* / *Par fichier* / *Mise en page*.
+3. Un clic sur un chiffre souligné (ou un double-clic sur une ligne de projet / fichier) ferme la fenêtre en renvoyant un `DashboardDrillDown` (langue, colonne, valeur de filtre).
+4. `MainForm.ApplyDrillDown` bascule sur la langue, **remet tous les filtres à zéro**, puis pose le filtre demandé dans la zone de saisie ou la liste déroulante de la colonne concernée.
+
 ### 7.11 Glossaire
 - **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
 - **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → validation → ajout au glossaire de la langue active.
@@ -525,6 +543,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
+- **Le tableau de bord commence lui aussi par `CommitActiveLanguage`** — il lit les dictionnaires par code de langue, jamais la vue active. Sans ce commit, les éditions en cours seraient comptées comme non traduites.
+- **Les tranches de score ont une seule définition** — `TranslationStatistics.ScoreBuckets()`. Le tableau de bord en fait ses colonnes et `MainForm` en fait les entrées du filtre Commentaire : les faire diverger ferait qu'un clic sur « 42 » ne ramènerait pas 42 lignes.
+- **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux.
 - **`RefreshLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
 - **La vérification de mise en page ne se recalcule pas à la frappe** — elle tourne au chargement, au changement de langue et au rafraîchissement (F5). Recalculer à chaque cellule éditée relirait la géométrie de toute la solution ; l'indicateur `Rafraîchir *` signale déjà qu'une ré-application est utile.
 - **L'analyse de mise en page ne compare que des rapports** — la `Size` sérialisée d'un contrôle `AutoSize` sert d'étalon, l'échelle du formulaire s'en déduit pour les contrôles fixes. Ne pas réintroduire de comparaison directe entre une mesure et une coordonnée du `.resx` : les deux ne sont pas dans le même repère, et l'écart observé sur le corpus est d'un facteur voisin de deux.
@@ -593,6 +614,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-29 | **Vérification de mise en page** : `FormGeometryReader` (géométrie + filiation `>>X.Parent`), `LayoutAnalyzer` (troncatures et collisions, régression par rapport au français), `GdiTextWidthMeasurer` (mesure GDI à 96 ppp), colonne et filtre dans la grille. Réservée à la source `.resx` |
 | 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
 | 2026-08-30 | Mise en page : mesure **en rapport** plutôt qu'en absolu — la `Size` sérialisée des contrôles `AutoSize` sert d'étalon par formulaire, avec repli sur la médiane de la solution. Supprime `extraPadding` et l'hypothèse d'un `.resx` à 96 ppp |
+| 2026-08-30 | **Tableau de bord de l'état des traductions** : `TranslationStatistics` (calcul pur) + `DashboardForm` (cartes, par langue / projet / fichier / mise en page, barres d'avancement). Chiffres cliquables : un clic bascule la langue et filtre la grille. Pseudo-filtres `translation:none` / `done` / `same` et tranches de score fermées |
 
 ---
 
@@ -648,7 +670,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 |:--:|---|---|
 | 🟡 | **Traduction auto au chargement** | Option pour traduire automatiquement les cellules vides |
 | 🟢 | **Comparaison avant/après** | Vue diff depuis le chargement |
-| 🟢 | **Statistiques** | Dashboard : % traduit, % vérifié, scores moyens par langue |
+| 🟢 | **Statistiques** | ✅ Tableau de bord : par langue, par projet, par fichier, mise en page, chiffres cliquables |
 | 🟢 | **Export rapport** | HTML/PDF des vérifications |
 | 🟡 | **Mode batch CLI** | Version console pour CI/CD |
 | 🟢 | **Multi-fichiers** | Onglets pour plusieurs fichiers simultanés |

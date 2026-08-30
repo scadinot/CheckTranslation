@@ -52,6 +52,10 @@ public partial class MainForm : Form
     private int _contextMenuRowIndex = -1;
     private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
+    private ToolStripButton? btnDashboard;
+    // Dernier message affiche par FlashStatus : sert a ne restaurer le texte que s'il est
+    // toujours a l'ecran, sans supposer lequel des messages possibles a ete pose.
+    private string? _flashedMessage;
     private DataGridViewTextBoxColumn? colProject;
     private DataGridViewTextBoxColumn? colFile;
     private DataGridViewTextBoxColumn? colKey;
@@ -106,6 +110,7 @@ public partial class MainForm : Form
         InitLayoutColumn();
         InitDetailsButton();
         InitGlossaryButton();
+        InitDashboardButton();
         InitRefreshButton();
         InitLanguageButtons();
         ArrangeToolStripItems();
@@ -351,9 +356,95 @@ public partial class MainForm : Form
         form.ShowDialog(this);
     }
 
+    private void InitDashboardButton()
+    {
+        btnDashboard = new ToolStripButton
+        {
+            Image = LoadDashboardIcon(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            ToolTipText = "État des traductions",
+        };
+        btnDashboard.Click += BtnDashboard_Click;
+    }
+
+    /// <summary>
+    /// Icône du tableau de bord. Aucun visuel n'est fourni avec le projet : plutôt que d'échouer
+    /// sur un fichier absent, on dessine trois barres — c'est le même repli que le glossaire.
+    /// </summary>
+    private static Bitmap LoadDashboardIcon()
+    {
+        var customPath = Path.Combine(ResourceDir, "dashboard.png");
+        if (File.Exists(customPath))
+            return LoadIcon("dashboard.png", 24);
+
+        var bitmap = new Bitmap(24, 24);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+
+        using var low = new SolidBrush(Color.FromArgb(211, 47, 47));
+        using var mid = new SolidBrush(Color.FromArgb(251, 192, 45));
+        using var high = new SolidBrush(Color.FromArgb(56, 142, 60));
+        graphics.FillRectangle(low, 4, 14, 4, 7);
+        graphics.FillRectangle(mid, 10, 9, 4, 12);
+        graphics.FillRectangle(high, 16, 4, 4, 17);
+
+        return bitmap;
+    }
+
+    private void BtnDashboard_Click(object? sender, EventArgs e)
+    {
+        if (_allRows is null)
+        {
+            FlashStatus("Ouvrez d'abord une source pour voir l'état des traductions.");
+            return;
+        }
+
+        // La vue active ne vit que dans Translation / Comment tant qu'elle n'est pas poussée :
+        // sans ce commit, les éditions en cours manqueraient au décompte. Même précaution que
+        // pour la vérification de mise en page.
+        foreach (var row in _allRows)
+            row.CommitActiveLanguage(_currentLanguage.Code);
+
+        using var form = new DashboardForm(_allRows, Languages, _currentLanguage.Code);
+
+        if (form.ShowDialog(this) == DialogResult.OK && form.DrillDown is { } drillDown)
+            ApplyDrillDown(drillDown);
+    }
+
+    /// <summary>
+    /// Applique le filtre demandé depuis le tableau de bord : bascule sur la langue concernée, met
+    /// tous les filtres à zéro, puis pose le seul qui a été demandé. Repartir d'une grille non
+    /// filtrée est indispensable — un filtre resté en place ferait afficher moins de lignes que le
+    /// chiffre cliqué.
+    /// </summary>
+    private void ApplyDrillDown(DashboardDrillDown drillDown)
+    {
+        var target = Array.Find(Languages, language => language.Code == drillDown.LanguageCode);
+        if (target is not null && target != _currentLanguage)
+            SwitchToLanguage(target);
+
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+
+        if (_filterTextBoxes.TryGetValue(drillDown.Column, out var box))
+        {
+            box.Text = drillDown.Value;
+        }
+        else if (_filterComboBoxes.TryGetValue(drillDown.Column, out var comboBox))
+        {
+            int index = comboBox.Items.IndexOf(drillDown.Value);
+            if (index >= 0)
+                comboBox.SelectedIndex = index;
+        }
+
+        ApplyFilters();
+        UpdateFilterPanelLayout();
+    }
+
     private void ArrangeToolStripItems()
     {
-        if (btnDetails is null || btnRefresh is null || btnGlossary is null)
+        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null)
             return;
 
         toolStrip.Items.Clear();
@@ -365,6 +456,8 @@ public partial class MainForm : Form
         toolStrip.Items.Add(btnDetails);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnGlossary);
+        toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnDashboard);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnConfig);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -438,6 +531,15 @@ public partial class MainForm : Form
         if (lang == _currentLanguage)
             return;
 
+        SwitchToLanguage(lang);
+    }
+
+    /// <summary>
+    /// Bascule la vue sur une langue : pousse la langue courante dans les dictionnaires, recharge
+    /// la nouvelle, remet les filtres a zero et relance la verification de mise en page.
+    /// </summary>
+    private void SwitchToLanguage(LanguageInfo lang)
+    {
         if (_allRows is not null)
         {
             foreach (var row in _allRows)
@@ -1829,13 +1931,20 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
     // Feedback non-modal quand la fermeture est bloquee : flash un message dans la status bar
     // pendant 3 s puis restaure le texte precedent. Moins intrusif qu'un MessageBox.
-    private void FlashCloseBlocked()
+    private void FlashCloseBlocked() => FlashStatus(CloseBlockedMessage);
+
+    /// <summary>
+    /// Affiche un message temporaire dans la status bar, sans modale. Le texte precedent est
+    /// restaure au bout de trois secondes.
+    /// </summary>
+    private void FlashStatus(string message)
     {
         // Premiere tentative : memoriser le texte courant pour pouvoir le restaurer. Les clics
         // suivants ne reecrasent pas cette memoire (le texte actuel est deja notre message flash).
         _statusTextBeforeCloseBlocked ??= statusRowCount.Text;
 
-        statusRowCount.Text = CloseBlockedMessage;
+        _flashedMessage = message;
+        statusRowCount.Text = message;
 
         if (_closeBlockedFlashTimer is null)
         {
@@ -1853,7 +1962,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         // Ne restaurer le texte memorise que si la status bar affiche encore notre message de flash.
         // Si la sauvegarde / fusion s'est terminee entre temps, son code de finalisation a deja pose
         // un texte definitif (ex. "Lignes : N (sauvegarde)") - on ne l'ecrase pas.
-        if (statusRowCount.Text == CloseBlockedMessage && _statusTextBeforeCloseBlocked is not null)
+        if (statusRowCount.Text == _flashedMessage && _statusTextBeforeCloseBlocked is not null)
             statusRowCount.Text = _statusTextBeforeCloseBlocked;
 
         _statusTextBeforeCloseBlocked = null;
@@ -2111,6 +2220,12 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             "≤ 100",
             "≥  90",
         ]);
+
+        // Tranches fermées, partagées avec le tableau de bord : cliquer « 60 – 69 » dans le
+        // tableau doit sélectionner ici la même entrée et ramener exactement les mêmes lignes.
+        foreach (var (label, _) in TranslationStatistics.ScoreBuckets())
+            comboBox.Items.Add(label);
+
         comboBox.SelectedIndex = 0;
         comboBox.SelectedIndexChanged += FilterComboBox_SelectedIndexChanged;
         comboBox.GotFocus += (s, _) =>
@@ -2263,6 +2378,12 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             {
                 if (expressions.TryGetValue(selectedValue, out var expression))
                     filters[prop] = expression;
+                continue;
+            }
+
+            if (TranslationStatistics.TryGetScoreBucketFilter(selectedValue, out var bucket))
+            {
+                filters[prop] = bucket;
                 continue;
             }
 

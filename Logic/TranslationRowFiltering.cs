@@ -14,7 +14,7 @@ internal static class TranslationRowFiltering
                 "File" => filtered.Where(r => r.File.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "Key" => filtered.Where(r => r.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)),
                 "French" => filtered.Where(r => r.French.Contains(filter, StringComparison.OrdinalIgnoreCase)),
-                "Translation" => filtered.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+                "Translation" => ApplyTranslationFilter(filtered, filter),
                 "Comment" => ApplyCommentFilter(filtered, filter),
                 "LayoutIssue" => ApplyLayoutFilter(filtered, filter),
                 _ => filtered,
@@ -23,6 +23,28 @@ internal static class TranslationRowFiltering
 
         return filtered.ToList();
     }
+
+    /// <summary>
+    /// Pseudo-filtres de la colonne de traduction : « translation:none » (non traduite),
+    /// « translation:done » (traduite), « translation:same » (traduction identique au français).
+    ///
+    /// « Identique au français » est un signal, pas une erreur : un libellé comme « Total » ou
+    /// « Configuration » peut légitimement ne pas changer. C'est en revanche la signature d'une
+    /// recopie faite pour combler un vide.
+    /// </summary>
+    private static IEnumerable<TranslationRow> ApplyTranslationFilter(IEnumerable<TranslationRow> rows, string filter)
+        => filter.ToLowerInvariant() switch
+        {
+            "translation:none" => rows.Where(r => string.IsNullOrWhiteSpace(r.Translation)),
+            "translation:done" => rows.Where(r => !string.IsNullOrWhiteSpace(r.Translation)),
+            "translation:same" => rows.Where(IsSameAsFrench),
+            _ => rows.Where(r => r.Translation.Contains(filter, StringComparison.OrdinalIgnoreCase)),
+        };
+
+    /// <summary>Traduction non vide et identique au texte source, aux espaces et à la casse près.</summary>
+    public static bool IsSameAsFrench(TranslationRow row)
+        => !string.IsNullOrWhiteSpace(row.Translation)
+            && string.Equals(row.Translation.Trim(), row.French.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Pseudo-filtres de la colonne de mise en page : « layout:issues » (tout défaut),
@@ -58,6 +80,14 @@ internal static class TranslationRowFiltering
             && int.TryParse(filter[scoreMinPrefix.Length..], out var minScore))
         {
             return rows.Where(r => QualityScore.TryParse(r.Comment, out var score) && score >= minScore);
+        }
+
+        // Tranche fermée « score:60-69 », pour rendre cliquable la distribution du tableau de bord.
+        if (filter.StartsWith("score:", StringComparison.OrdinalIgnoreCase))
+        {
+            var bounds = filter["score:".Length..].Split('-');
+            if (bounds.Length == 2 && int.TryParse(bounds[0], out var low) && int.TryParse(bounds[1], out var high))
+                return rows.Where(r => QualityScore.TryParse(r.Comment, out var score) && score >= low && score <= high);
         }
 
         return rows.Where(r => r.Comment.Contains(filter, StringComparison.OrdinalIgnoreCase));

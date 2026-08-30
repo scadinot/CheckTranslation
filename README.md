@@ -45,6 +45,14 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 
+### Tableau de bord
+- **Bouton toolbar dédié** : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
+- **Par langue** : traduites, non traduites, **identiques au français**, vérifiées, score moyen et distribution des scores par tranche (0–59, 60–69, 70–79, 80–89, 90–100), avec barres d'avancement
+- **Par projet / par fichier** : mêmes indicateurs pour la langue choisie, **triés du moins avancé au plus avancé** — ce qui reste à faire arrive en tête
+- **Mise en page** : troncatures, collisions, conformes et non vérifiables *(source `.resx` uniquement, pour la langue affichée)*
+- **Chiffres cliquables** : un clic sur un nombre souligné bascule sur la langue concernée et filtre la grille sur ces lignes exactement — le tableau de bord est un point de départ de travail, pas une image. Double-clic sur une ligne de projet ou de fichier pour le même effet
+- **Copier** : le tableau affiché part dans le presse-papiers au format tabulé, collable dans un tableur
+
 ### Fichier : sauvegarde, rafraîchissement, fusion
 - **Sauvegarde** : réécriture des traductions et des commentaires de vérification dans la source d'origine. En mode `.resx`, seules les variantes de culture réellement modifiées sont réécrites — le fichier neutre (français) n'est jamais touché, la mise en forme et le BOM d'origine sont préservés
 - **Rafraîchir (F5)** : recharge le fichier du disque en conservant les traductions en mémoire, détecte les changements du français/commentaire source et demande confirmation avant d'écraser

@@ -31,6 +31,9 @@
     <EmbeddedResource Update="Forms\ConfigForm.resx">
       <LogicalName>CheckTranslation.ConfigForm.resources</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Update="Forms\DashboardForm.resx">
+      <LogicalName>CheckTranslation.DashboardForm.resources</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Update="Forms\GlossaryForm.resx">
       <LogicalName>CheckTranslation.GlossaryForm.resources</LogicalName>
     </EmbeddedResource>
