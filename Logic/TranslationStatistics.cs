@@ -15,8 +15,12 @@ internal static class TranslationStatistics
     /// <summary>
     /// Bornes basses des tranches de score, alignées sur la palette de <see cref="QualityScore"/>
     /// pour que le tableau de bord et la coloration de la grille racontent la même histoire.
+    ///
+    /// Privé à dessein : un tableau exposé reste modifiable même déclaré <c>readonly</c>, et la
+    /// « source unique de vérité » des tranches se ferait casser en silence. Il se lit par
+    /// <see cref="ScoreBuckets"/>.
     /// </summary>
-    public static readonly int[] ScoreBucketFloors = [0, 60, 70, 80, 90];
+    private static readonly int[] ScoreBucketFloors = [0, 60, 70, 80, 90];
 
     /// <summary>
     /// Tranches de score, avec le libellé affiché et le filtre correspondant. <b>Unique source de
@@ -76,16 +80,20 @@ internal static class TranslationStatistics
         {
             var translation = row.Translations.GetValueOrDefault(language.Code, string.Empty);
 
-            if (!string.IsNullOrWhiteSpace(translation))
-            {
-                translated++;
+            // Un score décrit une traduction. S'il n'y en a plus — libellé vidé, commentaire resté
+            // en place — le score est périmé : le compter gonflerait l'avancement de la
+            // vérification, ferait passer « vérifiées » devant « traduites », et rendrait
+            // « non vérifiées » négatif. Tout se compte donc à l'intérieur des lignes traduites.
+            if (string.IsNullOrWhiteSpace(translation))
+                continue;
 
-                // Une traduction identique à la source n'est pas fautive en soi — « Total »,
-                // « Configuration », un nombre — mais c'est la signature d'une recopie faite pour
-                // combler un vide. Le tableau de bord la montre, il ne la condamne pas.
-                if (string.Equals(translation.Trim(), row.French.Trim(), StringComparison.OrdinalIgnoreCase))
-                    sameAsSource++;
-            }
+            translated++;
+
+            // Une traduction identique à la source n'est pas fautive en soi — « Total »,
+            // « Configuration », un nombre — mais c'est la signature d'une recopie faite pour
+            // combler un vide. Le tableau de bord la montre, il ne la condamne pas.
+            if (string.Equals(translation.Trim(), row.French.Trim(), StringComparison.OrdinalIgnoreCase))
+                sameAsSource++;
 
             if (QualityScore.TryParse(row.Comments.GetValueOrDefault(language.Code, string.Empty), out var score))
             {
@@ -164,8 +172,11 @@ internal static class TranslationStatistics
                 {
                     total++;
 
-                    if (!string.IsNullOrWhiteSpace(row.Translations.GetValueOrDefault(languageCode, string.Empty)))
-                        translated++;
+                    // Même règle que par langue : un score sans traduction est périmé.
+                    if (string.IsNullOrWhiteSpace(row.Translations.GetValueOrDefault(languageCode, string.Empty)))
+                        continue;
+
+                    translated++;
 
                     if (QualityScore.TryParse(row.Comments.GetValueOrDefault(languageCode, string.Empty), out var score))
                     {

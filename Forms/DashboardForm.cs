@@ -28,8 +28,8 @@ internal sealed partial class DashboardForm : Form
 
     // Colonne -> ce qu'un clic sur cette colonne doit filtrer. Le code de langue vient de la ligne
     // cliquée, ce qui permet au même tableau de servir les sept langues.
-    private readonly Dictionary<int, (string Column, string Value)> _languageGridActions = new();
-    private readonly Dictionary<int, (string Column, string Value)> _layoutGridActions = new();
+    private readonly Dictionary<int, Dictionary<string, string>> _languageGridActions = new();
+    private readonly Dictionary<int, Dictionary<string, string>> _layoutGridActions = new();
 
     public DashboardForm(
         IReadOnlyList<TranslationRow> rows,
@@ -127,19 +127,25 @@ internal sealed partial class DashboardForm : Form
     private void BuildLanguageGrid()
     {
         AddTextColumn(gridLanguages, "Langue", 120);
-        _languageGridActions[AddNumberColumn(gridLanguages, "Traduites")] = ("Translation", "translation:done");
+        _languageGridActions[AddNumberColumn(gridLanguages, "Traduites")] = Translated;
         AddRatioColumn(gridLanguages, "% traduit");
-        _languageGridActions[AddNumberColumn(gridLanguages, "Non traduites")] = ("Translation", "translation:none");
-        _languageGridActions[AddNumberColumn(gridLanguages, "Identiques FR")] = ("Translation", "translation:same");
+        _languageGridActions[AddNumberColumn(gridLanguages, "Non traduites")] = new() { ["Translation"] = "translation:none" };
+        _languageGridActions[AddNumberColumn(gridLanguages, "Identiques FR")] = new() { ["Translation"] = "translation:same" };
         AddNumberColumn(gridLanguages, "Vérifiées");
         AddRatioColumn(gridLanguages, "% vérifié");
-        _languageGridActions[AddNumberColumn(gridLanguages, "Non vérifiées")] = ("Comment", "Non vérifiés");
+
+        // « Non vérifiées » et les tranches de score se comptent parmi les lignes traduites : le
+        // filtre doit poser la même restriction, sinon il ramènerait aussi les lignes non traduites
+        // sans score — bien plus nombreuses — et le chiffre affiché ne vaudrait plus rien.
+        _languageGridActions[AddNumberColumn(gridLanguages, "Non vérifiées")] =
+            new(Translated) { ["Comment"] = "Non vérifiés" };
+
         AddNumberColumn(gridLanguages, "Score moyen");
 
         // Le libellé sert à la fois d'en-tête de colonne et d'entrée à sélectionner dans le
         // filtre de la grille : un seul vocabulaire, donc aucun risque de divergence.
         foreach (var (label, _) in TranslationStatistics.ScoreBuckets())
-            _languageGridActions[AddNumberColumn(gridLanguages, label)] = ("Comment", label);
+            _languageGridActions[AddNumberColumn(gridLanguages, label)] = new(Translated) { ["Comment"] = label };
 
         foreach (var language in _overview.Languages)
         {
@@ -164,12 +170,16 @@ internal sealed partial class DashboardForm : Form
         }
     }
 
+    /// <summary>Restriction « la ligne est traduite », commune à tous les compteurs qui s'y limitent.</summary>
+    private static Dictionary<string, string> Translated
+        => new(StringComparer.Ordinal) { ["Translation"] = "translation:done" };
+
     // --- Tableau de mise en page ---
 
     private void BuildLayoutGrid()
     {
         AddTextColumn(gridLayout, "Verdict", 260);
-        _layoutGridActions[AddNumberColumn(gridLayout, "Lignes")] = ("LayoutIssue", string.Empty);
+        _layoutGridActions[AddNumberColumn(gridLayout, "Lignes")] = new();
 
         if (_overview.Layout is not { } layout)
         {
@@ -352,7 +362,7 @@ internal sealed partial class DashboardForm : Form
 
     private void GridLanguages_CellContentClick(object? sender, DataGridViewCellEventArgs e)
     {
-        if (e.RowIndex < 0 || !_languageGridActions.TryGetValue(e.ColumnIndex, out var action))
+        if (e.RowIndex < 0 || !_languageGridActions.TryGetValue(e.ColumnIndex, out var filters))
             return;
 
         // Un zéro ne mène nulle part : filtrer sur une grille vide n'apprend rien et fait perdre
@@ -363,7 +373,7 @@ internal sealed partial class DashboardForm : Form
         if (gridLanguages.Rows[e.RowIndex].Tag is not string languageCode)
             return;
 
-        CloseWith(DashboardDrillDown.Single(languageCode, action.Column, action.Value));
+        CloseWith(new DashboardDrillDown(languageCode, filters));
     }
 
     private void GridLayout_CellContentClick(object? sender, DataGridViewCellEventArgs e)
