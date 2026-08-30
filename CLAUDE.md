@@ -295,7 +295,9 @@ L'étalon est donc pris dans le fichier lui-même :
 | `AutoSize` | sa `Size` sérialisée **est** la largeur rendue du texte français | `Size.Width × mesure(traduction) / mesure(français)` |
 | taille fixe | échelle du formulaire = médiane des `Size.Width / mesure(français)` de ses `AutoSize` | `échelle × mesure(traduction)`, comparée à `Size.Width` |
 
-L'échelle et la marge interne s'annulent dans le rapport : **aucune constante à calibrer, aucune hypothèse sur le DPI**. Un formulaire sans contrôle `AutoSize` exploitable se rabat sur la médiane des échelles des autres formulaires de la solution (`LayoutCheckService`) — la résolution de conception est une propriété du poste, pas du formulaire — et reste non vérifiable si la solution entière n'en fournit aucune.
+L'échelle et la marge interne s'annulent dans le rapport : **aucune constante à calibrer, aucune hypothèse sur le DPI**.
+
+Un garde-fou protège l'étalon lui-même : la `Size` d'un contrôle `AutoSize` ne vaut que si elle correspond encore à son texte français. Un libellé modifié directement dans le `.resx`, sans rouvrir le concepteur, laisse une taille périmée. Un contrôle dont l'échelle s'écarte de plus d'un facteur 2 de celle de son formulaire est donc déclaré non vérifiable. La tolérance est volontairement large : la marge interne varie d'un type de contrôle à l'autre (la case d'un `CheckBox` compte dans sa largeur, pas dans son texte). Un formulaire à contrôle unique n'a aucun repère : son étalon est accepté. Un formulaire sans contrôle `AutoSize` exploitable se rabat sur la médiane des échelles des autres formulaires de la solution (`LayoutCheckService`) — la résolution de conception est une propriété du poste, pas du formulaire — et reste non vérifiable si la solution entière n'en fournit aucune.
 
 La mesure de largeur est **injectée** (`TextWidthMeasurer`) : en production c'est `GdiTextWidthMeasurer`, donc Windows ; l'injection rend toute l'analyse éprouvable hors WinForms avec une mesure déterministe. Son unité n'a pas d'importance, seule compte sa cohérence d'un appel à l'autre.
 

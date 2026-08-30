@@ -82,7 +82,8 @@ internal static class LayoutAnalyzer
                 var reference = referenceTexts.GetValueOrDefault(name, string.Empty);
                 var referenceWidth = measure(reference, font);
 
-                if (control.Location is not { } location || referenceWidth <= 0)
+                if (control.Location is not { } location || referenceWidth <= 0
+                    || !IsCalibrationPlausible(size.Width / (double)referenceWidth, scale))
                 {
                     unverifiable.Add(name);
                     continue;
@@ -111,6 +112,33 @@ internal static class LayoutAnalyzer
         }
 
         return new LayoutAnalysis(truncations, DetectCollisions(geometry, boxes), unverifiable);
+    }
+
+    /// <summary>
+    /// Écart maximal toléré entre l'échelle d'un contrôle et celle de son formulaire. Volontairement
+    /// large : la marge interne varie d'un type de contrôle à l'autre — la case d'un
+    /// <c>CheckBox</c> compte dans sa largeur, pas dans son texte — et un texte court amplifie cet
+    /// effet. Le garde-fou vise un étalon grossièrement faux, pas une dérive de quelques pixels.
+    /// </summary>
+    private const double MaxScaleDeviation = 2.0;
+
+    /// <summary>
+    /// L'étalon d'un contrôle <c>AutoSize</c> n'est valable que si sa <c>Size</c> sérialisée
+    /// correspond encore à son texte source. Un libellé français modifié directement dans le
+    /// <c>.resx</c>, sans rouvrir le concepteur, laisse une taille périmée : le rapport serait
+    /// alors calculé sur une base fausse, et le verdict avec.
+    ///
+    /// On ne peut pas le détecter en absolu, mais un contrôle dont l'échelle s'écarte franchement
+    /// de celle de ses voisins est suspect. Faute de repère — un formulaire à contrôle unique —
+    /// on ne conclut pas : l'étalon est accepté.
+    /// </summary>
+    private static bool IsCalibrationPlausible(double controlScale, double? formScale)
+    {
+        if (formScale is not { } reference || reference <= 0)
+            return true;
+
+        var deviation = controlScale > reference ? controlScale / reference : reference / controlScale;
+        return deviation <= MaxScaleDeviation;
     }
 
     /// <summary>
