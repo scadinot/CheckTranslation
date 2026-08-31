@@ -145,7 +145,9 @@ internal sealed class LayoutCheckService : ILayoutCheckService
 
         foreach (var issue in analysis.Truncations)
             if (byControl.ContainsKey(issue.Control))
-                byControl[issue.Control] = (LayoutStatus.Truncated, $"Troncature : +{issue.OverflowPixels} px");
+                byControl[issue.Control] = (LayoutStatus.Truncated, issue.Vertical
+                    ? $"Troncature (hauteur) : +{issue.OverflowPixels} px"
+                    : $"Troncature : +{issue.OverflowPixels} px");
 
         foreach (var issue in analysis.Collisions)
         {
