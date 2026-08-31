@@ -944,9 +944,10 @@ public partial class MainForm : Form
     private TreeView? solutionTree;
     private ToolStripButton? btnSolutionTree;
     private Font? treeBoldFont;
-    // Fichiers décochés, par identité projet + fichier (même séparateur que les SyncKey).
-    // Vide = tout visible (chemin rapide).
-    private readonly HashSet<string> _uncheckedFiles = new(StringComparer.OrdinalIgnoreCase);
+    // Fichiers décochés, par identité (projet, fichier). Un tuple plutôt qu'une chaîne
+    // concaténée : le filtrage teste chaque ligne de la source, une clé fabriquée par ligne
+    // allouerait à chaque recalcul. Vide = tout visible (chemin rapide).
+    private readonly HashSet<(string Project, string File)> _uncheckedFiles = new(FileKeyComparer.Instance);
     // Empêche les AfterCheck en cascade pendant une propagation ou une reconstruction.
     private bool _isUpdatingTreeChecks;
 
@@ -1049,8 +1050,24 @@ public partial class MainForm : Form
         AppConfig.Current.Save();
     }
 
-    private static string BuildFileIdentity(string project, string file)
-        => project.Trim() + "\u001F" + file.Trim();
+    // Trim : les identités viennent de cellules Excel ou de chemins, des espaces parasites ne
+    // doivent pas dédoubler un fichier. Sur une valeur déjà nette, Trim rend la même instance.
+    private static (string Project, string File) BuildFileKey(string project, string file)
+        => (project.Trim(), file.Trim());
+
+    private sealed class FileKeyComparer : IEqualityComparer<(string Project, string File)>
+    {
+        public static readonly FileKeyComparer Instance = new();
+
+        public bool Equals((string Project, string File) x, (string Project, string File) y)
+            => StringComparer.OrdinalIgnoreCase.Equals(x.Project, y.Project)
+                && StringComparer.OrdinalIgnoreCase.Equals(x.File, y.File);
+
+        public int GetHashCode((string Project, string File) key)
+            => HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(key.Project),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(key.File));
+    }
 
     /// <summary>
     /// Reconstruit l'arbre depuis <see cref="_allRows"/>. Au chargement d'une source, tout est
@@ -1063,7 +1080,7 @@ public partial class MainForm : Form
             return;
 
         var previouslyUnchecked = preserveChecks
-            ? new HashSet<string>(_uncheckedFiles, StringComparer.OrdinalIgnoreCase)
+            ? new HashSet<(string Project, string File)>(_uncheckedFiles, FileKeyComparer.Instance)
             : [];
         _uncheckedFiles.Clear();
 
@@ -1087,7 +1104,7 @@ public partial class MainForm : Form
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
                 {
-                    var identity = BuildFileIdentity(projectGroup.Key, file);
+                    var identity = BuildFileKey(projectGroup.Key, file);
                     bool isChecked = !previouslyUnchecked.Contains(identity);
                     if (!isChecked)
                     {
@@ -1153,7 +1170,7 @@ public partial class MainForm : Form
 
         foreach (TreeNode projectNode in solutionTree.Nodes)
             foreach (TreeNode fileNode in projectNode.Nodes)
-                if (!fileNode.Checked && fileNode.Tag is string identity)
+                if (!fileNode.Checked && fileNode.Tag is ValueTuple<string, string> identity)
                     _uncheckedFiles.Add(identity);
     }
 
@@ -1196,7 +1213,7 @@ public partial class MainForm : Form
 
         return _uncheckedFiles.Count == 0
             ? _allRows
-            : _allRows.Where(row => !_uncheckedFiles.Contains(BuildFileIdentity(row.Project, row.File))).ToList();
+            : _allRows.Where(row => !_uncheckedFiles.Contains(BuildFileKey(row.Project, row.File))).ToList();
     }
 
     /// <summary>
@@ -2438,8 +2455,9 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         config.WindowWidth = bounds.Width;
         config.WindowHeight = bounds.Height;
 
-        // Panneau replié : SplitterDistance ne vaut rien, on garde la dernière largeur visible.
-        if (splitContainer is not null && !splitContainer.Panel1Collapsed)
+        // SplitterDistance survit au repli du panneau (Panel1Collapsed ne fait que masquer) :
+        // sauvegarder sans condition, sinon redimensionner puis replier perdait la largeur.
+        if (splitContainer is not null)
             config.SolutionTreeWidth = splitContainer.SplitterDistance;
         if (btnSolutionTree is not null)
             config.ShowSolutionTree = btnSolutionTree.Checked;
