@@ -1116,11 +1116,19 @@ public partial class MainForm : Form
         if (solutionTree is null || _allRows is null)
             return;
 
+        var visibleFiles = solutionTree.Nodes.Cast<TreeNode>()
+            .SelectMany(project => project.Nodes.Cast<TreeNode>())
+            .ToList();
+
+        // Un filtre sans correspondance laisse l'arbre vide et la case affichée cochée : un clic
+        // viderait alors toute la sélection sans le moindre retour visuel. Il n'y a rien de
+        // visible sur quoi agir — on n'agit pas.
+        if (visibleFiles.Count == 0)
+            return;
+
         // Cocher s'il reste au moins un élément visible décoché, sinon tout décocher : depuis
         // l'état partiel, le premier clic pose la sélection plutôt que de la vider.
-        bool checking = solutionTree.Nodes.Cast<TreeNode>()
-            .SelectMany(project => project.Nodes.Cast<TreeNode>())
-            .Any(file => !file.Checked);
+        bool checking = visibleFiles.Any(file => !file.Checked);
 
         // Dans les deux sens, on repart de « tout décoché » : cocher retire ensuite les seuls
         // éléments visibles — la sélection devient exactement ce que le filtre montre, ce qu'il
