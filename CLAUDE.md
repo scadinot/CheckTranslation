@@ -63,7 +63,7 @@ CheckTranslation/
 ├── CheckTranslation.csproj      # Projet (WinExe, net8.0-windows)
 ├── Program.cs                   # Point d'entrée (STAThread, bootstrap DI)
 ├── Forms/
-│   ├── MainForm.cs                           # Logique principale (~2080 lignes, organisée en sections)
+│   ├── MainForm.cs                           # Logique principale (~2500 lignes, organisée en sections)
 │   ├── MainForm.Designer.cs                  # Code généré par le designer
 │   ├── MainForm.resx                         # Ressources du form
 │   ├── ConfigForm.cs                         # Config (prompts, IA, vidage cache)
@@ -89,7 +89,8 @@ CheckTranslation/
 │   ├── MergeDifferenceResolution.cs     # Décision utilisateur par ligne (fusion)
 │   ├── MergeRowSnapshot.cs              # Snapshot lecture seule pour l'UI de fusion
 │   ├── Glossary.cs                      # Conteneur du glossaire
-│   └── GlossaryEntry.cs                 # Source / Destination / Context
+│   ├── GlossaryEntry.cs                 # Source / Destination / Context
+│   └── LayoutStatus.cs                  # Enum verdict de mise en page (NotChecked / Ok / Truncated / Collision / Unverifiable)
 ├── Services/
 │   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save / SupportsMerge)
 │   ├── ITranslationSourceFactory.cs / TranslationSourceFactory.cs  # .xlsx → Excel, .sln/.slnx → resx
@@ -113,6 +114,7 @@ CheckTranslation/
 │   └── TranslationStatistics.cs              # Calcul de l'état d'avancement (tableau de bord)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
+├── FormTest/                                 # Fixture : formulaire localisé en 7 langues, banc d'essai manuel de la vérification de mise en page (§11)
 ├── Resources/                                # Icônes PNG (drapeaux, toolbar, tabs)
 ├── Input.xlsx                                # Fichier Excel exemple (~3 Mo)
 ├── README.md                                 # Documentation utilisateur
@@ -261,7 +263,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 ### 6.2 Formulaires
 
-**`Forms/MainForm.cs`** (~2080 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
+**`Forms/MainForm.cs`** (~2500 lignes) — `partial class` (avec `MainForm.Designer.cs`). Toute la logique applicative est dans ce fichier, organisée en **sections commentées** :
 - Constructeur, InitComponent, init des colonnes / boutons / langues
 - `// --- Indicateur de qualité (couleur) ---` : `DataGridView_CellFormatting` + `QualityScore.GetBackColor`
 - `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms. Les métriques de layout sont calculées au runtime selon le DPI (`_filterControlHeight`, `_columnHeaderTitleHeight`, `FilterIconWidth`, `FilterBottomMargin`) — plus aucune constante en pixels.
@@ -625,6 +627,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 
 **État actuel** : aucun framework de test, aucun projet de test dans la solution.
 
+**Banc d'essai manuel** : le dossier `FormTest/` contient un formulaire localisé en 7 langues, jamais instancié par l'application — c'est une fixture, pas une fonctionnalité. Ouvrir `CheckTranslation.slnx` dans l'application elle-même le fait apparaître comme n'importe quel formulaire du corpus : ses contrôles calibrés (labels `AutoSize`, label à largeur fixe, bouton, case à cocher) et ses variantes de culture, dont les commentaires portent des scores connus, permettent de vérifier à la main la chaîne de mise en page (troncatures, collisions) et la colorisation par score. Faute de projet séparé, il est compilé dans l'exécutable ; l'en exclure est un choix ouvert.
+
 **Candidats prioritaires** pour un futur `CheckTranslation.Tests/` (xUnit ou NUnit) :
 - `Logic/QualityScore` (parsing + calcul couleur)
 - `Logic/TranslationRowFiltering` (texte + pseudo-filtres score)
@@ -683,6 +687,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-30 | **Tableau de bord de l'état des traductions** : `TranslationStatistics` (calcul pur) + `DashboardForm` (cartes, par langue / projet / fichier / mise en page, barres d'avancement). Chiffres cliquables : un clic bascule la langue et filtre la grille. Pseudo-filtres `translation:none` / `done` / `same` et tranches de score fermées |
 | 2026-08-30 | Vérification de mise en page **multi-langues en une passe** : verdicts stockés par code de langue dans `TranslationRow`, analyse lancée au chargement et au rafraîchissement pour les sept langues à la fois (×1,8 au lieu de ×4,1), plus aucun recalcul au changement de langue. Onglet « Mise en page » du tableau de bord comparant les sept langues. Compte rendu distinguant « aucun défaut » de « rien n'a pu être analysé » |
 | 2026-08-31 | Diagnostic chiffré du premier chargement plus lent : compilation étagée de .NET. Trois contre-mesures mises en œuvre et mesurées (ReadyToRun 6 %, préchauffage 8 %, `TieredCompilation=0` −28 % / +47 %), aucune retenue (§5.1 et §5.2) |
+| 2026-08-31 | Documentation : arborescence du §3 remise à niveau (`Models/LayoutStatus.cs`, dossier `FormTest/`, taille réelle de `MainForm.cs`) ; `FormTest` documenté comme banc d'essai manuel de la vérification de mise en page (§11) |
 
 ---
 
