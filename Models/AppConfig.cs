@@ -436,11 +436,17 @@ internal sealed class AppConfig
             WindowWidth = dto.WindowWidth ?? 0,
             WindowHeight = dto.WindowHeight ?? 0,
             // Compat : avant la disparition du mode « détails », deux jeux de largeurs étaient
-            // persistés ; l'ancien jeu « avec détails » (le mode par défaut) sert de repli. Les
-            // colonnes disparues (colProject, colFile) sont simplement ignorées à la restauration.
-            ColumnFillWeights = (dto.ColumnFillWeights ?? dto.ColumnFillWeightsWithDetails) is { } weights
-                ? new Dictionary<string, float>(weights, StringComparer.Ordinal)
-                : new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal),
+            // persistés et ShowDetails désignait celui réellement affiché à la fermeture. Les
+            // trois champs legacy sont relus pour restaurer le jeu que l'utilisateur voyait ;
+            // les colonnes disparues (colProject, colFile) sont ignorées à la restauration.
+            // Seul ColumnFillWeights est réécrit à la prochaine sauvegarde.
+            ColumnFillWeights = new Dictionary<string, float>(
+                dto.ColumnFillWeights
+                    ?? (dto.ShowDetails == false
+                        ? dto.ColumnFillWeightsWithoutDetails ?? dto.ColumnFillWeightsWithDetails
+                        : dto.ColumnFillWeightsWithDetails ?? dto.ColumnFillWeightsWithoutDetails)
+                    ?? EmptyColumnWidths,
+                StringComparer.Ordinal),
             ShowSolutionTree = dto.ShowSolutionTree ?? true,
             SolutionTreeWidth = dto.SolutionTreeWidth ?? 0,
         };
@@ -527,8 +533,11 @@ internal sealed class AppConfig
         public int? WindowWidth { get; set; }
         public int? WindowHeight { get; set; }
         public Dictionary<string, float>? ColumnFillWeights { get; set; }
-        // Legacy : jeu « avec détails » d'avant la disparition du mode, lu comme repli.
+        // Legacy : les deux jeux d'avant la disparition du mode « détails », et le drapeau qui
+        // désignait celui réellement affiché. Relus au chargement, jamais réécrits.
         public Dictionary<string, float>? ColumnFillWeightsWithDetails { get; set; }
+        public Dictionary<string, float>? ColumnFillWeightsWithoutDetails { get; set; }
+        public bool? ShowDetails { get; set; }
         public bool? ShowSolutionTree { get; set; }
         public int? SolutionTreeWidth { get; set; }
     }
