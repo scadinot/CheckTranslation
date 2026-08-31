@@ -693,6 +693,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | Diagnostic chiffré du premier chargement plus lent : compilation étagée de .NET. Trois contre-mesures mises en œuvre et mesurées (ReadyToRun 6 %, préchauffage 8 %, `TieredCompilation=0` −28 % / +47 %), aucune retenue (§5.1 et §5.2) |
 | 2026-08-31 | Documentation : arborescence du §3 remise à niveau (`Models/LayoutStatus.cs`, dossier `FormTest/`, taille réelle de `MainForm.cs`) ; `FormTest` documenté comme banc d'essai manuel de la vérification de mise en page (§11) |
 | 2026-08-31 | Gel de l'UI pendant les batchs IA : `TranslateRowsAsync` / `VerifyRowsAsync` / `ExtractTermsRowsAsync` gèlent toolbar + grille (au lieu de Ouvrir/Sauver seuls) — changer de langue, fusionner ou rafraîchir pendant un batch corrompait les traductions (placeholders committés, fusionnés ou orphelins). `CanRefreshView` vérifie `toolStrip.Enabled` : F5 contournait tous les gels via `ProcessCmdKey` |
+| 2026-08-31 | Trois écarts corrigés suite à l'analyse détaillée : la sauvegarde `.resx` lit désormais le XML par noms locaux comme le chargement (les éléments créés reprennent l'espace de noms du parent) ; l'aperçu Markdown des prompts émet un `<meta charset>` valide (backslashes parasites retirés) ; le fingerprint du glossaire est calculé sur les entrées triées, comme documenté au §8.4 |
 
 ---
 
