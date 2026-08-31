@@ -267,6 +267,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - Constructeur, InitComponent, init des colonnes / boutons / langues
 - `// --- Indicateur de qualité (couleur) ---` : `DataGridView_CellFormatting` + `QualityScore.GetBackColor`
 - `// --- Filtres (style ResX Resource Manager) ---` : loupe dans l'en-tête, TextBox superposé, debounce 300 ms. Les métriques de layout sont calculées au runtime selon le DPI (`_filterControlHeight`, `_columnHeaderTitleHeight`, `FilterIconWidth`, `FilterBottomMargin`) — plus aucune constante en pixels.
+- `// --- Arborescence de la solution (style ResX Resource Manager) ---` : panneau gauche (`SplitContainer` créé par code, grille du Designer réparentée dans `Panel2`), arbre Projet → Fichier à cases à cocher. Décocher restreint l'affichage de la grille (`_uncheckedFiles`, identité projet + fichier), bouton toolbar pour replier le panneau, largeur et visibilité persistées.
 - Tri, menu contextuel, chargement/sauvegarde, traduire/vérifier IA, glossaire, auto-traduire
 - **Verrou d'écriture disque** : `SetWritingState(bool)` positionne `_isWriting`, désactive `toolStrip` + `dataGridView` et fait annuler la fermeture par `MainForm_FormClosing`. Le refus de fermeture est signalé sans modale par `FlashCloseBlocked()` (message temporaire de 3 s dans la status bar, texte précédent restauré).
 - `// --- Icônes ---`
@@ -420,6 +421,7 @@ Contenu persisté :
 - Fournisseur sélectionné (`Provider`) et paramètres par provider (`OpenAiKey/Url/ModelName`, `AnthropicKey/Url/ModelName`, `BifrostOpenAiKey/Url/ModelName`, `BifrostAnthropicKey/Url/ModelName`)
 - `ShowDetails`, `SelectedLanguageCode`, `WindowWidth/Height`
 - `ColumnFillWeightsWithDetails` / `ColumnFillWeightsWithoutDetails` : largeurs de colonnes selon le mode détails
+- `ShowSolutionTree` / `SolutionTreeWidth` : visibilité et largeur du panneau d'arborescence
 
 **Sécurité** : clés API chiffrées via DPAPI (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`). En cas d'échec de déchiffrement (autre utilisateur, format invalide), retourne la valeur telle quelle plutôt que de planter.
 
@@ -472,7 +474,8 @@ Deux prédicats portent cette classification et évitent d'éparpiller les `swit
 ### 7.5 Filtrage
 - TextBox superposé à l'en-tête (toutes colonnes sauf Commentaire) + debounce 300 ms.
 - ComboBox superposé à l'en-tête Commentaire (filtres par score).
-- `TranslationRowFiltering.Filter(_allRows, _filters)` recalcule le snapshot affiché.
+- **Arborescence de la solution** (panneau gauche, style ResX Resource Manager) : cases à cocher Projet → Fichier. Décocher restreint l'affichage ; cocher/décocher un projet propage à ses fichiers, l'état du projet reflète celui de ses fichiers. Même debounce que les filtres texte.
+- `TranslationRowFiltering.Filter(lignes visibles selon l'arbre, _filters)` recalcule le snapshot affiché.
 - `ApplyFiltersPreservingSelection()` conserve la sélection et le scroll lors des ré-applications.
 
 ### 7.6 Tri
@@ -618,7 +621,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Un score sans traduction est périmé, pas une vérification** — `TranslationStatistics` ne compte les vérifications, les moyennes et les tranches qu'à l'intérieur des lignes traduites. Sinon « vérifiées » pouvait dépasser « traduites », le taux sortir de [0,1] et « non vérifiées » devenir négatif. Les filtres des chiffres concernés portent donc aussi `translation:done`.
 - **Les tranches de score ont une seule définition** — `TranslationStatistics.ScoreBuckets()`. Le tableau de bord en fait ses colonnes et `MainForm` en fait les entrées du filtre Commentaire : les faire diverger ferait qu'un clic sur « 42 » ne ramènerait pas 42 lignes.
 - **Un filtre texte préfixé de `=` est une égalité exacte** — c'est ce qui permet au tableau de bord de tenir sa promesse : un fichier n'est identifié que par son projet *et* son chemin, et `Properties\Msg` ne doit pas ramener `Properties\Msg2`. La saisie manuelle reste un « contient ».
-- **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux.
+- **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux. L'arborescence de la solution en fait partie : le drill-down recoche tout (`ResetSolutionTreeChecks`).
+- **L'arborescence de la solution est un filtre d'affichage, pas une exclusion** — décocher un fichier le retire de la grille, mais la sauvegarde, la fusion, le tableau de bord et l'analyse de mise en page portent toujours sur toutes les lignes (`_allRows`). Ne pas brancher ces opérations sur `GetTreeVisibleRows` sans repenser les invariants du tableau de bord.
+- **L'arbre suit `dataGridView.Enabled`** — un seul hook (`EnabledChanged`) le gèle avec la grille pour tous les gels de l'application (batch IA, écriture disque, analyse de mise en page, chargement, rafraîchissement) : ne pas ajouter de désactivation site par site. Le double-clic sur une case est neutralisé (`CheckBoxTreeView`) : WinForms bascule sinon l'état visuel sans lever `AfterCheck`, et l'affichage se désynchronise du filtre.
 - **`RunLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
 - **La vérification de mise en page couvre toutes les langues en une passe** — `LayoutCheckService.Analyze` prend une liste de codes, pas un code. Ne pas revenir à une passe par langue : la lecture de la géométrie, qui domine le coût, serait refaite à l'identique sept fois (×4,1 mesuré, contre ×1,8 pour la passe unique).
 - **Elle est lancée au chargement et au rafraîchissement, jamais au changement de langue** — les sept langues sont déjà calculées, `SwitchToLanguage` n'a qu'à rebasculer la vue active. Rebrancher l'analyse sur ce chemin ne ferait que recalculer ce qui existe déjà.
@@ -700,6 +705,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | Trois écarts corrigés suite à l'analyse détaillée : la sauvegarde `.resx` lit désormais le XML par noms locaux comme le chargement (les éléments créés reprennent l'espace de noms du parent) ; l'aperçu Markdown des prompts émet un `<meta charset>` valide (backslashes parasites retirés) ; le fingerprint du glossaire est calculé sur les entrées triées, comme documenté au §8.4 |
 | 2026-08-31 | Gel de l'UI étendu au chargement et au rafraîchissement (revue Copilot PR #30) : `LoadFileAsync` et `BtnRefresh_Click` gèlent toolbar + grille — F5 pouvait ré-entrer dans `BtnRefresh_Click` (deux chargements concurrents) et les drapeaux restaient cliquables pendant un rechargement (vues actives mélangées entre anciennes et nouvelles lignes) |
 | 2026-08-31 | Mise en page : dimension verticale par retours à la ligne explicites — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes (collisions verticales détectées), un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize`, police par police, `Troncature (hauteur)` dans la grille). Le wrap reste hors périmètre (roadmap §13.3) |
+| 2026-08-31 | **Arborescence de la solution** (style ResX Resource Manager) : panneau gauche à cases à cocher Projet → Fichier restreignant l'affichage de la grille. `SplitContainer` créé par code (grille réparentée), propagation projet ↔ fichiers, conservation des cases au rafraîchissement, recochage par le drill-down, gel via `dataGridView.EnabledChanged`, largeur et visibilité persistées (`ShowSolutionTree` / `SolutionTreeWidth`) |
 
 ---
 
