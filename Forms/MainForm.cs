@@ -948,6 +948,10 @@ public partial class MainForm : Form
     // concaténée : le filtrage teste chaque ligne de la source, une clé fabriquée par ligne
     // allouerait à chaque recalcul. Vide = tout visible (chemin rapide).
     private readonly HashSet<(string Project, string File)> _uncheckedFiles = new(FileKeyComparer.Instance);
+    // Bandeau au-dessus de l'arbre : case « tout cocher / décocher » et filtre du panneau.
+    private CheckBox? treeMasterCheck;
+    private TextBox? treeFilterBox;
+    private System.Windows.Forms.Timer? _treeFilterDebounceTimer;
     // Empêche les AfterCheck en cascade pendant une propagation ou une reconstruction.
     private bool _isUpdatingTreeChecks;
 
@@ -1004,7 +1008,6 @@ public partial class MainForm : Form
             ShowPlusMinus = true,
             ShowRootLines = false,
             BorderStyle = BorderStyle.None,
-            Enabled = dataGridView.Enabled,
         };
         solutionTree.AfterCheck += SolutionTree_AfterCheck;
         treeBoldFont = new Font(solutionTree.Font, FontStyle.Bold);
@@ -1022,7 +1025,10 @@ public partial class MainForm : Form
         // ce que garantit la même position dans la z-order.
         int index = Controls.GetChildIndex(dataGridView);
         Controls.Remove(dataGridView);
+        // Ordre d'ajout : l'arbre (Fill) d'abord, le bandeau (Top) ensuite — la mise en page
+        // Dock se fait en z-order inverse, le bandeau doit être servi avant le remplissage.
         splitContainer.Panel1.Controls.Add(solutionTree);
+        splitContainer.Panel1.Controls.Add(CreateSolutionTreeHeader());
         splitContainer.Panel2.Controls.Add(dataGridView);
         Controls.Add(splitContainer);
         Controls.SetChildIndex(splitContainer, index);
@@ -1031,13 +1037,140 @@ public partial class MainForm : Form
         splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, LogicalToDeviceUnits(240));
 
         // Tous les gels de l'UI passent par dataGridView.Enabled (batch IA, écriture disque,
-        // analyse de mise en page, chargement, rafraîchissement) : l'arbre suit le même état
-        // sans qu'aucun des sept sites n'ait à le connaître.
+        // analyse de mise en page, chargement, rafraîchissement) : le panneau entier — arbre,
+        // case maîtresse et filtre — suit le même état sans qu'aucun des sites n'ait à le
+        // connaître.
+        splitContainer.Panel1.Enabled = dataGridView.Enabled;
         dataGridView.EnabledChanged += (_, _) =>
         {
-            if (solutionTree is not null)
-                solutionTree.Enabled = dataGridView.Enabled;
+            if (splitContainer is not null)
+                splitContainer.Panel1.Enabled = dataGridView.Enabled;
         };
+    }
+
+    /// <summary>
+    /// Bandeau au-dessus de l'arbre, comme dans ResX Resource Manager : case « tout cocher /
+    /// décocher » et zone de filtre. Les deux agissent sur les éléments <b>visibles</b> :
+    /// filtrer « Catalog » puis décocher tout ne décoche que ces éléments-là. Le filtre ne
+    /// restreint que le panneau — la grille a ses propres filtres de colonnes.
+    /// </summary>
+    private Control CreateSolutionTreeHeader()
+    {
+        // AutoCheck désactivé : la case a trois états d'affichage (tout / rien / partiel) mais
+        // deux actions seulement, décidées dans le Click. Laisser WinForms basculer l'état avant
+        // le gestionnaire obligerait à deviner de quel état on vient.
+        treeMasterCheck = new CheckBox
+        {
+            Dock = DockStyle.Left,
+            Width = LogicalToDeviceUnits(24),
+            CheckAlign = ContentAlignment.MiddleCenter,
+            AutoCheck = false,
+            CheckState = CheckState.Checked,
+        };
+        treeMasterCheck.Click += TreeMasterCheck_Click;
+
+        treeFilterBox = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            PlaceholderText = "Filtrer…",
+        };
+
+        // Debounce distinct de celui des filtres de colonnes : filtrer l'arbre ne recalcule que
+        // le panneau, pas la grille.
+        _treeFilterDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+        _treeFilterDebounceTimer.Tick += (_, _) =>
+        {
+            _treeFilterDebounceTimer.Stop();
+            RebuildSolutionTreeNodes();
+        };
+        treeFilterBox.TextChanged += (_, _) =>
+        {
+            _treeFilterDebounceTimer.Stop();
+            _treeFilterDebounceTimer.Start();
+        };
+        treeFilterBox.KeyDown += (s, args) =>
+        {
+            if (args.KeyCode == Keys.Escape && s is TextBox box)
+            {
+                box.Text = string.Empty;
+                solutionTree?.Focus();
+                args.SuppressKeyPress = true;
+            }
+        };
+
+        var header = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = treeFilterBox.PreferredHeight + LogicalToDeviceUnits(6),
+            Padding = new Padding(LogicalToDeviceUnits(2), LogicalToDeviceUnits(3), LogicalToDeviceUnits(2), LogicalToDeviceUnits(3)),
+        };
+        header.Controls.Add(treeFilterBox);
+        header.Controls.Add(treeMasterCheck);
+        return header;
+    }
+
+    private void TreeMasterCheck_Click(object? sender, EventArgs e)
+    {
+        if (solutionTree is null)
+            return;
+
+        // Cocher s'il reste au moins un élément visible décoché, sinon tout décocher : depuis
+        // l'état partiel, le premier clic complète la sélection plutôt que de la vider.
+        bool anyUnchecked = solutionTree.Nodes.Cast<TreeNode>()
+            .SelectMany(project => project.Nodes.Cast<TreeNode>())
+            .Any(file => !file.Checked);
+
+        SetVisibleChecks(anyUnchecked);
+        SyncUncheckedFromVisibleNodes();
+        UpdateTreeMasterState();
+
+        _filterDebounceTimer?.Stop();
+        _filterDebounceTimer?.Start();
+    }
+
+    /// <summary>Coche ou décoche tous les nœuds visibles, sans déclencher de recalcul par nœud.</summary>
+    private void SetVisibleChecks(bool value)
+    {
+        if (solutionTree is null)
+            return;
+
+        _isUpdatingTreeChecks = true;
+        try
+        {
+            foreach (TreeNode projectNode in solutionTree.Nodes)
+            {
+                projectNode.Checked = value;
+                foreach (TreeNode fileNode in projectNode.Nodes)
+                    fileNode.Checked = value;
+            }
+        }
+        finally
+        {
+            _isUpdatingTreeChecks = false;
+        }
+    }
+
+    /// <summary>
+    /// État de la case maîtresse : tout / rien / partiel, calculé sur les éléments visibles. Un
+    /// arbre vide s'affiche coché — il n'y a rien à décocher.
+    /// </summary>
+    private void UpdateTreeMasterState()
+    {
+        if (treeMasterCheck is null || solutionTree is null)
+            return;
+
+        int total = 0, checkedCount = 0;
+        foreach (TreeNode projectNode in solutionTree.Nodes)
+            foreach (TreeNode fileNode in projectNode.Nodes)
+            {
+                total++;
+                if (fileNode.Checked)
+                    checkedCount++;
+            }
+
+        treeMasterCheck.CheckState = total == 0 || checkedCount == total
+            ? CheckState.Checked
+            : checkedCount == 0 ? CheckState.Unchecked : CheckState.Indeterminate;
     }
 
     private void BtnSolutionTree_Click(object? sender, EventArgs e)
@@ -1070,19 +1203,51 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Reconstruit l'arbre depuis <see cref="_allRows"/>. Au chargement d'une source, tout est
-    /// coché ; au rafraîchissement, les cases décochées survivent par identité — un fichier
-    /// disparu de la source sort du même coup de la liste des décochés.
+    /// Resynchronise l'arbre avec <see cref="_allRows"/>. Au chargement d'une source, tout est
+    /// coché et le filtre du bandeau est vidé ; au rafraîchissement, les cases décochées et le
+    /// filtre survivent — un fichier disparu de la source sort du même coup de la liste des
+    /// décochés.
     /// </summary>
     private void PopulateSolutionTree(bool preserveChecks)
     {
         if (solutionTree is null || _allRows is null)
             return;
 
-        var previouslyUnchecked = preserveChecks
-            ? new HashSet<(string Project, string File)>(_uncheckedFiles, FileKeyComparer.Instance)
-            : [];
-        _uncheckedFiles.Clear();
+        if (!preserveChecks)
+        {
+            _uncheckedFiles.Clear();
+            if (treeFilterBox is not null)
+                treeFilterBox.Text = string.Empty;
+        }
+        else
+        {
+            var currentKeys = new HashSet<(string Project, string File)>(FileKeyComparer.Instance);
+            foreach (var row in _allRows)
+                currentKeys.Add(BuildFileKey(row.Project, row.File));
+
+            _uncheckedFiles.RemoveWhere(key => !currentKeys.Contains(key));
+        }
+
+        // La reconstruction a lieu tout de suite : un tick de debounce déjà armé — par
+        // l'affectation du texte ci-dessus, ou par une saisie en cours au moment d'un F5 —
+        // la rejouerait dans 300 ms pour rien.
+        _treeFilterDebounceTimer?.Stop();
+        RebuildSolutionTreeNodes();
+    }
+
+    /// <summary>
+    /// Reconstruit les nœuds visibles : projets et fichiers de la source, restreints par le
+    /// filtre du bandeau. Un projet dont le nom correspond montre tous ses fichiers ; sinon,
+    /// seuls ses fichiers correspondants apparaissent. Les états cochés ne vivent pas dans les
+    /// nœuds mais dans <see cref="_uncheckedFiles"/> : filtrer ne perd donc aucun décochage, y
+    /// compris sur les éléments masqués.
+    /// </summary>
+    private void RebuildSolutionTreeNodes()
+    {
+        if (solutionTree is null || _allRows is null)
+            return;
+
+        var filter = treeFilterBox?.Text.Trim() ?? string.Empty;
 
         _isUpdatingTreeChecks = true;
         solutionTree.BeginUpdate();
@@ -1094,6 +1259,9 @@ public partial class MainForm : Form
                 .GroupBy(row => row.Project.Trim(), StringComparer.OrdinalIgnoreCase)
                 .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
             {
+                bool projectMatches = filter.Length == 0
+                    || projectGroup.Key.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
                 // L'espace final contourne le rognage connu de WinForms sur un NodeFont plus
                 // large que la police du TreeView.
                 var projectNode = new TreeNode(projectGroup.Key + " ") { NodeFont = treeBoldFont };
@@ -1104,16 +1272,20 @@ public partial class MainForm : Form
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
                 {
+                    if (!projectMatches && !file.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     var identity = BuildFileKey(projectGroup.Key, file);
-                    bool isChecked = !previouslyUnchecked.Contains(identity);
+                    bool isChecked = !_uncheckedFiles.Contains(identity);
                     if (!isChecked)
-                    {
-                        _uncheckedFiles.Add(identity);
                         allChecked = false;
-                    }
 
                     projectNode.Nodes.Add(new TreeNode(file) { Tag = identity, Checked = isChecked });
                 }
+
+                // Aucun fichier ne passe le filtre : le projet n'apparaît pas.
+                if (projectNode.Nodes.Count == 0)
+                    continue;
 
                 projectNode.Checked = allChecked;
                 solutionTree.Nodes.Add(projectNode);
@@ -1128,6 +1300,8 @@ public partial class MainForm : Form
             solutionTree.EndUpdate();
             _isUpdatingTreeChecks = false;
         }
+
+        UpdateTreeMasterState();
     }
 
     private void SolutionTree_AfterCheck(object? sender, TreeViewEventArgs e)
@@ -1153,7 +1327,8 @@ public partial class MainForm : Form
             _isUpdatingTreeChecks = false;
         }
 
-        RebuildUncheckedFiles();
+        SyncUncheckedFromVisibleNodes();
+        UpdateTreeMasterState();
 
         // Même debounce que les filtres texte : cocher un projet de 200 fichiers ne doit
         // déclencher qu'un seul recalcul.
@@ -1161,17 +1336,25 @@ public partial class MainForm : Form
         _filterDebounceTimer?.Start();
     }
 
-    private void RebuildUncheckedFiles()
+    /// <summary>
+    /// Reporte l'état des nœuds <b>visibles</b> dans <see cref="_uncheckedFiles"/>. Ne pas
+    /// repartir de zéro : quand le bandeau filtre l'arbre, les éléments masqués doivent garder
+    /// leur décochage.
+    /// </summary>
+    private void SyncUncheckedFromVisibleNodes()
     {
-        _uncheckedFiles.Clear();
-
         if (solutionTree is null)
             return;
 
         foreach (TreeNode projectNode in solutionTree.Nodes)
             foreach (TreeNode fileNode in projectNode.Nodes)
-                if (!fileNode.Checked && fileNode.Tag is ValueTuple<string, string> identity)
-                    _uncheckedFiles.Add(identity);
+                if (fileNode.Tag is ValueTuple<string, string> identity)
+                {
+                    if (fileNode.Checked)
+                        _uncheckedFiles.Remove(identity);
+                    else
+                        _uncheckedFiles.Add(identity);
+                }
     }
 
     /// <summary>
@@ -1185,24 +1368,8 @@ public partial class MainForm : Form
             return;
 
         _uncheckedFiles.Clear();
-
-        if (solutionTree is null)
-            return;
-
-        _isUpdatingTreeChecks = true;
-        try
-        {
-            foreach (TreeNode projectNode in solutionTree.Nodes)
-            {
-                projectNode.Checked = true;
-                foreach (TreeNode fileNode in projectNode.Nodes)
-                    fileNode.Checked = true;
-            }
-        }
-        finally
-        {
-            _isUpdatingTreeChecks = false;
-        }
+        SetVisibleChecks(true);
+        UpdateTreeMasterState();
     }
 
     /// <summary>Lignes visibles selon l'arbre : toutes si rien n'est décoché.</summary>
