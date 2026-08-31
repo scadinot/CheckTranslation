@@ -39,6 +39,14 @@ internal delegate int TextWidthMeasurer(string text, FontDescriptor? font);
 /// Un formulaire sans aucun contrôle <c>AutoSize</c> exploitable n'est donc pas calibrable : ses
 /// contrôles à taille fixe sont déclarés non vérifiables plutôt que jugés au jugé.
 ///
+/// <b>La dimension verticale est traitée par les retours à la ligne explicites.</b> La hauteur
+/// sérialisée d'un contrôle <c>AutoSize</c> correspond aux lignes de son texte source : elle suit
+/// le rapport des nombres de lignes, ce qui rend visibles les collisions verticales. Un contrôle
+/// fixe est confronté à la hauteur d'étalon de sa police — médiane des hauteurs par ligne des
+/// <c>AutoSize</c> du formulaire, police par police — quand elle existe ; sinon le test vertical
+/// est passé plutôt que tenté sur l'étalon d'une autre police. Le repli automatique (wrap) n'est
+/// pas prédit : une ligne trop longue qui se replie à l'exécution ne compte que pour une.
+///
 /// Les coordonnées d'un contrôle sont relatives à son parent : seules les paires de frères sont
 /// comparées.
 /// </summary>
@@ -61,6 +69,7 @@ internal static class LayoutAnalyzer
         var unverifiable = new List<string>();
 
         var scale = ComputeFormScale(geometry, referenceTexts, measure) ?? fallbackScale;
+        var lineHeights = ComputeLineHeightsByFont(geometry, referenceTexts);
 
         foreach (var (name, text) in evaluatedTexts)
         {
@@ -90,7 +99,14 @@ internal static class LayoutAnalyzer
                 }
 
                 var grownWidth = (int)Math.Round(size.Width * (double)measure(text, font) / referenceWidth);
-                boxes[name] = new ControlBox(location.Width, location.Height, grownWidth, size.Height);
+
+                // La hauteur suit le même raisonnement en rapport que la largeur : la hauteur
+                // sérialisée correspond aux lignes du texte source, chaque ligne explicite de plus
+                // ou de moins dans la traduction la fait varier d'autant. C'est ce qui rend les
+                // collisions verticales visibles — un AutoSize qui gagne une ligne descend sur son
+                // voisin du dessous.
+                var grownHeight = (int)Math.Round(size.Height * (double)CountLines(text) / CountLines(reference));
+                boxes[name] = new ControlBox(location.Width, location.Height, grownWidth, grownHeight);
                 continue;
             }
 
@@ -105,7 +121,17 @@ internal static class LayoutAnalyzer
 
             var textWidth = (int)Math.Round(formScale * measure(text, font));
             if (textWidth > size.Width)
+            {
                 truncations.Add(new LayoutIssue(name, null, textWidth - size.Width));
+            }
+            else if (lineHeights.TryGetValue(font ?? DefaultFontKey, out var lineHeight))
+            {
+                // Vertical : chaque ligne explicite occupe la hauteur d'étalon de sa police. Une
+                // troncature en largeur déjà signalée suffit — un seul signal par contrôle.
+                var textHeight = (int)Math.Round(lineHeight * CountLines(text));
+                if (textHeight > size.Height)
+                    truncations.Add(new LayoutIssue(name, null, textHeight - size.Height, Vertical: true));
+            }
 
             if (control.Location is { } fixedLocation)
                 boxes[name] = new ControlBox(fixedLocation.Width, fixedLocation.Height, size.Width, size.Height);
@@ -176,6 +202,73 @@ internal static class LayoutAnalyzer
 
         ratios.Sort();
         return ratios[ratios.Count / 2];
+    }
+
+    /// <summary>
+    /// Clé de regroupement des contrôles dont aucune police n'est sérialisée, ni sur eux ni sur le
+    /// formulaire : ils partagent alors tous la police par défaut du système, donc le même étalon.
+    /// </summary>
+    private static readonly FontDescriptor DefaultFontKey = new(string.Empty, null, false);
+
+    /// <summary>
+    /// Nombre de lignes explicites d'une valeur de ressource. Seuls les retours à la ligne
+    /// comptent : le repli automatique (wrap) n'est pas prédit. Une ligne vide occupe sa hauteur
+    /// et compte donc comme les autres.
+    /// </summary>
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 1;
+
+        int lines = 1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+                lines++;
+            else if (text[i] == '\r' && (i + 1 >= text.Length || text[i + 1] != '\n'))
+                lines++;
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// Hauteur d'une ligne de texte dans le repère du fichier, par police effective : médiane des
+    /// hauteurs sérialisées des contrôles <c>AutoSize</c> rapportées au nombre de lignes de leur
+    /// texte source. Même logique d'étalon que <see cref="ComputeFormScale"/>, appliquée à la
+    /// verticale — et médiane pour la même raison : une taille périmée ne doit pas déplacer
+    /// l'étalon. L'estimation est par police : la hauteur de ligne d'un titre en 12 pt ne vaut
+    /// rien pour un libellé en 8,25 pt, mieux vaut passer le test que le fausser.
+    /// </summary>
+    private static Dictionary<FontDescriptor, double> ComputeLineHeightsByFont(
+        FormGeometry geometry,
+        IReadOnlyDictionary<string, string> referenceTexts)
+    {
+        var samples = new Dictionary<FontDescriptor, List<double>>();
+
+        foreach (var (name, text) in referenceTexts)
+        {
+            if (string.IsNullOrEmpty(text)
+                || !geometry.ControlsByName.TryGetValue(name, out var control)
+                || !control.GrowsWithText
+                || control.Size is not { } size)
+                continue;
+
+            var font = geometry.GetEffectiveFont(control) ?? DefaultFontKey;
+            if (!samples.TryGetValue(font, out var list))
+                samples[font] = list = [];
+
+            list.Add((double)size.Height / CountLines(text));
+        }
+
+        var medians = new Dictionary<FontDescriptor, double>();
+        foreach (var (font, list) in samples)
+        {
+            list.Sort();
+            medians[font] = list[list.Count / 2];
+        }
+
+        return medians;
     }
 
     /// <summary>
@@ -259,8 +352,11 @@ internal readonly record struct ControlBox(int Left, int Top, int Width, int Hei
 /// <summary>
 /// Un défaut de mise en page. <paramref name="OtherControl"/> est renseigné pour une collision,
 /// nul pour une troncature. <paramref name="OverflowPixels"/> mesure le dépassement.
+/// <paramref name="Vertical"/> distingue une troncature en hauteur (lignes explicites en trop)
+/// d'une troncature en largeur ; il ne participe pas à la <see cref="Signature"/> : un contrôle
+/// déjà défectueux en français ne devient pas imputable à la traduction parce que l'axe change.
 /// </summary>
-internal sealed record LayoutIssue(string Control, string? OtherControl, int OverflowPixels)
+internal sealed record LayoutIssue(string Control, string? OtherControl, int OverflowPixels, bool Vertical = false)
 {
     /// <summary>Identité stable d'un défaut, indépendante de l'ampleur : sert à comparer deux analyses.</summary>
     public string Signature => OtherControl is null ? Control : $"{Control}|{OtherControl}";
