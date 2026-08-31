@@ -475,7 +475,7 @@ Deux prédicats portent cette classification et évitent d'éparpiller les `swit
 - TextBox superposé à l'en-tête (toutes colonnes sauf Commentaire) + debounce 300 ms.
 - ComboBox superposé à l'en-tête Commentaire (filtres par score).
 - **Arborescence de la solution** (panneau gauche, style ResX Resource Manager) : cases à cocher Projet → Fichier. Décocher restreint l'affichage ; cocher/décocher un projet propage à ses fichiers, l'état du projet reflète celui de ses fichiers. Même debounce que les filtres texte.
-- **Bandeau de l'arborescence** : case maîtresse « tout cocher / décocher » à trois états et zone de filtre du panneau. Les deux agissent sur les éléments visibles (filtrer « Catalog » puis décocher tout ne décoche que ces éléments) ; le filtre du bandeau ne restreint que l'arbre, jamais la grille. Les états cochés vivent dans `_uncheckedFiles`, pas dans les nœuds : filtrer ne perd aucun décochage.
+- **Bandeau de l'arborescence** : case maîtresse « tout cocher / décocher » à trois états et zone de filtre du panneau. La case est asymétrique, à dessein : cocher fait de la sélection exactement les éléments visibles (ce que le filtre masque est décoché, même s'il l'était) ; décocher vide tout, visible ou non. Filtrer « Catalog » puis cocher réduit donc la grille aux fichiers Catalog, rien d'autre. Le filtre du bandeau ne restreint que l'arbre, jamais la grille. Les états cochés vivent dans `_uncheckedFiles`, pas dans les nœuds : filtrer ne perd pas les décochages faits case par case.
 - `TranslationRowFiltering.Filter(lignes visibles selon l'arbre, _filters)` recalcule le snapshot affiché.
 - `ApplyFiltersPreservingSelection()` conserve la sélection et le scroll lors des ré-applications.
 
@@ -709,6 +709,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | Mise en page : dimension verticale par retours à la ligne explicites — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes (collisions verticales détectées), un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize`, police par police, `Troncature (hauteur)` dans la grille). Le wrap reste hors périmètre (roadmap §13.3) |
 | 2026-08-31 | **Arborescence de la solution** (style ResX Resource Manager) : panneau gauche à cases à cocher Projet → Fichier restreignant l'affichage de la grille. `SplitContainer` créé par code (grille réparentée), propagation projet ↔ fichiers, conservation des cases au rafraîchissement, recochage par le drill-down, gel via `dataGridView.EnabledChanged`, largeur et visibilité persistées (`ShowSolutionTree` / `SolutionTreeWidth`) |
 | 2026-08-31 | Bandeau de l'arborescence : case maîtresse « tout cocher / décocher » à trois états et filtre du panneau, agissant sur les éléments visibles. États cochés portés par `_uncheckedFiles` et non par les nœuds — filtrer l'arbre ne perd aucun décochage. Gel étendu à `Panel1` entier |
+| 2026-08-31 | Case maîtresse asymétrique : cocher fait de la sélection exactement les éléments visibles (le masqué est décoché, même s'il l'était), décocher vide tout, visible ou non — filtrer puis cocher devient le geste « ne garder que ça » |
 
 ---
 
