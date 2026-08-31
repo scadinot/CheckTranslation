@@ -311,6 +311,9 @@ internal sealed class AppConfig
     public int WindowHeight { get; set; }
     public Dictionary<string, float> ColumnFillWeightsWithDetails { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, float> ColumnFillWeightsWithoutDetails { get; set; } = new(StringComparer.Ordinal);
+    public bool ShowSolutionTree { get; set; } = true;
+    /// <summary>Largeur du panneau d'arborescence, en pixels. 0 = largeur par défaut.</summary>
+    public int SolutionTreeWidth { get; set; }
 
     // Vue « fournisseur actif » : c'est ce que lisent Translator et les clés de cache.
     public string Key => Provider switch
@@ -369,6 +372,8 @@ internal sealed class AppConfig
             WindowHeight = WindowHeight,
             ColumnFillWeightsWithDetails = ColumnFillWeightsWithDetails,
             ColumnFillWeightsWithoutDetails = ColumnFillWeightsWithoutDetails,
+            ShowSolutionTree = ShowSolutionTree,
+            SolutionTreeWidth = SolutionTreeWidth,
         };
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(FilePath, json);
@@ -442,6 +447,8 @@ internal sealed class AppConfig
             ColumnFillWeightsWithoutDetails = dto.ColumnFillWeightsWithoutDetails is null
                 ? new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal)
                 : new Dictionary<string, float>(dto.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
+            ShowSolutionTree = dto.ShowSolutionTree ?? true,
+            SolutionTreeWidth = dto.SolutionTreeWidth ?? 0,
         };
 
         // Si un des champs a été laissé vide, on applique les valeurs par défaut du provider sélectionné.
@@ -528,6 +535,8 @@ internal sealed class AppConfig
         public int? WindowHeight { get; set; }
         public Dictionary<string, float>? ColumnFillWeightsWithDetails { get; set; }
         public Dictionary<string, float>? ColumnFillWeightsWithoutDetails { get; set; }
+        public bool? ShowSolutionTree { get; set; }
+        public int? SolutionTreeWidth { get; set; }
     }
 }
 

@@ -207,6 +207,8 @@ internal sealed partial class ConfigForm : Form
             WindowHeight = current.WindowHeight,
             ColumnFillWeightsWithDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithDetails, StringComparer.Ordinal),
             ColumnFillWeightsWithoutDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
+            ShowSolutionTree = current.ShowSolutionTree,
+            SolutionTreeWidth = current.SolutionTreeWidth,
         };
     }
 

@@ -115,7 +115,9 @@ public partial class MainForm : Form
         InitDashboardButton();
         InitRefreshButton();
         InitLanguageButtons();
+        InitSolutionTreeButton();
         ArrangeToolStripItems();
+        InitSolutionTreePanel();
         colFrench.SortMode = DataGridViewColumnSortMode.Programmatic;
         colTranslation.SortMode = DataGridViewColumnSortMode.Programmatic;
         dataGridView.CellPainting += DataGridView_CellPainting;
@@ -499,6 +501,7 @@ public partial class MainForm : Form
         foreach (var textBox in _filterTextBoxes.Values)
             textBox.Text = string.Empty;
         ResetSpecialFilters();
+        ResetSolutionTreeChecks();
 
         // Les zones de filtre existent pour toutes les colonnes, y compris masquees : sans cela,
         // un filtre sur Projet ou Fichier s'appliquerait pendant que la grille n'en montre aucune
@@ -539,7 +542,7 @@ public partial class MainForm : Form
 
     private void ArrangeToolStripItems()
     {
-        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null)
+        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null || btnSolutionTree is null)
             return;
 
         toolStrip.Items.Clear();
@@ -548,6 +551,7 @@ public partial class MainForm : Form
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnMerge);
         toolStrip.Items.Add(new ToolStripSeparator());
+        toolStrip.Items.Add(btnSolutionTree);
         toolStrip.Items.Add(btnDetails);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnGlossary);
@@ -721,6 +725,8 @@ public partial class MainForm : Form
 
             _currentSource = source;
             _allRows = rows;
+            // Nouvelle source : l'arbre repart tout coché, comme les autres filtres repartent vides.
+            PopulateSolutionTree(preserveChecks: false);
             foreach (var textBox in _filterTextBoxes.Values)
                 textBox.Text = string.Empty;
             ResetSpecialFilters();
@@ -928,6 +934,291 @@ public partial class MainForm : Form
     }
 
     private sealed record MergeDecision(IReadOnlyDictionary<string, MergeDifferenceResolution> Resolutions, bool Cancelled);
+
+    // --- Arborescence de la solution (style ResX Resource Manager) ---
+    // Panneau gauche : projets et fichiers de la source, avec cases à cocher. Décocher un
+    // fichier le retire de l'AFFICHAGE seulement : c'est un filtre, pas une exclusion — la
+    // sauvegarde, la fusion et le tableau de bord portent toujours sur toutes les lignes.
+
+    private SplitContainer? splitContainer;
+    private TreeView? solutionTree;
+    private ToolStripButton? btnSolutionTree;
+    private Font? treeBoldFont;
+    // Fichiers décochés, par identité projet + fichier (même séparateur que les SyncKey).
+    // Vide = tout visible (chemin rapide).
+    private readonly HashSet<string> _uncheckedFiles = new(StringComparer.OrdinalIgnoreCase);
+    // Empêche les AfterCheck en cascade pendant une propagation ou une reconstruction.
+    private bool _isUpdatingTreeChecks;
+
+    private void InitSolutionTreeButton()
+    {
+        btnSolutionTree = new ToolStripButton
+        {
+            Image = LoadSolutionTreeIcon(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            CheckOnClick = true,
+            Checked = AppConfig.Current.ShowSolutionTree,
+            ToolTipText = "Afficher/Masquer l'arborescence de la solution",
+        };
+        btnSolutionTree.Click += BtnSolutionTree_Click;
+    }
+
+    /// <summary>Icône du panneau : un fichier dédié s'il existe, sinon un arbre dessiné (même repli que le tableau de bord).</summary>
+    private static Bitmap LoadSolutionTreeIcon()
+    {
+        var customPath = Path.Combine(ResourceDir, "tree.png");
+        if (File.Exists(customPath))
+            return LoadIcon("tree.png", 24);
+
+        var bitmap = new Bitmap(24, 24);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+
+        using var pen = new Pen(Color.FromArgb(96, 96, 96), 2);
+        using var brush = new SolidBrush(Color.FromArgb(70, 130, 180));
+        graphics.DrawLine(pen, 6, 5, 6, 19);
+        graphics.DrawLine(pen, 6, 9, 12, 9);
+        graphics.DrawLine(pen, 6, 14, 12, 14);
+        graphics.DrawLine(pen, 6, 19, 12, 19);
+        graphics.FillRectangle(brush, 4, 3, 5, 5);
+        graphics.FillRectangle(brush, 13, 7, 6, 5);
+        graphics.FillRectangle(brush, 13, 12, 6, 5);
+        graphics.FillRectangle(brush, 13, 17, 6, 5);
+
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Réparente la grille dans un <see cref="SplitContainer"/> dont le panneau gauche porte
+    /// l'arborescence. Fait par code, comme les colonnes et les boutons : le Designer ne connaît
+    /// que la grille en <c>Dock.Fill</c>, et l'y laisser garde le fichier généré intact.
+    /// </summary>
+    private void InitSolutionTreePanel()
+    {
+        solutionTree = new CheckBoxTreeView
+        {
+            Dock = DockStyle.Fill,
+            CheckBoxes = true,
+            ShowLines = false,
+            ShowPlusMinus = true,
+            ShowRootLines = false,
+            BorderStyle = BorderStyle.None,
+            Enabled = dataGridView.Enabled,
+        };
+        solutionTree.AfterCheck += SolutionTree_AfterCheck;
+        treeBoldFont = new Font(solutionTree.Font, FontStyle.Bold);
+
+        splitContainer = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            Panel1MinSize = LogicalToDeviceUnits(120),
+            Panel1Collapsed = !AppConfig.Current.ShowSolutionTree,
+        };
+
+        // La grille prend la place de la grille du Designer dans l'ordre des contrôles : le
+        // Dock.Fill du SplitContainer doit être traité avant les Dock.Top/Bottom des barres,
+        // ce que garantit la même position dans la z-order.
+        int index = Controls.GetChildIndex(dataGridView);
+        Controls.Remove(dataGridView);
+        splitContainer.Panel1.Controls.Add(solutionTree);
+        splitContainer.Panel2.Controls.Add(dataGridView);
+        Controls.Add(splitContainer);
+        Controls.SetChildIndex(splitContainer, index);
+
+        // Largeur par défaut ; la valeur persistée est réappliquée par RestoreWindowLayout.
+        splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, LogicalToDeviceUnits(240));
+
+        // Tous les gels de l'UI passent par dataGridView.Enabled (batch IA, écriture disque,
+        // analyse de mise en page, chargement, rafraîchissement) : l'arbre suit le même état
+        // sans qu'aucun des sept sites n'ait à le connaître.
+        dataGridView.EnabledChanged += (_, _) =>
+        {
+            if (solutionTree is not null)
+                solutionTree.Enabled = dataGridView.Enabled;
+        };
+    }
+
+    private void BtnSolutionTree_Click(object? sender, EventArgs e)
+    {
+        if (splitContainer is null || btnSolutionTree is null)
+            return;
+
+        splitContainer.Panel1Collapsed = !btnSolutionTree.Checked;
+        AppConfig.Current.ShowSolutionTree = btnSolutionTree.Checked;
+        AppConfig.Current.Save();
+    }
+
+    private static string BuildFileIdentity(string project, string file)
+        => project.Trim() + "\u001F" + file.Trim();
+
+    /// <summary>
+    /// Reconstruit l'arbre depuis <see cref="_allRows"/>. Au chargement d'une source, tout est
+    /// coché ; au rafraîchissement, les cases décochées survivent par identité — un fichier
+    /// disparu de la source sort du même coup de la liste des décochés.
+    /// </summary>
+    private void PopulateSolutionTree(bool preserveChecks)
+    {
+        if (solutionTree is null || _allRows is null)
+            return;
+
+        var previouslyUnchecked = preserveChecks
+            ? new HashSet<string>(_uncheckedFiles, StringComparer.OrdinalIgnoreCase)
+            : [];
+        _uncheckedFiles.Clear();
+
+        _isUpdatingTreeChecks = true;
+        solutionTree.BeginUpdate();
+        try
+        {
+            solutionTree.Nodes.Clear();
+
+            foreach (var projectGroup in _allRows
+                .GroupBy(row => row.Project.Trim(), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                // L'espace final contourne le rognage connu de WinForms sur un NodeFont plus
+                // large que la police du TreeView.
+                var projectNode = new TreeNode(projectGroup.Key + " ") { NodeFont = treeBoldFont };
+                bool allChecked = true;
+
+                foreach (var file in projectGroup
+                    .Select(row => row.File.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
+                {
+                    var identity = BuildFileIdentity(projectGroup.Key, file);
+                    bool isChecked = !previouslyUnchecked.Contains(identity);
+                    if (!isChecked)
+                    {
+                        _uncheckedFiles.Add(identity);
+                        allChecked = false;
+                    }
+
+                    projectNode.Nodes.Add(new TreeNode(file) { Tag = identity, Checked = isChecked });
+                }
+
+                projectNode.Checked = allChecked;
+                solutionTree.Nodes.Add(projectNode);
+            }
+
+            solutionTree.ExpandAll();
+            if (solutionTree.Nodes.Count > 0)
+                solutionTree.Nodes[0].EnsureVisible();
+        }
+        finally
+        {
+            solutionTree.EndUpdate();
+            _isUpdatingTreeChecks = false;
+        }
+    }
+
+    private void SolutionTree_AfterCheck(object? sender, TreeViewEventArgs e)
+    {
+        if (_isUpdatingTreeChecks || e.Node is null)
+            return;
+
+        _isUpdatingTreeChecks = true;
+        try
+        {
+            if (e.Node.Level == 0)
+            {
+                foreach (TreeNode child in e.Node.Nodes)
+                    child.Checked = e.Node.Checked;
+            }
+            else if (e.Node.Parent is { } parent)
+            {
+                parent.Checked = parent.Nodes.Cast<TreeNode>().All(node => node.Checked);
+            }
+        }
+        finally
+        {
+            _isUpdatingTreeChecks = false;
+        }
+
+        RebuildUncheckedFiles();
+
+        // Même debounce que les filtres texte : cocher un projet de 200 fichiers ne doit
+        // déclencher qu'un seul recalcul.
+        _filterDebounceTimer?.Stop();
+        _filterDebounceTimer?.Start();
+    }
+
+    private void RebuildUncheckedFiles()
+    {
+        _uncheckedFiles.Clear();
+
+        if (solutionTree is null)
+            return;
+
+        foreach (TreeNode projectNode in solutionTree.Nodes)
+            foreach (TreeNode fileNode in projectNode.Nodes)
+                if (!fileNode.Checked && fileNode.Tag is string identity)
+                    _uncheckedFiles.Add(identity);
+    }
+
+    /// <summary>
+    /// Recoche tout, sans déclencher de recalcul par nœud. Appelé par le drill-down du tableau
+    /// de bord, qui repart d'une grille non filtrée : un fichier décoché ferait afficher moins
+    /// de lignes que le chiffre cliqué — la même règle que pour les autres filtres.
+    /// </summary>
+    private void ResetSolutionTreeChecks()
+    {
+        if (_uncheckedFiles.Count == 0)
+            return;
+
+        _uncheckedFiles.Clear();
+
+        if (solutionTree is null)
+            return;
+
+        _isUpdatingTreeChecks = true;
+        try
+        {
+            foreach (TreeNode projectNode in solutionTree.Nodes)
+            {
+                projectNode.Checked = true;
+                foreach (TreeNode fileNode in projectNode.Nodes)
+                    fileNode.Checked = true;
+            }
+        }
+        finally
+        {
+            _isUpdatingTreeChecks = false;
+        }
+    }
+
+    /// <summary>Lignes visibles selon l'arbre : toutes si rien n'est décoché.</summary>
+    private IReadOnlyList<TranslationRow> GetTreeVisibleRows()
+    {
+        if (_allRows is null)
+            return [];
+
+        return _uncheckedFiles.Count == 0
+            ? _allRows
+            : _allRows.Where(row => !_uncheckedFiles.Contains(BuildFileIdentity(row.Project, row.File))).ToList();
+    }
+
+    /// <summary>
+    /// TreeView dont le double-clic sur une case à cocher est neutralisé : WinForms bascule alors
+    /// l'état visuel sans lever AfterCheck, et l'affichage se désynchronise du filtre.
+    /// </summary>
+    private sealed class CheckBoxTreeView : TreeView
+    {
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_LBUTTONDBLCLK = 0x0203;
+            if (m.Msg == WM_LBUTTONDBLCLK)
+            {
+                var lParam = m.LParam.ToInt64();
+                var location = new Point((short)(lParam & 0xFFFF), (short)((lParam >> 16) & 0xFFFF));
+                if (HitTest(location).Location == TreeViewHitTestLocations.StateImage)
+                    return;
+            }
+
+            base.WndProc(ref m);
+        }
+    }
 
     // --- Filtres (style ResX Resource Manager) ---
 
@@ -1207,7 +1498,7 @@ public partial class MainForm : Form
 
         CollectSpecialFilters(_filters);
 
-        var list = TranslationRowFiltering.Filter(_allRows, _filters);
+        var list = TranslationRowFiltering.Filter(GetTreeVisibleRows(), _filters);
         dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
 
         if (_sortColumnIndex >= 0 && _sortColumnIndex < dataGridView.Columns.Count)
@@ -1215,7 +1506,7 @@ public partial class MainForm : Form
 
         SetViewRefreshPending(false);
         ClearSortGlyphs();
-        statusRowCount.Text = _filters.Count > 0
+        statusRowCount.Text = _filters.Count > 0 || _uncheckedFiles.Count > 0
             ? $"Lignes : {list.Count} / {_allRows.Count}"
             : $"Lignes : {list.Count}";
         UpdateSelectionStatus();
@@ -1622,7 +1913,7 @@ public partial class MainForm : Form
     {
         var total = _allRows?.Count ?? 0;
         var visible = dataGridView.RowCount;
-        statusRowCount.Text = _filters.Count > 0
+        statusRowCount.Text = _filters.Count > 0 || _uncheckedFiles.Count > 0
             ? $"Lignes : {visible} / {total}"
             : $"Lignes : {total}";
     }
@@ -2028,6 +2319,16 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             Size = new Size(config.WindowWidth, config.WindowHeight);
         }
 
+        // Après l'application de la taille de fenêtre : le SplitterDistance se borne par rapport
+        // à la largeur réelle, la poser avant reviendrait à la borner sur celle du Designer.
+        if (splitContainer is not null && config.SolutionTreeWidth > 0)
+        {
+            var max = Math.Max(
+                splitContainer.Panel1MinSize,
+                splitContainer.Width - splitContainer.Panel2MinSize - splitContainer.SplitterWidth);
+            splitContainer.SplitterDistance = Math.Clamp(config.SolutionTreeWidth, splitContainer.Panel1MinSize, max);
+        }
+
         RestoreColumnWidths();
     }
 
@@ -2136,6 +2437,13 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         var config = AppConfig.Current;
         config.WindowWidth = bounds.Width;
         config.WindowHeight = bounds.Height;
+
+        // Panneau replié : SplitterDistance ne vaut rien, on garde la dernière largeur visible.
+        if (splitContainer is not null && !splitContainer.Panel1Collapsed)
+            config.SolutionTreeWidth = splitContainer.SplitterDistance;
+        if (btnSolutionTree is not null)
+            config.ShowSolutionTree = btnSolutionTree.Checked;
+
         SaveColumnWidths();
         config.Save();
     }
@@ -2260,6 +2568,9 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             }
 
             _allRows = refreshedRows;
+            // Contrairement au chargement, le rafraîchissement conserve les cases décochées :
+            // l'utilisateur n'a pas changé de source, seulement son contenu.
+            PopulateSolutionTree(preserveChecks: true);
             ApplyFiltersPreservingSelection();
             RestoreStatusBar();
 
