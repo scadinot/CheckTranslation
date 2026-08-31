@@ -683,7 +683,14 @@ public partial class MainForm : Form
         statusProgressBar.Value = 0;
         statusRowCount.Text = "Chargement...";
         dataGridView.AutoGenerateColumns = false;
-        btnOpen.Enabled = false;
+
+        // Même gel que le rafraîchissement : pendant le chargement, la toolbar proposait encore
+        // les drapeaux, la fusion et F5 sur les données de la source précédente. Les états
+        // individuels de Sauver / Fusionner restent gérés en dessous : ils décrivent la nouvelle
+        // source et doivent survivre au dégel.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
 
         btnSave.Enabled = false;
         btnMerge.Enabled = false;
@@ -754,6 +761,13 @@ public partial class MainForm : Form
         finally
         {
             statusProgressBar.Visible = false;
+
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
             btnOpen.Enabled = true;
             btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
         }
@@ -2175,14 +2189,20 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             return;
         }
 
+        // L'édition en cours doit rejoindre sa ligne avant la capture : c'est previousRow.Translation
+        // qui sera recopié dans les lignes rechargées.
+        dataGridView.EndEdit();
+
         var previousRows = _allRows;
         var previousRowsByKey = previousRows
             .ToDictionary(BuildSyncKey, StringComparer.OrdinalIgnoreCase);
 
-        btnRefresh!.Enabled = false;
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
-        btnMerge.Enabled = false;
+        // Même gel que les batchs IA et l'analyse de mise en page : pendant le rechargement,
+        // changer de langue mélangerait les vues actives entre anciennes et nouvelles lignes, et
+        // F5 — qui passe par ProcessCmdKey et que CanRefreshView bloque via toolStrip.Enabled —
+        // ré-entrerait dans ce gestionnaire avec deux chargements concurrents de la même source.
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Marquee;
         statusRowCount.Text = "Rafraîchissement...";
@@ -2261,6 +2281,16 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         {
             statusProgressBar.Style = ProgressBarStyle.Blocks;
             statusProgressBar.Visible = false;
+
+            // Ne pas rendre la main si une écriture disque a pris le relais (même précaution que
+            // les autres gels). Réactiver avant de recalculer l'état des boutons : CanRefreshView
+            // lit toolStrip.Enabled.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
@@ -2308,9 +2338,10 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
     }
 
     // F5 arrive par ProcessCmdKey, au niveau de la fenêtre : il ignore la désactivation de la
-    // toolbar. Le gel de l'UI (écriture disque, analyse de mise en page, batch IA) doit donc être
-    // vérifié ici, sinon le raccourci relancerait un rechargement en plein milieu — précisément
-    // ce que la désactivation du bouton interdit.
+    // toolbar. Le gel de l'UI (écriture disque, analyse de mise en page, batch IA, chargement,
+    // rafraîchissement) doit donc être vérifié ici, sinon le raccourci relancerait un rechargement
+    // en plein milieu — précisément ce que la désactivation du bouton interdit. Pour le
+    // rafraîchissement lui-même, c'est ce qui empêche F5 de ré-entrer dans BtnRefresh_Click.
     private bool CanRefreshView()
         => toolStrip.Enabled && (_viewRefreshPending || HasCurrentFileLoaded());
 
