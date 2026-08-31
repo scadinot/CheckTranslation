@@ -598,7 +598,7 @@ internal sealed partial class ConfigForm : Form
                 <!doctype html>
                 <html>
                 <head>
-                  <meta charset=\"utf-8\">
+                  <meta charset="utf-8">
                   <style>
                 {Css}
                   </style>

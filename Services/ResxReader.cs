@@ -423,9 +423,9 @@ internal static partial class ResxReader
         if (root is null)
             return false;
 
-        var elementsByName = root.Elements("data")
-            .Where(element => element.Attribute("name") is not null)
-            .GroupBy(element => element.Attribute("name")!.Value, StringComparer.Ordinal)
+        var elementsByName = Children(root, "data")
+            .Where(element => Attribute(element, "name") is not null)
+            .GroupBy(element => Attribute(element, "name")!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
         bool modified = false;
@@ -459,10 +459,14 @@ internal static partial class ResxReader
     {
         bool modified = false;
 
-        var valueElement = element.Element("value");
+        // Lecture par nom local, comme au chargement ; les éléments créés reprennent l'espace de
+        // noms du parent, sinon un fichier qui en déclare un se verrait injecter des xmlns="".
+        var ns = element.Name.Namespace;
+
+        var valueElement = Children(element, "value").FirstOrDefault();
         if (valueElement is null)
         {
-            element.Add(new XElement("value", value));
+            element.Add(new XElement(ns + "value", value));
             modified = true;
         }
         else if (!string.Equals(valueElement.Value, value, StringComparison.Ordinal))
@@ -471,7 +475,7 @@ internal static partial class ResxReader
             modified = true;
         }
 
-        var commentElement = element.Element("comment");
+        var commentElement = Children(element, "comment").FirstOrDefault();
         if (comment.Length == 0)
         {
             if (commentElement is not null)
@@ -485,7 +489,7 @@ internal static partial class ResxReader
         }
         else if (commentElement is null)
         {
-            (valueElement ?? element.Elements().Last()).AddAfterSelf(new XText("\n    "), new XElement("comment", comment));
+            (valueElement ?? element.Elements().Last()).AddAfterSelf(new XText("\n    "), new XElement(ns + "comment", comment));
             modified = true;
         }
         else if (!string.Equals(commentElement.Value, comment, StringComparison.Ordinal))
@@ -499,14 +503,16 @@ internal static partial class ResxReader
 
     private static void AppendElement(XElement root, string key, string value, string comment)
     {
-        var element = new XElement("data",
+        var ns = root.Name.Namespace;
+
+        var element = new XElement(ns + "data",
             new XAttribute("name", key),
             new XAttribute(XNamespace.Xml + "space", "preserve"),
             new XText("\n    "),
-            new XElement("value", value));
+            new XElement(ns + "value", value));
 
         if (comment.Length > 0)
-            element.Add(new XText("\n    "), new XElement("comment", comment));
+            element.Add(new XText("\n    "), new XElement(ns + "comment", comment));
 
         element.Add(new XText("\n  "));
 

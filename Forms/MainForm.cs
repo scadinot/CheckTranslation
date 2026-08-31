@@ -683,7 +683,14 @@ public partial class MainForm : Form
         statusProgressBar.Value = 0;
         statusRowCount.Text = "Chargement...";
         dataGridView.AutoGenerateColumns = false;
-        btnOpen.Enabled = false;
+
+        // Même gel que le rafraîchissement : pendant le chargement, la toolbar proposait encore
+        // les drapeaux, la fusion et F5 sur les données de la source précédente. Les états
+        // individuels de Sauver / Fusionner restent gérés en dessous : ils décrivent la nouvelle
+        // source et doivent survivre au dégel.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
 
         btnSave.Enabled = false;
         btnMerge.Enabled = false;
@@ -754,6 +761,13 @@ public partial class MainForm : Form
         finally
         {
             statusProgressBar.Visible = false;
+
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
             btnOpen.Enabled = true;
             btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
         }
@@ -1627,8 +1641,15 @@ public partial class MainForm : Form
             return;
         }
 
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
+        // Les résultats du batch atterrissent dans la vue active (Translation / Comment) des
+        // lignes sélectionnées : tout ce que la toolbar propose pendant l'attente les corromprait.
+        // Changer de langue committerait le placeholder dans la langue quittée et ferait écrire
+        // les résultats dans la nouvelle ; fusionner reporterait les placeholders dans l'Excel
+        // destination ; rafraîchir remplacerait les lignes et les résultats iraient dans des
+        // objets orphelins. Même gel que RunLayoutCheckAsync : toolbar ET grille.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -1688,8 +1709,16 @@ public partial class MainForm : Form
         {
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
-            btnOpen.Enabled = true;
-            btnSave.Enabled = _allRows is not null;
+
+            // Ne pas rendre la main si une écriture disque a pris le relais : c'est
+            // SetWritingState qui décide alors de l'état des containers (même précaution que le
+            // finally de RunLayoutCheckAsync). Réactiver avant MarkViewRefreshPendingIfNeeded,
+            // qui recalcule l'état du bouton Rafraîchir à partir de ce gel.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
 
             MarkViewRefreshPendingIfNeeded();
             RestoreStatusBar();
@@ -1723,8 +1752,11 @@ public partial class MainForm : Form
             return;
         }
 
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
+        // Même gel que TranslateRowsAsync : les scores atterrissent dans la vue active des lignes,
+        // changer de langue, fusionner ou rafraîchir pendant l'attente les corromprait.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = rows.Count;
         statusProgressBar.Value = 0;
@@ -1779,8 +1811,14 @@ public partial class MainForm : Form
         {
             dataGridView.Refresh();
             statusProgressBar.Visible = false;
-            btnOpen.Enabled = true;
-            btnSave.Enabled = _allRows is not null;
+
+            // Même précaution que le finally de RunLayoutCheckAsync : ne pas rouvrir l'UI si une
+            // écriture disque a pris le relais, et réactiver avant MarkViewRefreshPendingIfNeeded.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
 
             MarkViewRefreshPendingIfNeeded();
             RestoreStatusBar();
@@ -1834,8 +1872,12 @@ public partial class MainForm : Form
         if (texts.Count == 0)
             return;
 
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
+        // Même gel que TranslateRowsAsync : l'extraction lit _currentLanguage au retour pour
+        // alimenter le glossaire — changer de langue pendant l'attente enverrait les termes
+        // dans le glossaire d'une autre langue.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
         statusProgressBar.Visible = true;
         statusProgressBar.Maximum = texts.Count;
         statusProgressBar.Value = 0;
@@ -1868,8 +1910,17 @@ public partial class MainForm : Form
         finally
         {
             statusProgressBar.Visible = false;
-            btnOpen.Enabled = true;
-            btnSave.Enabled = _allRows is not null;
+
+            // Même précaution que le finally de RunLayoutCheckAsync.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
+            // Un ApplyFilters déclenché par le debounce pendant le gel a pu figer le bouton
+            // Rafraîchir sur l'état gelé : le recalculer maintenant que la toolbar est rendue.
+            UpdateRefreshButtonState();
             RestoreStatusBar();
             UseWaitCursor = false;
             Application.UseWaitCursor = false;
@@ -2138,14 +2189,20 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             return;
         }
 
+        // L'édition en cours doit rejoindre sa ligne avant la capture : c'est previousRow.Translation
+        // qui sera recopié dans les lignes rechargées.
+        dataGridView.EndEdit();
+
         var previousRows = _allRows;
         var previousRowsByKey = previousRows
             .ToDictionary(BuildSyncKey, StringComparer.OrdinalIgnoreCase);
 
-        btnRefresh!.Enabled = false;
-        btnOpen.Enabled = false;
-        btnSave.Enabled = false;
-        btnMerge.Enabled = false;
+        // Même gel que les batchs IA et l'analyse de mise en page : pendant le rechargement,
+        // changer de langue mélangerait les vues actives entre anciennes et nouvelles lignes, et
+        // F5 — qui passe par ProcessCmdKey et que CanRefreshView bloque via toolStrip.Enabled —
+        // ré-entrerait dans ce gestionnaire avec deux chargements concurrents de la même source.
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Marquee;
         statusRowCount.Text = "Rafraîchissement...";
@@ -2224,6 +2281,16 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         {
             statusProgressBar.Style = ProgressBarStyle.Blocks;
             statusProgressBar.Visible = false;
+
+            // Ne pas rendre la main si une écriture disque a pris le relais (même précaution que
+            // les autres gels). Réactiver avant de recalculer l'état des boutons : CanRefreshView
+            // lit toolStrip.Enabled.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
             btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
@@ -2270,8 +2337,13 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
                 : "Tri et filtres déjà à jour";
     }
 
+    // F5 arrive par ProcessCmdKey, au niveau de la fenêtre : il ignore la désactivation de la
+    // toolbar. Le gel de l'UI (écriture disque, analyse de mise en page, batch IA, chargement,
+    // rafraîchissement) doit donc être vérifié ici, sinon le raccourci relancerait un rechargement
+    // en plein milieu — précisément ce que la désactivation du bouton interdit. Pour le
+    // rafraîchissement lui-même, c'est ce qui empêche F5 de ré-entrer dans BtnRefresh_Click.
     private bool CanRefreshView()
-        => _viewRefreshPending || HasCurrentFileLoaded();
+        => toolStrip.Enabled && (_viewRefreshPending || HasCurrentFileLoaded());
 
     private bool HasCurrentFileLoaded()
         => _allRows is not null && !string.IsNullOrWhiteSpace(_currentFilePath) && File.Exists(_currentFilePath);

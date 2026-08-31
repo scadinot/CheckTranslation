@@ -109,8 +109,15 @@ internal sealed class GlossaryService : IGlossaryService
             entries = stored.Select(Clone).ToList();
         }
 
+        // Entrées triées avant hachage : réordonner le glossaire sans en changer le contenu
+        // ne modifie pas le fingerprint, donc n'invalide pas le cache.
+        var ordered = entries
+            .OrderBy(entry => entry.Source, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Destination, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Context, StringComparer.Ordinal);
+
         var sb = new StringBuilder();
-        foreach (var entry in entries)
+        foreach (var entry in ordered)
         {
             sb.Append(entry.Source).Append('\u001F')
               .Append(entry.Destination).Append('\u001F')
