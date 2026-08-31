@@ -2,7 +2,7 @@ namespace CheckTranslation;
 
 partial class MergeDifferenceForm
 {
-    private System.ComponentModel.IContainer? components = null;
+    private System.ComponentModel.IContainer components = null;
 
     protected override void Dispose(bool disposing)
     {
@@ -186,11 +186,4 @@ partial class MergeDifferenceForm
     private FlowLayoutPanel buttonsPanel;
     private Button btnCancelMerge;
     private Button btnContinue;
-    private DataGridViewTextBoxColumn colProject;
-    private DataGridViewTextBoxColumn colFile;
-    private DataGridViewTextBoxColumn colKey;
-    private DataGridViewTextBoxColumn colFrench;
-    private DataGridViewTextBoxColumn colFrenchComment;
-    private DataGridViewTextBoxColumn colTranslation;
-    private DataGridViewTextBoxColumn colTranslationComment;
 }

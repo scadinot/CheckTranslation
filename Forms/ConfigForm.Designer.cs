@@ -3,7 +3,6 @@ namespace CheckTranslation;
 partial class ConfigForm
 {
     private System.ComponentModel.IContainer components = null;
-    private string newField; // Added a new field for testing
 
     protected override void Dispose(bool disposing)
     {

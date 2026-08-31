@@ -153,10 +153,12 @@ public partial class MainForm : Form
         if (dataGridView.Rows[e.RowIndex].DataBoundItem is not TranslationRow row)
             return;
 
+        if (e.CellStyle is null)
+            return;
+
         if (colName == "colLayout")
         {
-            if (e.CellStyle is not null)
-                ApplyLayoutCellStyle(e.CellStyle, row.LayoutStatus);
+            ApplyLayoutCellStyle(e.CellStyle, row.LayoutStatus);
             return;
         }
 
