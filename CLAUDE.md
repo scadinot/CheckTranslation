@@ -181,9 +181,64 @@ dotnet clean
 
 # Publier
 dotnet publish -c Release
+
 ```
 
 Le projet cible `net8.0-windows` → SDK .NET 8 requis, Windows uniquement.
+
+### 5.1 Premier chargement plus lent : compilation étagée
+
+Le premier chargement d'une solution après le lancement de l'application est nettement plus long
+que les suivants, **à cache disque identique**. Mesuré sur une solution synthétique de 474
+formulaires (11 850 lignes), cinq chargements des mêmes fichiers dans le même processus :
+
+| Chargement | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Par défaut | 627 ms | 623 | 426 | 328 | **271** |
+| `DOTNET_TieredCompilation=0` | 451 ms | — | — | — | **398** |
+
+C'est la **compilation étagée** de .NET : au premier appel, chaque méthode est compilée par un JIT
+rapide qui produit du code médiocre ; après une trentaine d'appels, elle est recompilée optimisée
+en arrière-plan avec profilage dynamique. La descente progressive est la signature du passage au
+palier 1, méthode après méthode — pas la marche d'escalier qu'on verrait avec un cache. La ligne
+`TieredCompilation=0` le confirme par la négative : premier chargement bien meilleur, et plus
+aucune amélioration ensuite.
+
+Ce qui n'y est **pas** pour grand-chose, contrairement à l'intuition :
+- le `static readonly KnownCultureNames` de `ResxReader`, qui énumère 852 cultures via ICU au
+  premier accès : **3,7 ms** ;
+- le cache disque, écarté par construction dans la mesure ci-dessus — il joue en revanche au tout
+  premier chargement après démarrage de la machine, et lui seul ne repart pas à zéro quand on
+  relance l'application.
+
+### 5.2 Contre-mesures évaluées, aucune retenue
+
+Trois pistes ont été mises en œuvre et mesurées, puis écartées. Le tableau est conservé pour que
+la question ne se rouvre pas à l'aveugle.
+
+Médiane de 5 exécutions, premier chargement :
+
+| Configuration | 1ᵉʳ chargement | 5ᵉ |
+|---|---|---|
+| Référence | 627 ms | 271 ms |
+| ReadyToRun | 590 ms *(−6 %)* | 259 ms |
+| Préchauffage d'une solution miniature | 576 ms *(−8 %)* | 259 ms |
+| `TieredCompilation=0` | 451 ms *(−28 %)* | 398 ms *(+47 %)* |
+
+**ReadyToRun rend 6 %, pas davantage**, et l'assembly double de taille (482 Ko → 1016 Ko) pour
+cela. La raison : le coût observé n'est pas surtout du *temps de compilation*, que ReadyToRun
+supprime, mais de la *qualité du code* au palier 0, et le code ReadyToRun se situe entre le
+palier 0 et le palier 1. Un préchauffage à vide au démarrage n'apporte pas plus, et les deux ne se
+cumulent pas.
+
+Seul `TieredCompilation=0` déplace vraiment le premier chargement — au prix de 47 % sur tous les
+suivants, et sur tout le reste de l'application. Mauvais échange.
+
+**Aucune n'est activée** : 6 % ne paient pas un binaire doublé et une publication liée à
+l'architecture. Si `PublishReadyToRun` est réactivé un jour, il doit l'être **sous condition qu'un
+RID soit fourni** (`Condition="'$(RuntimeIdentifier)' != ''"`) : sans elle, un
+`dotnet publish -c Release` sans `-r` déduit le RID de la machine hôte et échoue dès qu'elle n'est
+pas Windows (`NETSDK1082`, pas de runtime pack WindowsForms pour `linux-x64`). Vérifié.
 
 ---
 
@@ -542,6 +597,11 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Une langue est identifiée par son code, pas par une colonne** — `TranslationRow.Translations` / `Comments` sont indexés par code (`« de-DE »`). Le numéro de colonne Excel (`LanguageInfo.Column`) ne doit rester connu que de `ExcelReader`.
 - **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
 - **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
+- **Le premier chargement plus lent n'est pas un défaut à corriger** — c'est la compilation étagée
+  de .NET (§5.1). Les trois contre-mesures ont été mises en œuvre et mesurées (§5.2) : ReadyToRun
+  rend 6 % pour un binaire doublé, un préchauffage 8 %, et désactiver la compilation étagée coûte
+  47 % sur tout le reste. **Aucune n'est activée.** Ne pas y revenir sans une mesure nouvelle — et
+  si `PublishReadyToRun` revient, avec la condition sur le RID que documente le §5.2.
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
@@ -622,6 +682,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-30 | Mise en page : mesure **en rapport** plutôt qu'en absolu — la `Size` sérialisée des contrôles `AutoSize` sert d'étalon par formulaire, avec repli sur la médiane de la solution. Supprime `extraPadding` et l'hypothèse d'un `.resx` à 96 ppp |
 | 2026-08-30 | **Tableau de bord de l'état des traductions** : `TranslationStatistics` (calcul pur) + `DashboardForm` (cartes, par langue / projet / fichier / mise en page, barres d'avancement). Chiffres cliquables : un clic bascule la langue et filtre la grille. Pseudo-filtres `translation:none` / `done` / `same` et tranches de score fermées |
 | 2026-08-30 | Vérification de mise en page **multi-langues en une passe** : verdicts stockés par code de langue dans `TranslationRow`, analyse lancée au chargement et au rafraîchissement pour les sept langues à la fois (×1,8 au lieu de ×4,1), plus aucun recalcul au changement de langue. Onglet « Mise en page » du tableau de bord comparant les sept langues. Compte rendu distinguant « aucun défaut » de « rien n'a pu être analysé » |
+| 2026-08-31 | Diagnostic chiffré du premier chargement plus lent : compilation étagée de .NET. Trois contre-mesures mises en œuvre et mesurées (ReadyToRun 6 %, préchauffage 8 %, `TieredCompilation=0` −28 % / +47 %), aucune retenue (§5.1 et §5.2) |
 
 ---
 
