@@ -1050,8 +1050,10 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Bandeau au-dessus de l'arbre, comme dans ResX Resource Manager : case « tout cocher /
-    /// décocher » et zone de filtre. Les deux agissent sur les éléments <b>visibles</b> :
-    /// filtrer « Catalog » puis décocher tout ne décoche que ces éléments-là. Le filtre ne
+    /// décocher » et zone de filtre. La case est asymétrique, et c'est voulu : <b>cocher</b> fait
+    /// de la sélection exactement les éléments visibles — ce que le filtre masque est décoché, y
+    /// compris ce qui l'était ; <b>décocher</b> vide tout, visible ou non. Filtrer « Catalog »
+    /// puis cocher donne donc une grille réduite aux fichiers Catalog, rien d'autre. Le filtre ne
     /// restreint que le panneau — la grille a ses propres filtres de colonnes.
     /// </summary>
     private Control CreateSolutionTreeHeader()
@@ -1111,17 +1113,40 @@ public partial class MainForm : Form
 
     private void TreeMasterCheck_Click(object? sender, EventArgs e)
     {
-        if (solutionTree is null)
+        if (solutionTree is null || _allRows is null)
+            return;
+
+        var visibleFiles = solutionTree.Nodes.Cast<TreeNode>()
+            .SelectMany(project => project.Nodes.Cast<TreeNode>())
+            .ToList();
+
+        // Un filtre sans correspondance laisse l'arbre vide et la case affichée cochée : un clic
+        // viderait alors toute la sélection sans le moindre retour visuel. Il n'y a rien de
+        // visible sur quoi agir — on n'agit pas.
+        if (visibleFiles.Count == 0)
             return;
 
         // Cocher s'il reste au moins un élément visible décoché, sinon tout décocher : depuis
-        // l'état partiel, le premier clic complète la sélection plutôt que de la vider.
-        bool anyUnchecked = solutionTree.Nodes.Cast<TreeNode>()
-            .SelectMany(project => project.Nodes.Cast<TreeNode>())
-            .Any(file => !file.Checked);
+        // l'état partiel, le premier clic pose la sélection plutôt que de la vider.
+        bool checking = visibleFiles.Any(file => !file.Checked);
 
-        SetVisibleChecks(anyUnchecked);
-        SyncUncheckedFromVisibleNodes();
+        // Dans les deux sens, on repart de « tout décoché » : cocher retire ensuite les seuls
+        // éléments visibles — la sélection devient exactement ce que le filtre montre, ce qu'il
+        // masque est décoché même s'il était coché. Décocher s'arrête là : tout est vidé,
+        // visible ou non.
+        _uncheckedFiles.Clear();
+        foreach (var row in _allRows)
+            _uncheckedFiles.Add(BuildFileKey(row.Project, row.File));
+
+        if (checking)
+        {
+            foreach (TreeNode projectNode in solutionTree.Nodes)
+                foreach (TreeNode fileNode in projectNode.Nodes)
+                    if (fileNode.Tag is ValueTuple<string, string> identity)
+                        _uncheckedFiles.Remove(identity);
+        }
+
+        SetVisibleChecks(checking);
         UpdateTreeMasterState();
 
         _filterDebounceTimer?.Stop();
