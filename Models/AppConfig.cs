@@ -25,7 +25,6 @@ internal sealed class AppConfig
     private const string DefaultBifrostAnthropicUrl = "http://localhost:8080/anthropic";
     private const string DefaultBifrostAnthropicModelName = "anthropic/claude-sonnet-4-6";
 
-    private const bool DefaultShowDetails = true;
     private const string DefaultSelectedLanguageCode = "en-US";
     private static readonly Dictionary<string, float> EmptyColumnWidths = new(StringComparer.Ordinal);
 
@@ -305,12 +304,10 @@ internal sealed class AppConfig
     public string BifrostAnthropicModelName { get; set; } = DefaultBifrostAnthropicModelName;
 
     public AiProvider Provider { get; set; } = AiProvider.OpenAI;
-    public bool ShowDetails { get; set; } = DefaultShowDetails;
     public string SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
     public int WindowWidth { get; set; }
     public int WindowHeight { get; set; }
-    public Dictionary<string, float> ColumnFillWeightsWithDetails { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, float> ColumnFillWeightsWithoutDetails { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, float> ColumnFillWeights { get; set; } = new(StringComparer.Ordinal);
     public bool ShowSolutionTree { get; set; } = true;
     /// <summary>Largeur du panneau d'arborescence, en pixels. 0 = largeur par défaut.</summary>
     public int SolutionTreeWidth { get; set; }
@@ -366,12 +363,10 @@ internal sealed class AppConfig
             BifrostAnthropicModelName = BifrostAnthropicModelName,
 
             Provider = Provider.ToString(),
-            ShowDetails = ShowDetails,
             SelectedLanguageCode = SelectedLanguageCode,
             WindowWidth = WindowWidth,
             WindowHeight = WindowHeight,
-            ColumnFillWeightsWithDetails = ColumnFillWeightsWithDetails,
-            ColumnFillWeightsWithoutDetails = ColumnFillWeightsWithoutDetails,
+            ColumnFillWeights = ColumnFillWeights,
             ShowSolutionTree = ShowSolutionTree,
             SolutionTreeWidth = SolutionTreeWidth,
         };
@@ -437,16 +432,15 @@ internal sealed class AppConfig
             BifrostAnthropicModelName = string.IsNullOrWhiteSpace(dto.BifrostAnthropicModelName) ? DefaultBifrostAnthropicModelName : dto.BifrostAnthropicModelName,
 
             Provider = provider,
-            ShowDetails = dto.ShowDetails ?? DefaultShowDetails,
             SelectedLanguageCode = string.IsNullOrWhiteSpace(dto.SelectedLanguageCode) ? DefaultSelectedLanguageCode : dto.SelectedLanguageCode,
             WindowWidth = dto.WindowWidth ?? 0,
             WindowHeight = dto.WindowHeight ?? 0,
-            ColumnFillWeightsWithDetails = dto.ColumnFillWeightsWithDetails is null
-                ? new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal)
-                : new Dictionary<string, float>(dto.ColumnFillWeightsWithDetails, StringComparer.Ordinal),
-            ColumnFillWeightsWithoutDetails = dto.ColumnFillWeightsWithoutDetails is null
-                ? new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal)
-                : new Dictionary<string, float>(dto.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
+            // Compat : avant la disparition du mode « détails », deux jeux de largeurs étaient
+            // persistés ; l'ancien jeu « avec détails » (le mode par défaut) sert de repli. Les
+            // colonnes disparues (colProject, colFile) sont simplement ignorées à la restauration.
+            ColumnFillWeights = (dto.ColumnFillWeights ?? dto.ColumnFillWeightsWithDetails) is { } weights
+                ? new Dictionary<string, float>(weights, StringComparer.Ordinal)
+                : new Dictionary<string, float>(EmptyColumnWidths, StringComparer.Ordinal),
             ShowSolutionTree = dto.ShowSolutionTree ?? true,
             SolutionTreeWidth = dto.SolutionTreeWidth ?? 0,
         };
@@ -529,12 +523,12 @@ internal sealed class AppConfig
         public string? BifrostAnthropicModelName { get; set; }
 
         public string? Provider { get; set; } = nameof(AiProvider.OpenAI);
-        public bool? ShowDetails { get; set; } = DefaultShowDetails;
         public string? SelectedLanguageCode { get; set; } = DefaultSelectedLanguageCode;
         public int? WindowWidth { get; set; }
         public int? WindowHeight { get; set; }
+        public Dictionary<string, float>? ColumnFillWeights { get; set; }
+        // Legacy : jeu « avec détails » d'avant la disparition du mode, lu comme repli.
         public Dictionary<string, float>? ColumnFillWeightsWithDetails { get; set; }
-        public Dictionary<string, float>? ColumnFillWeightsWithoutDetails { get; set; }
         public bool? ShowSolutionTree { get; set; }
         public int? SolutionTreeWidth { get; set; }
     }

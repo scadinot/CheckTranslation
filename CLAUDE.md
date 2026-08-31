@@ -271,7 +271,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - Tri, menu contextuel, chargement/sauvegarde, traduire/vérifier IA, glossaire, auto-traduire
 - **Verrou d'écriture disque** : `SetWritingState(bool)` positionne `_isWriting`, désactive `toolStrip` + `dataGridView` et fait annuler la fermeture par `MainForm_FormClosing`. Le refus de fermeture est signalé sans modale par `FlashCloseBlocked()` (message temporaire de 3 s dans la status bar, texte précédent restauré).
 - `// --- Icônes ---`
-- `// --- Persistance de disposition ---` : taille fenêtre + largeur colonnes (2 dictionnaires distincts selon mode détails)
+- `// --- Persistance de disposition ---` : taille fenêtre + largeur colonnes (`ColumnFillWeights`, jeu unique)
 - `// --- Bouton Rafraîchir + F5 ---` : rechargement fichier + détection changements source
 - `// --- Filtre par score de vérification ---` : ComboBox dans l'en-tête Commentaire
 
@@ -419,8 +419,8 @@ Fichier : `%LocalAppData%\CheckTranslation\CheckTranslation.config.json` (lectur
 Contenu persisté :
 - Prompts (`TranslatePrompt`, `VerifyPrompt`)
 - Fournisseur sélectionné (`Provider`) et paramètres par provider (`OpenAiKey/Url/ModelName`, `AnthropicKey/Url/ModelName`, `BifrostOpenAiKey/Url/ModelName`, `BifrostAnthropicKey/Url/ModelName`)
-- `ShowDetails`, `SelectedLanguageCode`, `WindowWidth/Height`
-- `ColumnFillWeightsWithDetails` / `ColumnFillWeightsWithoutDetails` : largeurs de colonnes selon le mode détails
+- `SelectedLanguageCode`, `WindowWidth/Height`
+- `ColumnFillWeights` : largeurs de colonnes (compat : l'ancien jeu `ColumnFillWeightsWithDetails` est lu en repli ; `ShowDetails` et le jeu « sans détails » ne sont plus persistés)
 - `ShowSolutionTree` / `SolutionTreeWidth` : visibilité et largeur du panneau d'arborescence
 
 **Sécurité** : clés API chiffrées via DPAPI (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`). En cas d'échec de déchiffrement (autre utilisateur, format invalide), retourne la valeur telle quelle plutôt que de planter.
@@ -459,7 +459,7 @@ Deux prédicats portent cette classification et évitent d'éparpiller les `swit
 
 ### 7.3 Affichage / édition
 - `DataGridView` avec colonnes :
-  - Projet / Fichier / Clé (insérées par code, masquables)
+  - Clé (insérée par code, toujours visible) — Projet et Fichier n'ont plus de colonne, le panneau d'arborescence porte cette information
   - Français (Designer, lecture seule)
   - Traduction (Designer, éditable)
   - Commentaire (inséré par code, lecture seule)
@@ -524,7 +524,7 @@ Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l
 1. Bouton toolbar → `MainForm` pousse d'abord la vue active dans les dictionnaires (`CommitActiveLanguage`), sans quoi les éditions en cours manqueraient au décompte.
 2. `DashboardForm` calcule via `TranslationStatistics` et affiche : bandeau de cartes, onglets *Par langue* / *Par projet* / *Par fichier* / *Mise en page*.
 3. Un clic sur un chiffre souligné (ou un double-clic sur une ligne de projet / fichier) ferme la fenêtre en renvoyant un `DashboardDrillDown` (langue, colonne, valeur de filtre).
-4. `MainForm.ApplyDrillDown` bascule sur la langue, **remet tous les filtres à zéro**, puis pose le filtre demandé dans la zone de saisie ou la liste déroulante de la colonne concernée.
+4. `MainForm.ApplyDrillDown` bascule sur la langue, **remet tous les filtres à zéro**, puis pose le filtre demandé : dans la zone de saisie ou la liste déroulante de la colonne concernée, sauf pour Projet et Fichier qui n'ont plus de colonne — leur filtre passe par l'arborescence, en sélection exacte (`SelectTreeExactly`), avec la même garantie que l'ancien filtre « = » : le chiffre cliqué et la grille comptent la même chose.
 
 ### 7.11 Glossaire
 - **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
@@ -589,7 +589,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Ne PAS modifier `*.Designer.cs` à la main** — générés par le designer WinForms. Toute modif manuelle doit être reproductible par le designer, sinon elle sera écrasée.
 - **Ne PAS modifier les `*.resx` manuellement** — générés par le designer.
 - **Les `.resx` ont des `LogicalName` explicites dans le `.csproj`** — nécessaire car ils sont dans un sous-dossier `Forms/`. Ne pas supprimer ces entrées (`MainForm`, `ConfigForm`, `GlossaryForm`, `GlossaryExtractionDialog`).
-- **Les colonnes Projet/Fichier/Clé et Commentaire sont créées programmatiquement** dans `MainForm` (`InitDetailsColumns`, `InitCommentColumn`) et insérées autour des colonnes du Designer. Ne pas les ajouter dans `MainForm.Designer.cs`.
+- **Les colonnes Clé, Commentaire et Mise en page sont créées programmatiquement** dans `MainForm` (`InitKeyColumn`, `InitCommentColumn`, `InitLayoutColumn`) et insérées autour des colonnes du Designer. Ne pas les ajouter dans `MainForm.Designer.cs`. Projet et Fichier n'ont plus de colonne : leur filtrage passe par l'arborescence.
 - **Le bouton `Rafraîchir` est ajouté programmatiquement** (`InitRefreshButton` dans la section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
 - **Les ComboBox de filtre par score sont créés par code** (`TryCreateSpecialFilterControl` dans la section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
 - **Fusion Excel** : résolution ligne-par-ligne via `MergeDifferenceForm` pour CHAQUE ligne divergente. L'utilisateur peut annuler la fusion globalement.
@@ -621,7 +621,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Le tableau de bord commence lui aussi par `CommitActiveLanguage`** — il lit les dictionnaires par code de langue, jamais la vue active. Sans ce commit, les éditions en cours seraient comptées comme non traduites.
 - **Un score sans traduction est périmé, pas une vérification** — `TranslationStatistics` ne compte les vérifications, les moyennes et les tranches qu'à l'intérieur des lignes traduites. Sinon « vérifiées » pouvait dépasser « traduites », le taux sortir de [0,1] et « non vérifiées » devenir négatif. Les filtres des chiffres concernés portent donc aussi `translation:done`.
 - **Les tranches de score ont une seule définition** — `TranslationStatistics.ScoreBuckets()`. Le tableau de bord en fait ses colonnes et `MainForm` en fait les entrées du filtre Commentaire : les faire diverger ferait qu'un clic sur « 42 » ne ramènerait pas 42 lignes.
-- **Un filtre texte préfixé de `=` est une égalité exacte** — c'est ce qui permet au tableau de bord de tenir sa promesse : un fichier n'est identifié que par son projet *et* son chemin, et `Properties\Msg` ne doit pas ramener `Properties\Msg2`. La saisie manuelle reste un « contient ».
+- **Un filtre texte préfixé de `=` est une égalité exacte** — la saisie manuelle reste un « contient ». Depuis que Projet et Fichier n'ont plus de colonne, le drill-down du tableau de bord ne pose plus ces filtres en texte : il passe par l'arborescence (`SelectTreeExactly`), qui porte la même exigence — un fichier n'est identifié que par son projet *et* son chemin, et `Properties\Msg` ne doit pas ramener `Properties\Msg2`. Le support du `=` reste dans `TranslationRowFiltering` pour les autres colonnes.
 - **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux. L'arborescence de la solution en fait partie : le drill-down recoche tout (`ResetSolutionTreeChecks`).
 - **L'arborescence de la solution est un filtre d'affichage, pas une exclusion** — décocher un fichier le retire de la grille, mais la sauvegarde, la fusion, le tableau de bord et l'analyse de mise en page portent toujours sur toutes les lignes (`_allRows`). Ne pas brancher ces opérations sur `GetTreeVisibleRows` sans repenser les invariants du tableau de bord.
 - **Le panneau d'arborescence suit `dataGridView.Enabled`** — un seul hook (`EnabledChanged`) gèle `Panel1` entier (arbre, case maîtresse, filtre du bandeau) avec la grille pour tous les gels de l'application (batch IA, écriture disque, analyse de mise en page, chargement, rafraîchissement) : ne pas ajouter de désactivation site par site. Le double-clic sur une case est neutralisé (`CheckBoxTreeView`) : WinForms bascule sinon l'état visuel sans lever `AfterCheck`, et l'affichage se désynchronise du filtre.
@@ -710,6 +710,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | **Arborescence de la solution** (style ResX Resource Manager) : panneau gauche à cases à cocher Projet → Fichier restreignant l'affichage de la grille. `SplitContainer` créé par code (grille réparentée), propagation projet ↔ fichiers, conservation des cases au rafraîchissement, recochage par le drill-down, gel via `dataGridView.EnabledChanged`, largeur et visibilité persistées (`ShowSolutionTree` / `SolutionTreeWidth`) |
 | 2026-08-31 | Bandeau de l'arborescence : case maîtresse « tout cocher / décocher » à trois états et filtre du panneau, agissant sur les éléments visibles. États cochés portés par `_uncheckedFiles` et non par les nœuds — filtrer l'arbre ne perd aucun décochage. Gel étendu à `Panel1` entier |
 | 2026-08-31 | Case maîtresse asymétrique : cocher fait de la sélection exactement les éléments visibles (le masqué est décoché, même s'il l'était), décocher vide tout, visible ou non — filtrer puis cocher devient le geste « ne garder que ça » |
+| 2026-08-31 | Colonnes Projet et Fichier supprimées, l'arborescence porte cette information ; Clé toujours visible, bouton bascule « détails » retiré. Persistance simplifiée : `ColumnFillWeights` unique (compat lecture de l'ancien jeu), `ShowDetails` retiré. Le drill-down par projet / fichier passe par la sélection exacte dans l'arbre (`SelectTreeExactly`) |
 
 ---
 

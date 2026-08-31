@@ -50,7 +50,6 @@ public partial class MainForm : Form
     private int _sortColumnIndex = -1;
     private ListSortDirection _sortDirection;
     private int _contextMenuRowIndex = -1;
-    private ToolStripButton? btnDetails;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
     // Empêche deux analyses simultanées : la seconde écraserait les verdicts de la première.
@@ -58,8 +57,6 @@ public partial class MainForm : Form
     // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
     // toujours à l'écran, sans supposer lequel des messages possibles a été posé.
     private string? _flashedMessage;
-    private DataGridViewTextBoxColumn? colProject;
-    private DataGridViewTextBoxColumn? colFile;
     private DataGridViewTextBoxColumn? colKey;
     private DataGridViewTextBoxColumn colComment = null!;
     private DataGridViewTextBoxColumn colLayout = null!;
@@ -107,10 +104,9 @@ public partial class MainForm : Form
         btnSave.Click += BtnSave_Click;
         btnMerge.Click += BtnMerge_Click;
         btnConfig.Click += BtnConfig_Click;
-        InitDetailsColumns();
+        InitKeyColumn();
         InitCommentColumn();
         InitLayoutColumn();
-        InitDetailsButton();
         InitGlossaryButton();
         InitDashboardButton();
         InitRefreshButton();
@@ -131,7 +127,6 @@ public partial class MainForm : Form
         InitFilterPanel();
         InitContextMenu();
         InitLayoutPersistence();
-        ApplyShowDetails(AppConfig.Current.ShowDetails);
         UpdateSelectionStatus();
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
@@ -196,28 +191,10 @@ public partial class MainForm : Form
         style.SelectionForeColor = SystemColors.ControlText;
     }
 
-    private void InitDetailsColumns()
+    // Projet et Fichier ne sont plus des colonnes : le panneau d'arborescence porte cette
+    // information. Seule la Clé reste dans la grille, toujours visible.
+    private void InitKeyColumn()
     {
-        colProject = new DataGridViewTextBoxColumn
-        {
-            Name = "colProject",
-            DataPropertyName = "Project",
-            HeaderText = "Projet",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 8,
-            ReadOnly = true,
-            SortMode = DataGridViewColumnSortMode.Programmatic,
-        };
-        colFile = new DataGridViewTextBoxColumn
-        {
-            Name = "colFile",
-            DataPropertyName = "File",
-            HeaderText = "Fichier",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 15,
-            ReadOnly = true,
-            SortMode = DataGridViewColumnSortMode.Programmatic,
-        };
         colKey = new DataGridViewTextBoxColumn
         {
             Name = "colKey",
@@ -228,9 +205,7 @@ public partial class MainForm : Form
             ReadOnly = true,
             SortMode = DataGridViewColumnSortMode.Programmatic,
         };
-        dataGridView.Columns.Insert(0, colProject);
-        dataGridView.Columns.Insert(1, colFile);
-        dataGridView.Columns.Insert(2, colKey);
+        dataGridView.Columns.Insert(0, colKey);
     }
 
     private void InitCommentColumn()
@@ -393,18 +368,6 @@ public partial class MainForm : Form
         dataGridView.Refresh();
     }
 
-    private void InitDetailsButton()
-    {
-        btnDetails = new ToolStripButton
-        {
-            Image = LoadIcon("columns.png", 24),
-            DisplayStyle = ToolStripItemDisplayStyle.Image,
-            CheckOnClick = true,
-            ToolTipText = "Afficher/Masquer Projet, Fichier, Clé",
-        };
-        btnDetails.Click += BtnDetails_Click;
-    }
-
     private void InitGlossaryButton()
     {
         btnGlossary = new ToolStripButton
@@ -503,22 +466,26 @@ public partial class MainForm : Form
         ResetSpecialFilters();
         ResetSolutionTreeChecks();
 
-        // Les zones de filtre existent pour toutes les colonnes, y compris masquees : sans cela,
-        // un filtre sur Projet ou Fichier s'appliquerait pendant que la grille n'en montre aucune
-        // trace, et l'utilisateur verrait un sous-ensemble sans savoir pourquoi.
-        //
-        // L'affichage est revele, mais le reglage n'est PAS persiste : l'utilisateur n'a pas
-        // demande a changer sa preference, il a clique un chiffre. Ecrire AppConfig ici rendrait le
-        // drill-down destructif pour un reglage choisi ailleurs, et la prochaine ouverture de
-        // l'application garderait un mode que personne n'a demande.
-        if (drillDown.Filters.Keys.Any(column => column is "Project" or "File" or "Key")
-            && btnDetails?.Checked == false)
-        {
-            ApplyShowDetails(true);
-        }
+        // Projet et Fichier n'ont plus de colonne : leur filtre passe par l'arborescence, en
+        // sélection exacte — seuls le projet ou le fichier cliqués restent cochés. Même garantie
+        // qu'avec l'ancien filtre « = » : le chiffre du tableau de bord et la grille comptent la
+        // même chose, et l'état est visible dans le panneau plutôt que dans une colonne masquée.
+        string? project = null, file = null;
 
         foreach (var (column, value) in drillDown.Filters)
         {
+            var exact = value.StartsWith('=') ? value[1..] : value;
+
+            switch (column)
+            {
+                case "Project":
+                    project = exact;
+                    continue;
+                case "File":
+                    file = exact;
+                    continue;
+            }
+
             if (_filterTextBoxes.TryGetValue(column, out var box))
             {
                 box.Text = value;
@@ -531,6 +498,9 @@ public partial class MainForm : Form
             }
         }
 
+        if (project is not null)
+            SelectTreeExactly(project, file);
+
         // Chaque affectation de TextBox.Text a relance le timer de debounce : sans ce Stop, le
         // filtrage repasserait 300 ms apres celui-ci, pour rien — et sur une grosse source ce
         // second passage se voit.
@@ -542,7 +512,7 @@ public partial class MainForm : Form
 
     private void ArrangeToolStripItems()
     {
-        if (btnDetails is null || btnRefresh is null || btnGlossary is null || btnDashboard is null || btnSolutionTree is null)
+        if (btnRefresh is null || btnGlossary is null || btnDashboard is null || btnSolutionTree is null)
             return;
 
         toolStrip.Items.Clear();
@@ -552,7 +522,6 @@ public partial class MainForm : Form
         toolStrip.Items.Add(btnMerge);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnSolutionTree);
-        toolStrip.Items.Add(btnDetails);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnGlossary);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -566,28 +535,6 @@ public partial class MainForm : Form
 
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnRefresh);
-    }
-
-    private void BtnDetails_Click(object? sender, EventArgs e)
-    {
-        bool show = btnDetails!.Checked;
-        ApplyShowDetails(show);
-        var config = AppConfig.Current;
-        config.ShowDetails = show;
-        SaveColumnWidths();
-        config.Save();
-    }
-
-    private void ApplyShowDetails(bool show)
-    {
-        if (colProject is null) return;
-        colProject.Visible = show;
-        colFile!.Visible = show;
-        colKey!.Visible = show;
-        if (btnDetails is not null)
-            btnDetails.Checked = show;
-        RestoreColumnWidths();
-        UpdateFilterPanelLayout();
     }
 
     private void InitLanguageButtons()
@@ -1395,6 +1342,33 @@ public partial class MainForm : Form
         _uncheckedFiles.Clear();
         SetVisibleChecks(true);
         UpdateTreeMasterState();
+    }
+
+    /// <summary>
+    /// Restreint la sélection de l'arbre à un projet, ou à un fichier précis de ce projet : tout
+    /// le reste est décoché. Utilisé par le drill-down du tableau de bord — un fichier n'est
+    /// identifié que par son projet ET son chemin, le même chemin existant dans plusieurs projets.
+    /// </summary>
+    private void SelectTreeExactly(string project, string? file)
+    {
+        if (_allRows is null)
+            return;
+
+        project = project.Trim();
+        file = file?.Trim();
+
+        _uncheckedFiles.Clear();
+        foreach (var row in _allRows)
+        {
+            var key = BuildFileKey(row.Project, row.File);
+            bool selected = string.Equals(key.Project, project, StringComparison.OrdinalIgnoreCase)
+                && (file is null || string.Equals(key.File, file, StringComparison.OrdinalIgnoreCase));
+
+            if (!selected)
+                _uncheckedFiles.Add(key);
+        }
+
+        RebuildSolutionTreeNodes();
     }
 
     /// <summary>Lignes visibles selon l'arbre : toutes si rien n'est décoché.</summary>
@@ -2546,9 +2520,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         if (dataGridView.Columns.Count == 0)
             return;
 
-        var savedWidths = IsDetailsLayoutActive()
-            ? AppConfig.Current.ColumnFillWeightsWithDetails
-            : AppConfig.Current.ColumnFillWeightsWithoutDetails;
+        var savedWidths = AppConfig.Current.ColumnFillWeights;
 
         if (savedWidths.Count == 0)
             return;
@@ -2663,9 +2635,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         if (_isRestoringLayout)
             return;
 
-        var target = IsDetailsLayoutActive()
-            ? AppConfig.Current.ColumnFillWeightsWithDetails
-            : AppConfig.Current.ColumnFillWeightsWithoutDetails;
+        var target = AppConfig.Current.ColumnFillWeights;
 
         target.Clear();
 
@@ -2677,9 +2647,6 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
             target[column.Name] = column.FillWeight;
         }
     }
-
-    private bool IsDetailsLayoutActive()
-        => colProject?.Visible ?? AppConfig.Current.ShowDetails;
 
     // --- Bouton Rafraîchir + F5 ---
 
