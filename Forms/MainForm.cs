@@ -1218,9 +1218,6 @@ public partial class MainForm : Form
             _uncheckedFiles.Clear();
             if (treeFilterBox is not null)
                 treeFilterBox.Text = string.Empty;
-            // L'affectation du texte vient d'armer le debounce du filtre : la reconstruction a
-            // lieu tout de suite, inutile de la rejouer dans 300 ms.
-            _treeFilterDebounceTimer?.Stop();
         }
         else
         {
@@ -1231,6 +1228,10 @@ public partial class MainForm : Form
             _uncheckedFiles.RemoveWhere(key => !currentKeys.Contains(key));
         }
 
+        // La reconstruction a lieu tout de suite : un tick de debounce déjà armé — par
+        // l'affectation du texte ci-dessus, ou par une saisie en cours au moment d'un F5 —
+        // la rejouerait dans 300 ms pour rien.
+        _treeFilterDebounceTimer?.Stop();
         RebuildSolutionTreeNodes();
     }
 
