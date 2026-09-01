@@ -24,7 +24,7 @@ internal static class AtomicFile
 
             // File.Replace préserve les ACL et attributs de la cible ; il exige qu'elle existe,
             // d'où le repli sur un simple renommage pour un fichier créé (nouvelle langue).
-            // Pas de .bak systématique : la roadmap §13.4 traite le backup comme un sujet à part.
+            // Pas de .bak systématique : la roadmap (ROADMAP.md) traite le backup comme un sujet à part.
             if (File.Exists(path))
                 File.Replace(tempPath, path, destinationBackupFileName: null);
             else

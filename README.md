@@ -7,7 +7,8 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 
 Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traductions dans un tableau pour vérification et édition.
 
-> **Documentation technique complète (architecture, conventions, suivi, roadmap) :** voir [CLAUDE.md](CLAUDE.md).
+> **Documentation technique (architecture, conventions, avertissements) :** voir [CLAUDE.md](CLAUDE.md).
+> **Feuille de route et historique des changements :** voir [ROADMAP.md](ROADMAP.md).
 
 ---
 
