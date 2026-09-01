@@ -1354,6 +1354,14 @@ public partial class MainForm : Form
         if (_allRows is null)
             return;
 
+        // La sélection posée doit être VISIBLE dans le panneau : un filtre de bandeau resté en
+        // place pourrait masquer le projet cliqué — arbre vide ou incomplet alors que la grille
+        // est correctement restreinte. On le vide, comme le drill-down vide les autres filtres,
+        // et on stoppe le debounce que cette affectation vient d'armer (la reconstruction suit).
+        if (treeFilterBox is not null)
+            treeFilterBox.Text = string.Empty;
+        _treeFilterDebounceTimer?.Stop();
+
         project = project.Trim();
         file = file?.Trim();
 
