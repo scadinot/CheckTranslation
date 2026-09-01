@@ -2292,9 +2292,19 @@ public partial class MainForm : Form
                 for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
                 {
                     if (!string.IsNullOrEmpty(batch[i]))
+                    {
                         rows[rowIndex].Translation = batch[i];
+                    }
                     else
+                    {
+                        // Entrée inexploitable dans la réponse : laisser le placeholder ferait
+                        // croire à une traduction — et il pouvait être sauvegardé tel quel dans
+                        // le .resx ou l'Excel. La ligne retrouve sa valeur d'avant le batch,
+                        // comme dans le catch d'échec complet.
+                        rows[rowIndex].Translation = previousTranslations[rowIndex];
+                        rows[rowIndex].Comment = previousComments[rowIndex];
                         errors++;
+                    }
                 }
             }
         }
@@ -2331,7 +2341,7 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
 
             if (errors > 0)
-                MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                MessageBox.Show($"{errors} traduction(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu. Les lignes concernées ont retrouvé leur valeur précédente.",
                     "Erreur de traduction partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -2395,11 +2405,19 @@ public partial class MainForm : Form
                 for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
                 {
                     if (!string.IsNullOrEmpty(batch[i]))
+                    {
+                        // Le cache de vérification est déjà alimenté par le callback
+                        // onBatchCompleted dans TranslationService.VerifyInBatchesAsync ;
+                        // pas besoin de le refaire ici.
                         rows[rowIndex].Comment = batch[i];
-                    // Le cache de verification est deja alimente par le callback onBatchCompleted
-                    // dans TranslationService.VerifyInBatchesAsync ; pas besoin de le refaire ici.
+                    }
                     else
+                    {
+                        // Même règle que la traduction : une entrée inexploitable restaure le
+                        // commentaire d'avant le batch au lieu de laisser « Vérification... ».
+                        rows[rowIndex].Comment = previousValues[rowIndex];
                         errors++;
+                    }
                 }
             }
         }
@@ -2430,7 +2448,7 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
 
             if (errors > 0)
-                MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu.",
+                MessageBox.Show($"{errors} vérification(s) n'ont pas pu être extraites de la réponse.\n\nLe format de réponse de l'IA n'a pas été reconnu. Les lignes concernées ont retrouvé leur commentaire précédent.",
                     "Erreur de vérification partielle", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
