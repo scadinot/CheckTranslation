@@ -475,6 +475,7 @@ Deux prédicats portent cette classification et évitent d'éparpiller les `swit
 - TextBox superposé à l'en-tête (toutes colonnes sauf Commentaire) + debounce 300 ms.
 - ComboBox superposé à l'en-tête Commentaire (filtres par score).
 - **Arborescence de la solution** (panneau gauche, style ResX Resource Manager) : cases à cocher Projet → Fichier. Décocher restreint l'affichage ; cocher/décocher un projet propage à ses fichiers, l'état du projet reflète celui de ses fichiers. Même debounce que les filtres texte.
+- **Synchronisation de sélection grille ↔ arbre** : sélectionner des lignes dans la grille sélectionne et fait défiler le fichier de la ligne courante dans l'arbre (mono-sélection : l'ancre décide) ; sélectionner un nœud de l'arbre sélectionne dans la grille les lignes affichées du fichier, ou toutes celles du projet, et défile jusqu'à la première. Verrou anti-boucle `_isSyncingSelection` ; un fichier masqué par le bandeau n'est pas synchronisé (le filtre reste maître).
 - **Bandeau de l'arborescence** : case maîtresse « tout cocher / décocher » à trois états et zone de filtre du panneau. La case est asymétrique, à dessein : cocher fait de la sélection exactement les éléments visibles (ce que le filtre masque est décoché, même s'il l'était) ; décocher vide tout, visible ou non. Filtrer « Catalog » puis cocher réduit donc la grille aux fichiers Catalog, rien d'autre. Le filtre du bandeau ne restreint que l'arbre, jamais la grille. Les états cochés vivent dans `_uncheckedFiles`, pas dans les nœuds : filtrer ne perd pas les décochages faits case par case.
 - `TranslationRowFiltering.Filter(lignes visibles selon l'arbre, _filters)` recalcule le snapshot affiché.
 - `ApplyFiltersPreservingSelection()` conserve la sélection et le scroll lors des ré-applications.
@@ -711,6 +712,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | Bandeau de l'arborescence : case maîtresse « tout cocher / décocher » à trois états et filtre du panneau, agissant sur les éléments visibles. États cochés portés par `_uncheckedFiles` et non par les nœuds — filtrer l'arbre ne perd aucun décochage. Gel étendu à `Panel1` entier |
 | 2026-08-31 | Case maîtresse asymétrique : cocher fait de la sélection exactement les éléments visibles (le masqué est décoché, même s'il l'était), décocher vide tout, visible ou non — filtrer puis cocher devient le geste « ne garder que ça » |
 | 2026-08-31 | Colonnes Projet et Fichier supprimées, l'arborescence porte cette information ; Clé toujours visible, bouton bascule « détails » retiré. Persistance simplifiée : `ColumnFillWeights` unique (compat lecture de l'ancien jeu), `ShowDetails` retiré. Le drill-down par projet / fichier passe par la sélection exacte dans l'arbre (`SelectTreeExactly`) |
+| 2026-09-01 | Synchronisation de sélection grille ↔ arbre : la ligne courante de la grille sélectionne et fait défiler son fichier dans l'arbre ; un nœud de l'arbre sélectionne les lignes affichées du fichier ou du projet et défile jusqu'à la première. Verrou `_isSyncingSelection` contre les boucles, nœuds retrouvés par `_fileNodesByKey` |
 
 ---
 

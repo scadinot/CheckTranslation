@@ -901,6 +901,12 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _treeFilterDebounceTimer;
     // Empêche les AfterCheck en cascade pendant une propagation ou une reconstruction.
     private bool _isUpdatingTreeChecks;
+    // Nœuds de fichier par identité, pour retrouver le nœud d'une ligne de la grille sans
+    // parcourir l'arbre. Reconstruit avec les nœuds : un fichier masqué par le bandeau n'y est pas.
+    private readonly Dictionary<(string Project, string File), TreeNode> _fileNodesByKey = new(FileKeyComparer.Instance);
+    // Verrou anti-boucle de la synchronisation de sélection : chaque sens (grille -> arbre,
+    // arbre -> grille) déclenche l'événement de l'autre.
+    private bool _isSyncingSelection;
 
     private void InitSolutionTreeButton()
     {
@@ -955,8 +961,14 @@ public partial class MainForm : Form
             ShowPlusMinus = true,
             ShowRootLines = false,
             BorderStyle = BorderStyle.None,
+            // Sans quoi la sélection n'est surlignée que lorsque l'arbre a le focus — et la
+            // synchronisation grille → arbre se joue précisément quand le focus est dans la
+            // grille : le nœud était bien sélectionné, mais rien ne se voyait.
+            HideSelection = false,
         };
         solutionTree.AfterCheck += SolutionTree_AfterCheck;
+        solutionTree.AfterSelect += SolutionTree_AfterSelect;
+        dataGridView.SelectionChanged += (_, _) => SyncTreeSelectionFromGrid();
         treeBoldFont = new Font(solutionTree.Font, FontStyle.Bold);
 
         splitContainer = new SplitContainer
@@ -1226,6 +1238,7 @@ public partial class MainForm : Form
         try
         {
             solutionTree.Nodes.Clear();
+            _fileNodesByKey.Clear();
 
             foreach (var projectGroup in _allRows
                 .GroupBy(row => row.Project.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -1235,8 +1248,9 @@ public partial class MainForm : Form
                     || projectGroup.Key.Contains(filter, StringComparison.OrdinalIgnoreCase);
 
                 // L'espace final contourne le rognage connu de WinForms sur un NodeFont plus
-                // large que la police du TreeView.
-                var projectNode = new TreeNode(projectGroup.Key + " ") { NodeFont = treeBoldFont };
+                // large que la police du TreeView. Le Tag porte le nom du projet : la
+                // synchronisation de sélection s'en sert pour distinguer projet et fichier.
+                var projectNode = new TreeNode(projectGroup.Key + " ") { NodeFont = treeBoldFont, Tag = projectGroup.Key };
                 bool allChecked = true;
 
                 foreach (var file in projectGroup
@@ -1252,7 +1266,9 @@ public partial class MainForm : Form
                     if (!isChecked)
                         allChecked = false;
 
-                    projectNode.Nodes.Add(new TreeNode(file) { Tag = identity, Checked = isChecked });
+                    var fileNode = new TreeNode(file) { Tag = identity, Checked = isChecked };
+                    projectNode.Nodes.Add(fileNode);
+                    _fileNodesByKey[identity] = fileNode;
                 }
 
                 // Aucun fichier ne passe le filtre : le projet n'apparaît pas.
@@ -1377,6 +1393,98 @@ public partial class MainForm : Form
         }
 
         RebuildSolutionTreeNodes();
+    }
+
+    /// <summary>
+    /// Sélectionne dans l'arbre le fichier de la ligne courante de la grille, et l'amène à
+    /// l'écran. L'arbre est mono-sélection : sur une sélection multi-fichiers, c'est la ligne
+    /// courante (l'ancre) qui décide. Un fichier masqué par le filtre du bandeau n'a pas de
+    /// nœud : on ne touche alors à rien — la synchronisation ne défait pas un filtre posé.
+    /// </summary>
+    private void SyncTreeSelectionFromGrid()
+    {
+        if (_isSyncingSelection || _isUpdatingTreeChecks || solutionTree is null)
+            return;
+
+        var row = dataGridView.CurrentRow?.DataBoundItem as TranslationRow
+            ?? (dataGridView.SelectedRows.Count > 0 ? dataGridView.SelectedRows[0].DataBoundItem as TranslationRow : null);
+        if (row is null)
+            return;
+
+        if (!_fileNodesByKey.TryGetValue(BuildFileKey(row.Project, row.File), out var node)
+            || ReferenceEquals(solutionTree.SelectedNode, node))
+            return;
+
+        _isSyncingSelection = true;
+        try
+        {
+            solutionTree.SelectedNode = node;
+            node.EnsureVisible();
+        }
+        finally
+        {
+            _isSyncingSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// Sélectionne dans la grille les lignes du nœud cliqué — celles d'un fichier, ou toutes
+    /// celles d'un projet — et fait défiler jusqu'à la première. Seules les lignes affichées
+    /// sont concernées : les filtres de colonnes et les cases décochées restent maîtres de ce
+    /// que la grille montre.
+    /// </summary>
+    private void SolutionTree_AfterSelect(object? sender, TreeViewEventArgs e)
+    {
+        if (_isSyncingSelection || _isUpdatingTreeChecks || e.Node is null)
+            return;
+
+        // Le Tag dit la nature du nœud : tuple (projet, fichier) pour un fichier, nom du projet
+        // pour un projet.
+        Func<TranslationRow, bool>? matches = e.Node.Tag switch
+        {
+            ValueTuple<string, string> identity => row => FileKeyComparer.Instance.Equals(BuildFileKey(row.Project, row.File), identity),
+            string project => row => string.Equals(row.Project.Trim(), project, StringComparison.OrdinalIgnoreCase),
+            _ => null,
+        };
+
+        if (matches is null)
+            return;
+
+        var matchingRows = new List<DataGridViewRow>();
+        foreach (DataGridViewRow gridRow in dataGridView.Rows)
+            if (gridRow.DataBoundItem is TranslationRow item && matches(item))
+                matchingRows.Add(gridRow);
+
+        if (matchingRows.Count == 0)
+            return;
+
+        _isSyncingSelection = true;
+        try
+        {
+            dataGridView.ClearSelection();
+
+            // La cellule courante d'abord : son affectation modifie la sélection (même précaution
+            // que ApplyFiltersPreservingSelection), puis les lignes, puis le défilement.
+            dataGridView.CurrentCell = matchingRows[0].Cells[colKey!.Index];
+
+            foreach (var gridRow in matchingRows)
+                gridRow.Selected = true;
+
+            try
+            {
+                dataGridView.FirstDisplayedScrollingRowIndex = matchingRows[0].Index;
+            }
+            catch
+            {
+                // best effort, comme les autres restaurations de défilement
+            }
+
+            UpdateSelectionStatus();
+        }
+        finally
+        {
+            _isSyncingSelection = false;
+        }
     }
 
     /// <summary>Lignes visibles selon l'arbre : toutes si rien n'est décoché.</summary>

@@ -23,6 +23,7 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Tableau** : français (lecture seule) + traduction (éditable) + commentaire de vérification (score)
 - **Colonne Clé** : toujours visible ; le projet et le fichier sont portés par le panneau d'arborescence
 - **Arborescence de la solution** : panneau gauche repliable (style ResX Resource Manager) listant Projet → Fichier avec cases à cocher pour restreindre l'affichage, case « tout cocher / décocher » et zone de filtre du panneau
+- **Sélection synchronisée** : la ligne courante de la grille met en évidence son fichier dans l'arbre ; cliquer un fichier ou un projet dans l'arbre sélectionne ses lignes dans la grille et défile jusqu'à la première
 - **7 langues** : Anglais, Allemand, Espagnol, Italien, Néerlandais, Polonais, Chinois (boutons drapeaux)
 - **Persistance de disposition** : taille de fenêtre, largeur des colonnes, visibilité et largeur du panneau d'arborescence, mémorisées entre les sessions
 
