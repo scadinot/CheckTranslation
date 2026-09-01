@@ -961,6 +961,10 @@ public partial class MainForm : Form
             ShowPlusMinus = true,
             ShowRootLines = false,
             BorderStyle = BorderStyle.None,
+            // Sans quoi la sélection n'est surlignée que lorsque l'arbre a le focus — et la
+            // synchronisation grille → arbre se joue précisément quand le focus est dans la
+            // grille : le nœud était bien sélectionné, mais rien ne se voyait.
+            HideSelection = false,
         };
         solutionTree.AfterCheck += SolutionTree_AfterCheck;
         solutionTree.AfterSelect += SolutionTree_AfterSelect;
