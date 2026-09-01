@@ -58,7 +58,7 @@ internal sealed class GlossaryService : IGlossaryService
             {
                 Directory.CreateDirectory(AppConfig.ConfigDirectory);
                 var json = JsonSerializer.Serialize(_glossary, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(FilePath, json);
+                AtomicFile.WriteAllText(FilePath, json);
             }
             catch (IOException ex)
             {

@@ -371,7 +371,7 @@ internal sealed class AppConfig
             SolutionTreeWidth = SolutionTreeWidth,
         };
         var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(FilePath, json);
+        AtomicFile.WriteAllText(FilePath, json);
         Current = this;
     }
 

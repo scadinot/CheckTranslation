@@ -552,8 +552,15 @@ internal static partial class ResxReader
             Indent = false,
         };
 
-        using var writer = XmlWriter.Create(path, settings);
-        document.Save(writer);
+        // Écriture en deux temps (AtomicFile) : le .resx existant n'est jamais exposé à une
+        // écriture partielle — c'est du code source de l'utilisateur. Le BOM est lu ci-dessus
+        // sur le fichier d'origine, encore intact à ce stade. Les IOException /
+        // UnauthorizedAccessException remontent à Save, qui les collecte fichier par fichier.
+        AtomicFile.Write(path, tempPath =>
+        {
+            using var writer = XmlWriter.Create(tempPath, settings);
+            document.Save(writer);
+        });
     }
 
     private static bool HasByteOrderMark(string path)
