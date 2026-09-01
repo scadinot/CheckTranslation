@@ -621,13 +621,21 @@ public partial class MainForm : Form
         if (dialog.ShowDialog() != DialogResult.OK)
             return;
 
-        _currentFilePath = dialog.FileName;
-        statusFileName.Text = $"Fichier : {Path.GetFileName(_currentFilePath)}";
-        await LoadFileAsync(_currentFilePath);
+        // _currentFilePath n'est affecté que dans le chemin de succès de LoadFileAsync : l'affecter
+        // ici laisserait, sur un échec, le chemin du fichier en échec au-dessus des données de
+        // l'ancienne source — status bar mensongère, et F5 rechargerait l'ancienne source sous le
+        // mauvais libellé.
+        await LoadFileAsync(dialog.FileName);
     }
 
     private async Task LoadFileAsync(string filePath)
     {
+        // Mémorisés pour revenir à un état cohérent si le chargement échoue : la grille garde alors
+        // les lignes de la source précédente, la status bar doit continuer de les décrire.
+        var previousFileLabel = statusFileName.Text;
+        var previousRowCountLabel = statusRowCount.Text;
+        statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)}";
+
         statusProgressBar.Visible = true;
         statusProgressBar.Style = ProgressBarStyle.Blocks;
         statusProgressBar.Maximum = 1;
@@ -671,6 +679,7 @@ public partial class MainForm : Form
                 row.SelectLanguage(_currentLanguage.Code);
 
             _currentSource = source;
+            _currentFilePath = filePath;
             _allRows = rows;
             // Nouvelle source : l'arbre repart tout coché, comme les autres filtres repartent vides.
             PopulateSolutionTree(preserveChecks: false);
@@ -683,8 +692,6 @@ public partial class MainForm : Form
             SetViewRefreshPending(false);
             statusRowCount.Text = $"Lignes : {rows.Count}";
             statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})";
-            btnSave.Enabled = true;
-            btnMerge.Enabled = source.SupportsMerge;
 
             // Une grille vide ne dit pas si la source est vide ou si la chaîne s'est arrêtée en
             // route (aucun projet reconnu, aucun .resx, toutes les entrées exclues). Le compte
@@ -704,7 +711,11 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            statusRowCount.Text = "Erreur de chargement";
+            // Retour à la source précédente : la grille l'affiche toujours (_allRows et
+            // _currentSource n'ont pas bougé), la status bar doit la décrire — pas le fichier en
+            // échec. btnSave / btnMerge sont restaurés par le finally.
+            statusFileName.Text = previousFileLabel;
+            statusRowCount.Text = previousRowCountLabel;
             MessageBox.Show(
                 $"Impossible de charger les traductions :\n\n{ex.Message}",
                 "Erreur",
@@ -722,6 +733,9 @@ public partial class MainForm : Form
             }
 
             btnOpen.Enabled = true;
+            // Succès comme échec : ces états décrivent la source réellement en mémoire — la
+            // nouvelle si le chargement a abouti, l'ancienne (toujours affichée et éditable) sinon.
+            btnSave.Enabled = _allRows is not null;
             btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
         }
     }

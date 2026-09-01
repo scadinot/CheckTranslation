@@ -713,6 +713,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 | 2026-08-31 | Case maîtresse asymétrique : cocher fait de la sélection exactement les éléments visibles (le masqué est décoché, même s'il l'était), décocher vide tout, visible ou non — filtrer puis cocher devient le geste « ne garder que ça » |
 | 2026-08-31 | Colonnes Projet et Fichier supprimées, l'arborescence porte cette information ; Clé toujours visible, bouton bascule « détails » retiré. Persistance simplifiée : `ColumnFillWeights` unique (compat lecture de l'ancien jeu), `ShowDetails` retiré. Le drill-down par projet / fichier passe par la sélection exacte dans l'arbre (`SelectTreeExactly`) |
 | 2026-09-01 | Synchronisation de sélection grille ↔ arbre : la ligne courante de la grille sélectionne et fait défiler son fichier dans l'arbre ; un nœud de l'arbre sélectionne les lignes affichées du fichier ou du projet et défile jusqu'à la première. Verrou `_isSyncingSelection` contre les boucles, nœuds retrouvés par `_fileNodesByKey` |
+| 2026-09-01 | Fix échec d'ouverture : `LoadFileAsync` revient à l'état de la source précédente quand le chargement échoue — `_currentFilePath` n'est plus affecté par `BtnOpen_Click` mais dans le chemin de succès, la status bar (fichier + lignes) est restaurée dans le `catch`, `btnSave` rétabli dans le `finally` (`_allRows is not null`, comme le rafraîchissement). Auparavant : anciennes lignes affichées mais non sauvegardables, nom du fichier en échec dans la status bar, F5 rechargeant l'ancienne source sous le mauvais libellé |
 
 ---
 
