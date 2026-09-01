@@ -21,9 +21,10 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 
 ### Affichage et édition
 - **Tableau** : français (lecture seule) + traduction (éditable) + commentaire de vérification (score)
-- **Colonnes de détail** : Projet / Fichier / Clé affichables via un bouton bascule (mémorisé)
+- **Colonne Clé** : toujours visible ; le projet et le fichier sont portés par le panneau d'arborescence
+- **Arborescence de la solution** : panneau gauche repliable (style ResX Resource Manager) listant Projet → Fichier avec cases à cocher pour restreindre l'affichage, case « tout cocher / décocher » et zone de filtre du panneau
 - **7 langues** : Anglais, Allemand, Espagnol, Italien, Néerlandais, Polonais, Chinois (boutons drapeaux)
-- **Persistance de disposition** : taille de fenêtre + largeur des colonnes, mémorisées entre les sessions (deux jeux distincts selon le mode « détails » visible ou non)
+- **Persistance de disposition** : taille de fenêtre, largeur des colonnes, visibilité et largeur du panneau d'arborescence, mémorisées entre les sessions
 
 ### Filtrage, tri et colorisation
 - **Filtres par colonne** : icône loupe dans chaque en-tête, saisie texte (debounce 300 ms)
@@ -123,9 +124,9 @@ Le fichier `CheckTranslation.config.json` est enregistré dans :
 
 - Prompts, fournisseur et paramètres par provider
 - Langue active
-- Visibilité des colonnes de détail
 - Taille de la fenêtre
-- Largeur des colonnes (deux jeux distincts selon le mode « détails »)
+- Largeur des colonnes
+- Visibilité et largeur du panneau d'arborescence
 
 Le glossaire est persisté séparément dans le même dossier, dans un unique fichier `glossary.json` contenant les entrées par langue.
 

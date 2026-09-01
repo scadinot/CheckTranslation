@@ -201,12 +201,10 @@ internal sealed partial class ConfigForm : Form
             BifrostAnthropicModelName = txtBifrostAnthropicModelName.Text.Trim(),
 
             Provider = SelectedProvider,
-            ShowDetails = current.ShowDetails,
             SelectedLanguageCode = current.SelectedLanguageCode,
             WindowWidth = current.WindowWidth,
             WindowHeight = current.WindowHeight,
-            ColumnFillWeightsWithDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithDetails, StringComparer.Ordinal),
-            ColumnFillWeightsWithoutDetails = new Dictionary<string, float>(current.ColumnFillWeightsWithoutDetails, StringComparer.Ordinal),
+            ColumnFillWeights = new Dictionary<string, float>(current.ColumnFillWeights, StringComparer.Ordinal),
             ShowSolutionTree = current.ShowSolutionTree,
             SolutionTreeWidth = current.SolutionTreeWidth,
         };
