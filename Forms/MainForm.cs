@@ -2406,7 +2406,7 @@ public partial class MainForm : Form
                 {
                     if (!string.IsNullOrEmpty(batch[i]))
                     {
-                        // Le cache de verification est deja alimente par le callback
+                        // Le cache de vérification est déjà alimenté par le callback
                         // onBatchCompleted dans TranslationService.VerifyInBatchesAsync ;
                         // pas besoin de le refaire ici.
                         rows[rowIndex].Comment = batch[i];
