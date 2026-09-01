@@ -1,8 +1,9 @@
-# CLAUDE.md — Guide technique et suivi
+# CLAUDE.md — Guide technique
 
-Référence complète du projet **CheckTranslation**, destinée aux humains comme aux assistants IA. Couvre l'architecture, les conventions, les avertissements, le suivi chronologique et la roadmap.
+Guide technique du projet **CheckTranslation**, destiné aux humains comme aux assistants IA. Couvre l'architecture, les conventions et les avertissements — ce qu'une session de travail doit toujours avoir en tête.
 
 > Documentation utilisateur et installation : voir [README.md](README.md).
+> Feuille de route et historique des changements : voir [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -19,8 +20,7 @@ Référence complète du projet **CheckTranslation**, destinée aux humains comm
 9. [Conventions de code](#9-conventions-de-code)
 10. [Avertissements importants](#10-avertissements-importants)
 11. [Tests](#11-tests)
-12. [Suivi chronologique](#12-suivi-chronologique)
-13. [Roadmap](#13-roadmap)
+12. [Suivi et roadmap](#12-suivi-et-roadmap)
 
 ---
 
@@ -304,7 +304,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - **Asymétrie assumée sur les erreurs d'E/S** : au *chargement*, un `.resx` invalide ou inaccessible (verrouillé par Visual Studio, droits, chemin trop long) est ignoré avec une trace `Debug` — le reste de la solution se charge. À la *sauvegarde*, un fichier en échec n'est **jamais** ignoré en silence : `Save` écrit tout ce qu'il peut, collecte les échecs et lève une `IOException` les listant, que `MainForm` affiche. Ignorer silencieusement à l'écriture ferait croire à l'utilisateur que ses traductions sont enregistrées.
 - `Save(...)` : **n'écrit que les variantes de culture, jamais le fichier neutre** (le français est en lecture seule dans l'UI). Écriture chirurgicale : chargement en `LoadOptions.PreserveWhitespace`, mise à jour ou insertion de l'entrée ciblée, fichier réécrit uniquement s'il a réellement changé (sauvegarde idempotente). Le BOM d'origine est préservé (lu sur le fichier d'origine, encore intact puisque l'écriture passe par un temporaire). Un fichier de langue absent est créé à partir de l'en-tête du neutre (déclaration, schéma XSD, `resheader`) vidé de ses données — jamais pour n'y écrire que du vide. L'écriture physique passe par `AtomicFile` : un crash en pleine écriture ne corrompt jamais le `.resx` existant.
 
-**`AtomicFile` (static)** — écriture en deux temps, partagée par toutes les écritures disque de l'application (`ResxReader.Save`, `AppConfig.Save`, `GlossaryService.Save`) : le contenu est écrit dans un temporaire `<cible>.tmp` du même répertoire (même volume — condition pour que le basculement soit atomique), puis substitué à la cible par `File.Replace` (ACL et attributs de la cible préservés) ou `File.Move` quand la cible n'existe pas encore (création d'un fichier de langue). En cas d'échec, le temporaire est supprimé au mieux et l'exception d'origine remonte telle quelle — pour les `.resx`, `IOException` / `UnauthorizedAccessException` continuent donc d'être collectées fichier par fichier par `ResxReader.Save`. Pas de `.bak` systématique : « Backup auto » reste une entrée distincte de la roadmap (§13.4) ; le jour où elle sera traitée, `File.Replace` accepte un nom de backup, le point d'insertion est tout trouvé.
+**`AtomicFile` (static)** — écriture en deux temps, partagée par toutes les écritures disque de l'application (`ResxReader.Save`, `AppConfig.Save`, `GlossaryService.Save`) : le contenu est écrit dans un temporaire `<cible>.tmp` du même répertoire (même volume — condition pour que le basculement soit atomique), puis substitué à la cible par `File.Replace` (ACL et attributs de la cible préservés) ou `File.Move` quand la cible n'existe pas encore (création d'un fichier de langue). En cas d'échec, le temporaire est supprimé au mieux et l'exception d'origine remonte telle quelle — pour les `.resx`, `IOException` / `UnauthorizedAccessException` continuent donc d'être collectées fichier par fichier par `ResxReader.Save`. Pas de `.bak` systématique : « Backup auto » reste une entrée distincte de [ROADMAP.md](ROADMAP.md) ; le jour où elle sera traitée, `File.Replace` accepte un nom de backup, le point d'insertion est tout trouvé.
 
 **`FormGeometryReader` (static)** — lit la géométrie des contrôles d'un formulaire WinForms depuis son `.resx` neutre (`X.Size`, `X.Location`, `X.Font`, `X.AutoSize`, `$this.ClientSize`), pour pouvoir confronter une traduction à la place réellement disponible. Socle de la vérification de débordement ; **aucune mesure ni UI à ce stade**.
 - Ces entrées portent un attribut `type` : elles sont donc déjà exclues des lignes traduisibles par `ResxReader`. Les deux lectures sont complémentaires.
@@ -636,7 +636,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Elle est lancée au chargement et au rafraîchissement, jamais au changement de langue** — les sept langues sont déjà calculées, `SwitchToLanguage` n'a qu'à rebasculer la vue active. Rebrancher l'analyse sur ce chemin ne ferait que recalculer ce qui existe déjà.
 - **Un verdict de mise en page vit sous son code de langue** — comme `Translations` et `Comments`. Ne pas le ramener à un champ unique : c'est ce qui obligeait à tout effacer à chaque bascule et à relancer l'analyse.
 - **L'analyse de mise en page ne compare que des rapports** — la `Size` sérialisée d'un contrôle `AutoSize` sert d'étalon, l'échelle du formulaire s'en déduit pour les contrôles fixes. Ne pas réintroduire de comparaison directe entre une mesure et une coordonnée du `.resx` : les deux ne sont pas dans le même repère, et l'écart observé sur le corpus est d'un facteur voisin de deux.
-- **Le multi-lignes se compte en retours à la ligne explicites** — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes, un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize` du formulaire, police par police). Le repli automatique (wrap) n'est pas prédit : ne pas conclure d'un « conforme » qu'une ligne longue ne se replie pas à l'exécution — c'est l'angle mort documenté en roadmap §13.3. L'orientation d'une troncature (`LayoutIssue.Vertical`) ne participe pas à la `Signature` : un contrôle déjà défectueux en français ne devient pas imputable à la traduction parce que l'axe change.
+- **Le multi-lignes se compte en retours à la ligne explicites** — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes, un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize` du formulaire, police par police). Le repli automatique (wrap) n'est pas prédit : ne pas conclure d'un « conforme » qu'une ligne longue ne se replie pas à l'exécution — c'est l'angle mort documenté dans [ROADMAP.md](ROADMAP.md) (vérification de débordement). L'orientation d'une troncature (`LayoutIssue.Vertical`) ne participe pas à la `Signature` : un contrôle déjà défectueux en français ne devient pas imputable à la traduction parce que l'axe change.
 - **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
@@ -661,146 +661,13 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 
 ---
 
-## 12. Suivi chronologique
+## 12. Suivi et roadmap
 
-| Date | Changement |
-|------|------------|
-| 2026-01-XX | Version initiale |
-| 2026-03-06 | Hygiène WinForms Designer : nettoyage de `ConfigForm.Designer.cs` |
-| 2026-03-06 | DI : ajout de `IExcelService`/`ITranslationService` + injection dans `MainForm` |
-| 2026-03-06 | Séparation UI/Logic : extraction de `Logic/QualityScore.cs` + `Logic/TranslationRowFiltering.cs` |
-| 2026-03-07 | Chargement Excel : progress bar en lignes lues (`ExcelLoadProgress` + `LoadWithRowProgress`) |
-| 2026-03-07 | Auto-traduction (sans IA) : copie des traductions déjà présentes (menu contextuel) |
-| 2026-03-13 | Chargement fichier : réinitialisation des champs de filtre après `Ouvrir` |
-| 2026-03-13 | Cache traductions IA : cache mémoire par texte/langue/config + dédup + update manuel |
-| 2026-03-13 | Emplacement config : déplacement vers `%LocalAppData%\CheckTranslation` avec compat lecture |
-| 2026-03-13 | Cache vérifications IA : cache mémoire distinct + compteur dédié dans la status bar |
-| 2026-03-13 | Persistance vérification : sauvegarde des commentaires de vérification dans l'Excel |
-| 2026-03-13 | Appels API parallèles : `Task.WhenAll` + `SemaphoreSlim` pour limiter le rate limiting |
-| 2026-03-20 | Boutons « Vider cache » dans `ConfigForm` |
-| 2026-03-27 | Filtre par score de vérification : ComboBox dans l'en-tête Commentaire |
-| 2026-04-03 | Bouton Rafraîchir + F5 : rechargement fichier + détection changements source |
-| 2026-04-10 | Persistance de disposition : taille fenêtre + largeurs colonnes (2 dictionnaires selon mode) |
-| 2026-04-15 | Fusion Excel : report traductions source→destination avec résolution des conflits |
-| 2026-04-17 | Refactorisation de la gestion des différences de fusion |
-| 2026-04-17 | Progression temps réel des batchs IA : callback `onBatchCompleted` (PR #7) |
-| 2026-04-18 | Glossaire métier : service + éditeur + extraction IA + injection dans prompts + invalidation par fingerprint (PR #8) |
-| 2026-04-18 | Nettoyage layout `MergeDifferenceForm` : fenêtre élargie, marges compactes |
-| 2026-04-18 | Migration des boutons « Vider cache » de `ConfigForm` vers le Designer (PR #9) |
-| 2026-04-18 | Migration de `GlossaryForm` et `GlossaryExtractionDialog` vers le pattern Designer + resx (PR #10) |
-| 2026-04-18 | Fusion des 3 partials de `MainForm` (`LayoutPersistence`, `ManualRefreshSupport`, `VerificationScoreFilterSupport`) dans `MainForm.cs` avec sections commentées (PR #11) |
-| 2026-04-20 | Documentation : fusion de `ANALYSE_PROJET.md` + `ROADMAP.md` dans `CLAUDE.md`, 4 fichiers `.md` → 2 (PR #12) |
-| 2026-04-20 | Filtres DPI-aware : hauteurs d'en-tête et de contrôles calculées depuis la police et `LogicalToDeviceUnits` au lieu de constantes en pixels (PR #13) |
-| 2026-04-20 | Protection contre la fermeture pendant une écriture disque : `_isWriting` + `SetWritingState`, toolbar et grille désactivées, `FormClosing` annulé (PR #14) |
-| 2026-04-20 | Fix : `ConfigForm.BuildCurrentConfig` écrasait les champs de disposition ; double alimentation du cache de vérification supprimée dans `VerifyRowsAsync` (PR #15) |
-| 2026-04-20 | Fix review Copilot : compteurs de cache tenant compte du fingerprint glossaire, `LoadIcon` tolérant aux erreurs, `catch` typé dans `AppConfig.Load`, pipeline Polly partagé, `BatchSize` partagé, traces de diagnostic sur l'introspection des SDK (PR #16) |
-| 2026-04-20 | Fermeture bloquée : flash non-modal de 3 s dans la status bar à la place du `MessageBox` (PR #17) |
-| 2026-04-20 | `BtnMerge_Click` : protection unifiée sous `SetWritingState` pour toute la fusion, en remplacement des `Enabled` bouton par bouton (PR #18) |
-| 2026-04-20 | Documentation : suivi et sections remis à jour pour les PR #12 à #18 (PR #19) |
-| 2026-08-29 | **Support de la passerelle Bifrost** : deux fournisseurs supplémentaires (`BifrostOpenAI`, `BifrostAnthropic`) à côté des accès directs, clé facultative, listing des modèles factorisé pour les quatre fournisseurs |
-| 2026-08-29 | **Lecture / écriture directe des `.resx`** : abstraction `ITranslationSource` (Excel + resx), `SolutionReader` (.sln / .slnx), `ResxReader` (écriture chirurgicale, BOM préservé, idempotente). Les langues sont désormais identifiées par code et non plus par colonne Excel. Fusion toujours réservée à la source Excel |
-| 2026-08-29 | Import de solution : compte rendu de chargement (`ResxLoadReport`) affiché quand aucune ligne n'est trouvée ; `.slnx` lu quel que soit l'espace de noms |
-| 2026-08-29 | Fix import `.resx` : les `<data>`, `<value>`, `<comment>` et leurs attributs sont lus par nom local — un `.resx` déclarant un espace de noms était lu comme vide, sans erreur. Compte rendu enrichi (éléments rencontrés, entrées binaires, métadonnées designer) |
-| 2026-08-29 | **Vérification de mise en page** : `FormGeometryReader` (géométrie + filiation `>>X.Parent`), `LayoutAnalyzer` (troncatures et collisions, régression par rapport au français), `GdiTextWidthMeasurer` (mesure GDI à 96 ppp), colonne et filtre dans la grille. Réservée à la source `.resx` |
-| 2026-08-29 | Fix `ConfigForm` : placeholders `{language}` / `{glossary}` rendus dans l'aperçu (extension Markdig *generic attributes* retirée), fenêtre bornée à l'écran, champs de fournisseur réétirés à leur panneau |
-| 2026-08-30 | Mise en page : mesure **en rapport** plutôt qu'en absolu — la `Size` sérialisée des contrôles `AutoSize` sert d'étalon par formulaire, avec repli sur la médiane de la solution. Supprime `extraPadding` et l'hypothèse d'un `.resx` à 96 ppp |
-| 2026-08-30 | **Tableau de bord de l'état des traductions** : `TranslationStatistics` (calcul pur) + `DashboardForm` (cartes, par langue / projet / fichier / mise en page, barres d'avancement). Chiffres cliquables : un clic bascule la langue et filtre la grille. Pseudo-filtres `translation:none` / `done` / `same` et tranches de score fermées |
-| 2026-08-30 | Vérification de mise en page **multi-langues en une passe** : verdicts stockés par code de langue dans `TranslationRow`, analyse lancée au chargement et au rafraîchissement pour les sept langues à la fois (×1,8 au lieu de ×4,1), plus aucun recalcul au changement de langue. Onglet « Mise en page » du tableau de bord comparant les sept langues. Compte rendu distinguant « aucun défaut » de « rien n'a pu être analysé » |
-| 2026-08-31 | Diagnostic chiffré du premier chargement plus lent : compilation étagée de .NET. Trois contre-mesures mises en œuvre et mesurées (ReadyToRun 6 %, préchauffage 8 %, `TieredCompilation=0` −28 % / +47 %), aucune retenue (§5.1 et §5.2) |
-| 2026-08-31 | Documentation : arborescence du §3 remise à niveau (`Models/LayoutStatus.cs`, dossier `FormTest/`, taille réelle de `MainForm.cs`) ; `FormTest` documenté comme banc d'essai manuel de la vérification de mise en page (§11) |
-| 2026-08-31 | Gel de l'UI pendant les batchs IA : `TranslateRowsAsync` / `VerifyRowsAsync` / `ExtractTermsRowsAsync` gèlent toolbar + grille (au lieu de Ouvrir/Sauver seuls) — changer de langue, fusionner ou rafraîchir pendant un batch corrompait les traductions (placeholders committés, fusionnés ou orphelins). `CanRefreshView` vérifie `toolStrip.Enabled` : F5 contournait tous les gels via `ProcessCmdKey` |
-| 2026-08-31 | Trois écarts corrigés suite à l'analyse détaillée : la sauvegarde `.resx` lit désormais le XML par noms locaux comme le chargement (les éléments créés reprennent l'espace de noms du parent) ; l'aperçu Markdown des prompts émet un `<meta charset>` valide (backslashes parasites retirés) ; le fingerprint du glossaire est calculé sur les entrées triées, comme documenté au §8.4 |
-| 2026-08-31 | Gel de l'UI étendu au chargement et au rafraîchissement (revue Copilot PR #30) : `LoadFileAsync` et `BtnRefresh_Click` gèlent toolbar + grille — F5 pouvait ré-entrer dans `BtnRefresh_Click` (deux chargements concurrents) et les drapeaux restaient cliquables pendant un rechargement (vues actives mélangées entre anciennes et nouvelles lignes) |
-| 2026-08-31 | Mise en page : dimension verticale par retours à la ligne explicites — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes (collisions verticales détectées), un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize`, police par police, `Troncature (hauteur)` dans la grille). Le wrap reste hors périmètre (roadmap §13.3) |
-| 2026-08-31 | **Arborescence de la solution** (style ResX Resource Manager) : panneau gauche à cases à cocher Projet → Fichier restreignant l'affichage de la grille. `SplitContainer` créé par code (grille réparentée), propagation projet ↔ fichiers, conservation des cases au rafraîchissement, recochage par le drill-down, gel via `dataGridView.EnabledChanged`, largeur et visibilité persistées (`ShowSolutionTree` / `SolutionTreeWidth`) |
-| 2026-08-31 | Bandeau de l'arborescence : case maîtresse « tout cocher / décocher » à trois états et filtre du panneau, agissant sur les éléments visibles. États cochés portés par `_uncheckedFiles` et non par les nœuds — filtrer l'arbre ne perd aucun décochage. Gel étendu à `Panel1` entier |
-| 2026-08-31 | Case maîtresse asymétrique : cocher fait de la sélection exactement les éléments visibles (le masqué est décoché, même s'il l'était), décocher vide tout, visible ou non — filtrer puis cocher devient le geste « ne garder que ça » |
-| 2026-08-31 | Colonnes Projet et Fichier supprimées, l'arborescence porte cette information ; Clé toujours visible, bouton bascule « détails » retiré. Persistance simplifiée : `ColumnFillWeights` unique (compat lecture de l'ancien jeu), `ShowDetails` retiré. Le drill-down par projet / fichier passe par la sélection exacte dans l'arbre (`SelectTreeExactly`) |
-| 2026-09-01 | Synchronisation de sélection grille ↔ arbre : la ligne courante de la grille sélectionne et fait défiler son fichier dans l'arbre ; un nœud de l'arbre sélectionne les lignes affichées du fichier ou du projet et défile jusqu'à la première. Verrou `_isSyncingSelection` contre les boucles, nœuds retrouvés par `_fileNodesByKey` |
-| 2026-09-01 | Fix échec d'ouverture : `LoadFileAsync` revient à l'état de la source précédente quand le chargement échoue — `_currentFilePath` n'est plus affecté par `BtnOpen_Click` mais dans le chemin de succès, la status bar (fichier + lignes) est restaurée dans le `catch`, `btnSave` rétabli dans le `finally` (`_allRows is not null`, comme le rafraîchissement). Auparavant : anciennes lignes affichées mais non sauvegardables, nom du fichier en échec dans la status bar, F5 rechargeant l'ancienne source sous le mauvais libellé |
-| 2026-09-01 | **Écritures disque atomiques** : `AtomicFile` (temporaire `<cible>.tmp` du même répertoire puis `File.Replace` / `File.Move`) utilisé par `ResxReader.Save`, `AppConfig.Save` et `GlossaryService.Save` — un crash ou une coupure en pleine écriture ne corrompt plus le fichier cible. BOM préservé, écriture seulement si modifié et remontée des échecs fichier par fichier inchangés ; pas de `.bak` systématique (« Backup auto » reste en roadmap §13.4) |
-| 2026-09-01 | Traduction partielle (roadmap §13.4) : une entrée inexploitable dans une réponse IA restaure la valeur d'avant le batch au lieu de laisser le placeholder « Traduction en cours... » / « Vérification... » — qui pouvait être sauvegardé tel quel dans le .resx ou l'Excel. Messages d'avertissement explicités (les lignes ont retrouvé leur valeur précédente) |
+La feuille de route et le suivi chronologique des changements vivent dans [ROADMAP.md](ROADMAP.md).
 
----
-
-## 13. Roadmap
-
-Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
-
-### 13.1 Architecture & maintenabilité
-
-| Prio | Axe | État | Amélioration suggérée |
-|:--:|---|---|---|
-| 🔴 | **Tests** | Aucun | Projet `CheckTranslation.Tests` (xUnit/NUnit). Candidats prioritaires listés en §11. |
-| 🟡 | **Séparation UI/Logic** | Partielle (`Logic/` extrait, `MainForm` désormais en sections commentées) | Extraire un `MainFormViewModel`/présenteur pour chargement/sauvegarde/traduction/fusion |
-| 🟢 | **Prompts externalisés** | En dur dans `AppConfig.cs` | Déplacer dans des fichiers `.md` séparés (édition facile) |
-
-### 13.2 Performance
-
-| Prio | Axe | État | Amélioration suggérée |
-|:--:|---|---|---|
-| 🟢 | **Appels API parallèles** | ✅ `Task.WhenAll` + `SemaphoreSlim(4)` | Ajuster selon quotas réels des providers |
-| 🟢 | **Chargement Excel** | ✅ Progress en lignes lues | Streaming / `VirtualMode` pour >50k lignes |
-| 🟢 | **Cache traductions** | ✅ Mémoire + dédup + fingerprint glossaire | Persistance disque entre sessions |
-| 🟢 | **DataGridView** | Double-buffering activé | `VirtualMode` pour très gros fichiers |
-
-### 13.3 UX / Interface
-
-| Prio | Axe | État | Amélioration suggérée |
-|:--:|---|---|---|
-| 🔴 | **Annulation** | Aucune | `CancellationToken` + bouton « Annuler » |
-| 🟡 | **Historique Undo/Redo** | Aucun | Au moins 1 niveau |
-| 🟢 | **Recherche globale** | Filtres par colonne uniquement | Recherche toutes colonnes |
-| 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
-| 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
-| 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
-| 🟡 | **Vérification de débordement** | ✅ Chaîne complète, étalonnée sur le fichier lui-même (aucune constante), verticale comprise (lignes explicites) | Gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le repli automatique (wrap) des contrôles fixes |
-| 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
-| 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
-
-### 13.4 Robustesse & sécurité
-
-| Prio | Axe | État | Amélioration suggérée |
-|:--:|---|---|---|
-| 🟢 | **Retry API** | ✅ Polly (408/429/5xx + exceptions transitoires) | Ajuster selon limites réelles |
-| 🟡 | **Timeout explicite** | Aucun | Timeout configurable sur les appels IA |
-| 🟢 | **Validation prompts** | Aucune | Vérifier la présence de `{language}` |
-| 🟡 | **Fichier Excel verrouillé** | Exception brute | Détecter + proposer copie temporaire |
-| 🟢 | **Backup auto** | Aucun — mais l'écriture est atomique (`AtomicFile`) : plus de corruption possible en pleine écriture | `.bak` avant chaque sauvegarde — `File.Replace` accepte un nom de backup, point d'insertion tout trouvé |
-| 🟡 | **Traduction partielle** | ✅ Entrée IA inexploitable → l'ancienne valeur est restaurée + message explicite | — |
-
-### 13.5 Fonctionnalités à ajouter
-
-| Prio | Fonctionnalité | Description |
-|:--:|---|---|
-| 🟡 | **Traduction auto au chargement** | Option pour traduire automatiquement les cellules vides |
-| 🟢 | **Comparaison avant/après** | Vue diff depuis le chargement |
-| 🟢 | **Statistiques** | ✅ Tableau de bord : par langue, par projet, par fichier, mise en page, chiffres cliquables |
-| 🟢 | **Export rapport** | HTML/PDF des vérifications |
-| 🟡 | **Mode batch CLI** | Version console pour CI/CD |
-| 🟢 | **Multi-fichiers** | Onglets pour plusieurs fichiers simultanés |
-| 🟢 | **Historique des appels IA** | Logger requêtes/réponses pour debug |
-
-### 13.6 DevOps & qualité
-
-| Prio | Axe | État | Amélioration suggérée |
-|:--:|---|---|---|
-| 🔴 | **CI/CD** | Aucun | GitHub Actions : build + tests + release |
-| 🟢 | **Version affichée** | Non | Titre ou About (`AssemblyVersion`) |
-| 🟡 | **Logging** | `Debug.WriteLine` | Serilog/NLog + fichier rotatif |
-| 🟢 | **Analyseurs** | Aucun | `.editorconfig` + StyleCop |
-| 🟢 | **Documentation** | README à jour | Screenshots, GIF de démo |
-
-### 13.7 Quick wins
-
-| État | Amélioration |
-|---|---|
-| Partiel | **Bouton « Copier »** sur les cellules (français fait, traduction à ajouter) |
-| À faire | **Tooltip** sur cellules tronquées |
-| À faire | **Compteur de caractères** traduction vs source |
-| À faire | **Indicateur « non sauvegardé »** dans le titre |
-| À faire | **Raccourci F2** : éditer la cellule sélectionnée |
-| À faire | **Son/notification** fin de batch (app en arrière-plan) |
+**Convention inchangée** : chaque changement ajoute sa ligne à l'historique de ROADMAP.md et met
+la feuille de route à jour, comme il met à jour les sections de ce guide qu'il touche (§10 en
+particulier).
 
 ---
 
