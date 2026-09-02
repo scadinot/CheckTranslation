@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -23,6 +24,42 @@ internal static partial class Translator
     // Le pipeline Polly est stateless : une seule instance partagée pour toutes les invocations
     // (plus d'allocation par appel).
     private static readonly ResiliencePipeline<string> RetryPipeline = BuildRetryPipeline();
+
+    // Les modèles récents (Claude Sonnet 5 et au-delà) refusent le paramètre temperature —
+    // Bedrock transforme la dépréciation en erreur de validation. Plutôt qu'une liste à
+    // maintenir, l'application apprend : au premier refus, le couple fournisseur-modèle est
+    // mémorisé ici et l'appel rejoué sans température ; les suivants ne l'envoient plus.
+    // Les modèles qui l'acceptent continuent de la recevoir (0.1 stabilise les traductions).
+    private static readonly ConcurrentDictionary<string, bool> TemperatureRejectedByModel = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string TemperatureKey(AppConfig config)
+        => string.Join("\u001F", config.Provider, config.Url, config.ModelName);
+
+    private static bool SendsTemperature(AppConfig config)
+        => !TemperatureRejectedByModel.ContainsKey(TemperatureKey(config));
+
+    /// <summary>
+    /// Reconnaît le refus du paramètre temperature dans un message d'erreur, quel que soit le
+    /// dialecte : Bedrock répond « `temperature` is deprecated for this model », d'autres
+    /// variantes disent « not supported ». Le contrôle du nom du paramètre évite de confondre
+    /// avec un refus d'un autre paramètre.
+    /// </summary>
+    private static bool IsTemperatureRejection(string? message)
+        => message is not null
+            && message.Contains("temperature", StringComparison.OrdinalIgnoreCase)
+            && (message.Contains("deprecated", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("not supported", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unsupported", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Mémorise le refus. Le rejeu ne dépend PAS du résultat : sous appels parallèles, plusieurs
+    /// requêtes envoient la température avant que le refus soit mémorisé, et chacune doit être
+    /// rejouée — pas seulement celle qui gagne le TryAdd, sinon les autres feraient tomber tout
+    /// le Task.WhenAll du batch. L'anti-boucle est ailleurs : le rejeu n'envoie plus la
+    /// température, son propre filtre d'exception ne peut donc plus correspondre.
+    /// </summary>
+    private static void MarkTemperatureRejected(AppConfig config)
+        => TemperatureRejectedByModel.TryAdd(TemperatureKey(config), true);
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection)
     {
@@ -125,23 +162,35 @@ internal static partial class Translator
             new ApiKeyCredential(ResolveApiKey(config)),
             new OpenAIClientOptions { Endpoint = new Uri(config.Url) });
 
-        var options = new ChatCompletionOptions
+        bool sentTemperature = SendsTemperature(config);
+        var options = new ChatCompletionOptions();
+        if (sentTemperature)
+            options.Temperature = Temperature;
+
+        try
         {
-            Temperature = Temperature,
-        };
+            var result = await client.CompleteChatAsync(
+                [
+                    new SystemChatMessage(systemPrompt),
+                    new UserChatMessage(userMessage),
+                ],
+                options);
 
-        var result = await client.CompleteChatAsync(
-            [
-                new SystemChatMessage(systemPrompt),
-                new UserChatMessage(userMessage),
-            ],
-            options);
-
-        return result.Value.Content[0].Text?.Trim() ?? string.Empty;
+            return result.Value.Content[0].Text?.Trim() ?? string.Empty;
+        }
+        catch (ClientResultException ex) when (sentTemperature && IsTemperatureRejection(ex.Message))
+        {
+            // Cet appel a envoyé la température et le modèle l'a refusée : rejouer sans elle.
+            // Le rejeu part avec sentTemperature à false, son filtre ne peut plus correspondre.
+            MarkTemperatureRejected(config);
+            return await CallOpenAiAsync(systemPrompt, userMessage, config);
+        }
     }
 
     private static async Task<string> CallAnthropicAsync(string systemPrompt, string userMessage, AppConfig config)
     {
+        bool sentTemperature = SendsTemperature(config);
+
         try
         {
             var client = new AnthropicClient
@@ -154,7 +203,7 @@ internal static partial class Translator
             {
                 Model = config.ModelName,
                 MaxTokens = AnthropicMaxTokens,
-                Temperature = Temperature,
+                Temperature = sentTemperature ? Temperature : null,
                 System = new MessageCreateParamsSystem(systemPrompt, null),
                 Messages = new List<MessageParam>
                 {
@@ -174,6 +223,14 @@ internal static partial class Translator
                     sb.Append(textBlock.Text);
 
             return sb.ToString().Trim();
+        }
+        catch (Exception ex) when (sentTemperature && IsTemperatureRejection(ex.Message))
+        {
+            // Cet appel a envoyé la température et le modèle l'a refusée : rejouer sans elle
+            // (même logique que le dialecte OpenAI). Le rejeu part avec sentTemperature à false,
+            // son filtre ne peut plus correspondre — pas de boucle possible.
+            MarkTemperatureRejected(config);
+            return await CallAnthropicAsync(systemPrompt, userMessage, config);
         }
         catch (AnthropicRateLimitException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {

@@ -541,7 +541,7 @@ Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l
 
 ### 8.1 Paramètres globaux
 - `BatchSize = 20`
-- `Temperature = 0.1f`
+- `Temperature = 0.1f` — envoyée seulement aux modèles qui l'acceptent : au premier refus (« temperature is deprecated », Claude Sonnet 5 et au-delà), le couple fournisseur-modèle est mémorisé (`TemperatureRejectedByModel`) et l'appel rejoué sans température
 - `FixedParallelBatchRequests = 4`
 - `RetryCount = 3`
 - `AnthropicMaxTokens = 2048`
@@ -621,6 +621,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
   47 % sur tout le reste. **Aucune n'est activée.** Ne pas y revenir sans une mesure nouvelle — et
   si `PublishReadyToRun` revient, avec la condition sur le RID que documente le §5.2.
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
+- **La température s'auto-désactive par modèle, ne pas la refixer inconditionnellement** — les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (erreur de validation Bedrock). `Translator` apprend le refus au premier appel (`IsTemperatureRejection` + `MarkTemperatureRejected`, garde anti-boucle) et rejoue sans. La mémoire est en session : le premier batch sur un tel modèle coûte un aller-retour de plus, c'est voulu — pas de liste de modèles à maintenir.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
 - **Le tableau de bord commence lui aussi par `CommitActiveLanguage`** — il lit les dictionnaires par code de langue, jamais la vue active. Sans ce commit, les éditions en cours seraient comptées comme non traduites.
