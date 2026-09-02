@@ -152,6 +152,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 2026-09-01 | **Écritures disque atomiques** : `AtomicFile` (temporaire `<cible>.tmp` du même répertoire puis `File.Replace` / `File.Move`) utilisé par `ResxReader.Save`, `AppConfig.Save` et `GlossaryService.Save` — un crash ou une coupure en pleine écriture ne corrompt plus le fichier cible. BOM préservé, écriture seulement si modifié et remontée des échecs fichier par fichier inchangés ; pas de `.bak` systématique (« Backup auto » reste en roadmap §13.4) |
 | 2026-09-01 | Traduction partielle (roadmap §13.4) : une entrée inexploitable dans une réponse IA restaure la valeur d'avant le batch au lieu de laisser le placeholder « Traduction en cours... » / « Vérification... » — qui pouvait être sauvegardé tel quel dans le .resx ou l'Excel. Messages d'avertissement explicités (les lignes ont retrouvé leur valeur précédente) |
 | 2026-09-01 | Documentation scindée : la feuille de route et l'historique quittent CLAUDE.md pour ROADMAP.md (ce fichier). CLAUDE.md recentré sur le guide technique (§1 à §11), le seul contenu chargé automatiquement par les sessions assistées ; renvois croisés mis à jour (README, `AtomicFile.cs`) |
+| 2026-09-02 | Température auto-adaptative : les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (validation Bedrock) — `Translator` mémorise le refus par fournisseur-modèle au premier appel et rejoue sans, sur les deux dialectes. Les modèles qui l'acceptent continuent de recevoir 0.1 |
 
 ---
 
