@@ -51,12 +51,15 @@ internal static partial class Translator
                 || message.Contains("not supported", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("unsupported", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Mémorise le refus et indique si un nouvel essai sans température a un sens.</summary>
-    private static bool MarkTemperatureRejected(AppConfig config)
-    {
-        // Si le modèle était déjà marqué, l'erreur vient d'ailleurs : ne pas boucler.
-        return TemperatureRejectedByModel.TryAdd(TemperatureKey(config), true);
-    }
+    /// <summary>
+    /// Mémorise le refus. Le rejeu ne dépend PAS du résultat : sous appels parallèles, plusieurs
+    /// requêtes envoient la température avant que le refus soit mémorisé, et chacune doit être
+    /// rejouée — pas seulement celle qui gagne le TryAdd, sinon les autres feraient tomber tout
+    /// le Task.WhenAll du batch. L'anti-boucle est ailleurs : le rejeu n'envoie plus la
+    /// température, son propre filtre d'exception ne peut donc plus correspondre.
+    /// </summary>
+    private static void MarkTemperatureRejected(AppConfig config)
+        => TemperatureRejectedByModel.TryAdd(TemperatureKey(config), true);
 
     public static async Task<string[]> TranslateBatchAsync(IReadOnlyList<string> texts, AppConfig config, string targetLanguage, string glossarySection)
     {
@@ -159,8 +162,9 @@ internal static partial class Translator
             new ApiKeyCredential(ResolveApiKey(config)),
             new OpenAIClientOptions { Endpoint = new Uri(config.Url) });
 
+        bool sentTemperature = SendsTemperature(config);
         var options = new ChatCompletionOptions();
-        if (SendsTemperature(config))
+        if (sentTemperature)
             options.Temperature = Temperature;
 
         try
@@ -174,16 +178,19 @@ internal static partial class Translator
 
             return result.Value.Content[0].Text?.Trim() ?? string.Empty;
         }
-        catch (ClientResultException ex) when (IsTemperatureRejection(ex.Message) && MarkTemperatureRejected(config))
+        catch (ClientResultException ex) when (sentTemperature && IsTemperatureRejection(ex.Message))
         {
-            // Premier refus de la température par ce modèle : rejouer sans elle. Le garde de
-            // MarkTemperatureRejected empêche toute boucle si l'erreur persiste malgré tout.
+            // Cet appel a envoyé la température et le modèle l'a refusée : rejouer sans elle.
+            // Le rejeu part avec sentTemperature à false, son filtre ne peut plus correspondre.
+            MarkTemperatureRejected(config);
             return await CallOpenAiAsync(systemPrompt, userMessage, config);
         }
     }
 
     private static async Task<string> CallAnthropicAsync(string systemPrompt, string userMessage, AppConfig config)
     {
+        bool sentTemperature = SendsTemperature(config);
+
         try
         {
             var client = new AnthropicClient
@@ -196,7 +203,7 @@ internal static partial class Translator
             {
                 Model = config.ModelName,
                 MaxTokens = AnthropicMaxTokens,
-                Temperature = SendsTemperature(config) ? Temperature : null,
+                Temperature = sentTemperature ? Temperature : null,
                 System = new MessageCreateParamsSystem(systemPrompt, null),
                 Messages = new List<MessageParam>
                 {
@@ -217,10 +224,12 @@ internal static partial class Translator
 
             return sb.ToString().Trim();
         }
-        catch (Exception ex) when (IsTemperatureRejection(ex.Message) && MarkTemperatureRejected(config))
+        catch (Exception ex) when (sentTemperature && IsTemperatureRejection(ex.Message))
         {
-            // Premier refus de la température par ce modèle : rejouer sans elle (même logique
-            // que le dialecte OpenAI). Le garde empêche toute boucle si l'erreur persiste.
+            // Cet appel a envoyé la température et le modèle l'a refusée : rejouer sans elle
+            // (même logique que le dialecte OpenAI). Le rejeu part avec sentTemperature à false,
+            // son filtre ne peut plus correspondre — pas de boucle possible.
+            MarkTemperatureRejected(config);
             return await CallAnthropicAsync(systemPrompt, userMessage, config);
         }
         catch (AnthropicRateLimitException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
