@@ -77,8 +77,12 @@ internal static class GlossaryExcel
     {
         using var workbook = new XLWorkbook(filePath);
 
+        // Pas de repli sur la première feuille : importer une feuille imprévue qui se trouve
+        // porter une colonne « Source » produirait un import incorrect sans signal. Le classeur
+        // vient d'un export de l'application, la feuille attendue doit s'y trouver.
         var sheet = workbook.Worksheets.FirstOrDefault(ws => string.Equals(ws.Name, TermsSheetName, StringComparison.OrdinalIgnoreCase))
-            ?? workbook.Worksheets.First();
+            ?? throw new InvalidDataException(
+                $"Feuille « {TermsSheetName} » introuvable dans le classeur. Importez un fichier issu de l'export de l'application.");
 
         int lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
         int sourceColumn = 0, contextColumn = 0, reviewerColumn = 0;
@@ -93,6 +97,12 @@ internal static class GlossaryExcel
             var code = ExtractLanguageCode(headerText, languages);
             if (code is not null)
             {
+                // Deux colonnes portant le même code : la dernière écraserait l'autre en
+                // silence, et l'import lirait la mauvaise. Le fichier est refusé.
+                if (languageColumns.TryGetValue(code, out int firstColumn))
+                    throw new InvalidDataException(
+                        $"La langue « {code} » apparaît deux fois dans les en-têtes (colonnes {firstColumn} et {c}). Supprimez la colonne en double puis réimportez.");
+
                 languageColumns[code] = c;
             }
             else if (headerText.StartsWith("Source", StringComparison.OrdinalIgnoreCase))
