@@ -42,7 +42,7 @@ internal sealed partial class GlossaryForm : Form
         // Câblés APRÈS le chargement : remplir la grille lève CellValueChanged, et le formulaire
         // s'ouvrirait déjà « modifié » — fausse alerte de perte à la fermeture sans édition.
         grid.CellValueChanged += (_, _) => MarkDirty();
-        grid.UserAddedRow += (_, _) => MarkDirty();
+        grid.UserAddedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
         grid.UserDeletedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
     }
 

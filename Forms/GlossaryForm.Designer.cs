@@ -124,6 +124,7 @@ partial class GlossaryForm
         //
         // GlossaryForm
         //
+        AcceptButton = btnOk;
         AutoScaleDimensions = new SizeF(8F, 20F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
