@@ -35,7 +35,11 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    contrôle, et repassent Validé au retour s'ils reviennent inchangés.
 3. **Retour et import** — lecture du classeur corrigé, différences présentées terme par terme
    (patron du dialog de fusion), backup daté de l'ancien glossaire avant remplacement, compte
-   rendu des changements. Les termes acceptés passent Validé.
+   rendu des changements. Les termes acceptés passent Validé. Un terme En contrôle revenu
+   strictement inchangé repasse Validé **seulement si le classeur couvre toutes les langues** :
+   un classeur restreint à une équipe de langue ne dit rien des autres colonnes, son silence ne
+   clôt pas le contrôle. Un classeur complet revenu sans aucune correction clôt, lui, le contrôle
+   de tous ses termes.
 4. **Retraduction ciblée** — pour chaque changement (terme, langue), les lignes dont le français
    contient le terme source sont sélectionnées et retraduites, puis re-vérifiées, langue par
    langue. L'empreinte garantit que le cache ne ressert pas les anciennes traductions.

@@ -323,11 +323,29 @@ internal sealed partial class GlossaryForm : Form
                 .Select(language => language.Name)
                 .ToList();
 
+            bool coversAllLanguages = missingLanguages.Count == 0;
             var changes = GlossaryDiff.Compute(current, file.Terms, presentLanguages);
 
             if (changes.Count == 0)
             {
-                MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel.",
+                // Pas de correction, mais un classeur complet revenu tel quel clôt le contrôle :
+                // les termes En contrôle qu'il couvre repassent Validé (règle de GlossaryDiff.Apply).
+                // Sans ce passage, un retour de contrôle sans remarque laisserait les termes
+                // bloqués En contrôle, donc hors des prompts, sans aucune action possible ici.
+                var promoted = GlossaryDiff.Apply(current, file.Terms, changes, coversAllLanguages);
+                int validated = promoted.Zip(current, (after, before) => after.Status != before.Status ? 1 : 0).Sum();
+                if (validated == 0)
+                {
+                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel.",
+                        "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var statusBackupPath = _glossaryService.CreateBackup();
+                _glossaryService.ReplaceTermsAndSave(promoted);
+                ReloadGrid();
+                MessageBox.Show(this,
+                    $"Aucune correction dans le classeur : contrôle terminé, {validated} terme(s) En contrôle validé(s).\n\nSauvegarde de l'ancien glossaire :\n{statusBackupPath}",
                     "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -348,7 +366,7 @@ internal sealed partial class GlossaryForm : Form
             }
 
             var backupPath = _glossaryService.CreateBackup();
-            var merged = GlossaryDiff.Apply(current, file.Terms, changes);
+            var merged = GlossaryDiff.Apply(current, file.Terms, changes, coversAllLanguages);
             // Transactionnel : si la persistance échoue, le service restaure son état mémoire —
             // l'UI et le service racontent la même histoire, l'export suivant ne partirait pas
             // d'un état non enregistré.

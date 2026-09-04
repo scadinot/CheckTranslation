@@ -74,14 +74,19 @@ internal static class GlossaryDiff
     /// Un commentaire réviseur seul n'est qu'une annotation, il ne valide rien. Enfin, un terme
     /// En contrôle revenu STRICTEMENT inchangé — aucune différence, pas même de commentaire —
     /// repasse Validé : les réviseurs l'ont vu et laissé tel quel, le contrôle est terminé pour
-    /// lui. Un terme dont des différences ont été refusées, ou seulement commentées, reste En
-    /// contrôle : le désaccord n'est pas résolu, l'arbitrage se fait dans l'éditeur (statut
-    /// modifiable).
+    /// lui. Cette promotion est une déduction du silence : elle exige que le classeur couvre
+    /// toutes les langues (<paramref name="reviewedAllLanguages"/>) — un classeur restreint à une
+    /// équipe de langue ne dit rien des autres colonnes, le terme reste En contrôle. Un changement
+    /// accepté, lui, valide dans tous les cas : c'est une décision humaine explicite sur le terme,
+    /// pas une déduction. Un terme dont des différences ont été refusées, ou seulement commentées,
+    /// reste En contrôle : le désaccord n'est pas résolu, l'arbitrage se fait dans l'éditeur
+    /// (statut modifiable).
     /// </summary>
     public static List<GlossaryTerm> Apply(
         IReadOnlyList<GlossaryTerm> current,
         IReadOnlyList<GlossaryTerm> imported,
-        IReadOnlyList<GlossaryChange> changes)
+        IReadOnlyList<GlossaryChange> changes,
+        bool reviewedAllLanguages)
     {
         var result = current.Select(Clone).ToList();
         var resultBySource = IndexBySource(result);
@@ -140,18 +145,21 @@ internal static class GlossaryDiff
             }
         }
 
-        var changedSources = new HashSet<string>(
-            changes.Select(change => Normalize(change.Source)),
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var term in result)
+        if (reviewedAllLanguages)
         {
-            var key = Normalize(term.Source);
-            if (term.Status == GlossaryTermStatus.InReview
-                && importedBySource.ContainsKey(key)
-                && !changedSources.Contains(key))
+            var changedSources = new HashSet<string>(
+                changes.Select(change => Normalize(change.Source)),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var term in result)
             {
-                term.Status = GlossaryTermStatus.Validated;
+                var key = Normalize(term.Source);
+                if (term.Status == GlossaryTermStatus.InReview
+                    && importedBySource.ContainsKey(key)
+                    && !changedSources.Contains(key))
+                {
+                    term.Status = GlossaryTermStatus.Validated;
+                }
             }
         }
 
