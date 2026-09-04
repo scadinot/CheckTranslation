@@ -107,14 +107,17 @@ internal static class GlossaryExcel
             }
             else if (headerText.StartsWith("Source", StringComparison.OrdinalIgnoreCase))
             {
+                RejectDuplicateHeader("Source", sourceColumn, c);
                 sourceColumn = c;
             }
             else if (headerText.StartsWith("Contexte", StringComparison.OrdinalIgnoreCase))
             {
+                RejectDuplicateHeader("Contexte", contextColumn, c);
                 contextColumn = c;
             }
             else if (headerText.StartsWith("Commentaire", StringComparison.OrdinalIgnoreCase))
             {
+                RejectDuplicateHeader("Commentaire réviseur", reviewerColumn, c);
                 reviewerColumn = c;
             }
         }
@@ -174,6 +177,17 @@ internal static class GlossaryExcel
         }
 
         return new GlossaryImportFile(terms, stamp, languageColumns.Keys.ToList());
+    }
+
+    /// <summary>
+    /// Même règle que pour les colonnes de langue : un en-tête nommé en double choisirait
+    /// silencieusement la dernière colonne — le classeur ambigu est refusé.
+    /// </summary>
+    private static void RejectDuplicateHeader(string label, int firstColumn, int column)
+    {
+        if (firstColumn > 0)
+            throw new InvalidDataException(
+                $"L'en-tête « {label} » apparaît deux fois (colonnes {firstColumn} et {column}). Supprimez la colonne en double puis réimportez.");
     }
 
     private static string? ExtractLanguageCode(string headerText, IReadOnlyList<LanguageInfo> languages)
