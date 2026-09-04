@@ -214,6 +214,9 @@ internal sealed class GlossaryService : IGlossaryService
                     _glossary.Terms.Add(term);
                 }
 
+                // Un incrément par terme, jamais par entrée : un doublon de source dans les
+                // candidats retombe sur la garde de non-écrasement (la case vient d'être
+                // remplie, jamais vide ni blanche) et est écarté avant d'arriver ici.
                 term.Translations[languageCode] = NormalizeCell(entry.Destination);
                 touched++;
             }

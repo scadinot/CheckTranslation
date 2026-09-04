@@ -2586,7 +2586,7 @@ public partial class MainForm : Form
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
         statusRowCount.Text = added > 0
-            ? $"Glossaire : {added} terme(s) proposé(s) — à valider dans l'éditeur du glossaire"
+            ? $"Glossaire : {added} terme(s) créé(s) ou complété(s) — à valider dans l'éditeur du glossaire"
             : "Glossaire : aucun terme nouveau (déjà présents ou traductions déjà tranchées)";
     }
 

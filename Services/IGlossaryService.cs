@@ -28,7 +28,9 @@ internal interface IGlossaryService
     /// <see cref="GlossaryTermStatus.Proposed"/> (le contrôle le validera — voir GLOSSAIRE.md) ;
     /// un terme existant reçoit la traduction proposée seulement si sa case pour cette langue est
     /// vide, et garde son statut. Si la persistance échoue, l'état mémoire est restauré et
-    /// l'exception remonte. Retourne le nombre de termes créés ou complétés.
+    /// l'exception remonte. Retourne le nombre de termes créés ou complétés — un compte de
+    /// termes, pas d'entrées : des candidats en doublon sur la même source ne comptent qu'une
+    /// fois, la garde de non-écrasement écartant les suivants.
     /// </summary>
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 
