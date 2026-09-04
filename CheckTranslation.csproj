@@ -10,6 +10,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Les classes du projet sont internal : le projet de tests y accède par cette déclaration. -->
+    <InternalsVisibleTo Include="CheckTranslation.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Le projet de tests vit dans un sous-dossier : sans ces exclusions, le glob par défaut
+         compilerait ses .cs dans l'exécutable (comme FormTest, mais ici ce serait une erreur :
+         les références xUnit n'existent pas dans ce projet). -->
+    <Compile Remove="CheckTranslation.Tests\**" />
+    <EmbeddedResource Remove="CheckTranslation.Tests\**" />
+    <None Remove="CheckTranslation.Tests\**" />
+    <Content Remove="CheckTranslation.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.8.0" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="Markdig" Version="0.38.0" />
