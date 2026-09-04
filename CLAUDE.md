@@ -110,12 +110,15 @@ CheckTranslation/
 │   ├── SourceLoadProgress.cs                 # record struct(Done, Total)
 │   ├── ITranslationService.cs / TranslationService.cs  # Cache mémoire + batch + dédup
 │   ├── Translator.cs                         # Appels bruts OpenAI/Anthropic + Polly
-│   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON par langue + fingerprint SHA256
+│   ├── GlossaryExcel.cs                      # Export / import Excel du glossaire (feuilles Glossaire + Infos)
+│   └── IGlossaryService.cs / GlossaryService.cs        # Persistance JSON transversale + fingerprint SHA256
 ├── Logic/
 │   ├── QualityScore.cs                       # Parsing score "XXX - ..." + dégradé couleur
 │   ├── LayoutAnalyzer.cs                     # Troncatures + collisions entre contrôles frères
 │   ├── TranslationRowFiltering.cs            # Filtrage côté client (texte + pseudo-filtres score / traduction / layout)
-│   └── TranslationStatistics.cs              # Calcul de l'état d'avancement (tableau de bord)
+│   ├── TranslationStatistics.cs              # Calcul de l'état d'avancement (tableau de bord)
+│   ├── GlossaryDiff.cs                       # Diff / application d'un import de glossaire (pure)
+│   └── GlossaryImpact.cs                     # Lignes impactées par un changement de glossaire (pure)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
 ├── FormTest/                                 # Fixture : formulaire localisé en 7 langues, banc d'essai manuel de la vérification de mise en page (§11)
@@ -400,6 +403,10 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 - `score<N` → lignes sans score OU score ≤ N (inclusif)
 - `score>=N` → lignes avec score ≥ N
 
+**`GlossaryDiff`** (static) — cœur pur de l'import de glossaire : `Compute(current, imported, languages)` produit les différences terme par terme et champ par champ (suppressions refusées par défaut), `Apply(current, imported, changes, reviewedAllLanguages)` applique les changements acceptés et gère les statuts — un changement de fond accepté valide le terme, un terme En contrôle revenu strictement inchangé n'est validé que si le classeur couvrait toutes les langues. Un doublon de source dans le glossaire courant est refusé (état ambigu).
+
+**`GlossaryImpact`** (static) — cœur pur de la retraduction ciblée : `ComputeChangedTerms(before, after)` compare deux photographies de la projection prompts (par langue) et retient les termes apparus ou modifiés — jamais les supprimés, décision assumée de GLOSSAIRE.md ; `SelectImpactedRows(rows, terms)` sélectionne les lignes dont le français contient un terme, en inclusion insensible à la casse (les formes fléchies éloignées peuvent échapper, limite documentée).
+
 ### 6.5 Modèles
 
 **`TranslationRow`** (POCO) :
@@ -540,6 +547,8 @@ Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l
 - **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`, grille transversale terme × langue avec statuts. Seuls les termes Validé sont injectés dans les prompts.
 - **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → acceptation → versement en termes **Proposé** (`AddProposedTerms`), à valider dans l'éditeur ou par le contrôle externe avant d'entrer dans les prompts.
 - **Injection dans les prompts** : à chaque appel de `TranslateInBatchesAsync` / `VerifyInBatchesAsync`, `MainForm` construit `glossarySection` (texte) et `glossaryFingerprint` (SHA256) pour la langue active. Le fingerprint invalide automatiquement les entrées de cache périmées.
+- **Export / import Excel (contrôle externe)** : boutons de `GlossaryForm` → `GlossaryExcel` (classeur Glossaire + Infos avec empreinte d'export), diff par terme et par champ (`GlossaryDiff.Compute`) présenté dans `GlossaryImportDiffForm` (acceptation individuelle, suppressions décochées), backup daté (`CreateBackup`) puis application transactionnelle (`ReplaceTermsAndSave`). Les statuts suivent GLOSSAIRE.md : Proposé → En contrôle à l'export, changements acceptés → Validé, terme revenu strictement inchangé → Validé seulement si le classeur couvre toutes les langues.
+- **Retraduction ciblée (phase 4)** : `BtnGlossary_Click` photographie la projection prompts (`GetPromptEntries`, termes Validé par langue) avant et après l'éditeur ; `GlossaryImpact.ComputeChangedTerms` en déduit les termes apparus ou modifiés (les supprimés n'impactent pas), `SelectImpactedRows` sélectionne les lignes par inclusion insensible à la casse du français. Après confirmation (compte par langue), `RetranslateImpactedAsync` retraduit puis re-vérifie langue par langue en écrivant dans les dictionnaires par code, invalide les verdicts de mise en page des traductions changées, et recharge la vue active à la fin.
 
 ---
 
@@ -627,6 +636,9 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
   47 % sur tout le reste. **Aucune n'est activée.** Ne pas y revenir sans une mesure nouvelle — et
   si `PublishReadyToRun` revient, avec la condition sur le RID que documente le §5.2.
 - **Le glossaire est transversal, sa surface par langue est une projection** — `GetEntries` / `ReplaceEntries` / `BuildGlossarySection` / `GetGlossaryFingerprint` projettent les `GlossaryTerm` sur une langue. Seuls les termes **Validé** alimentent prompts et empreinte ; l'éditeur et l'extraction valident ce qu'ils écrivent. Ne pas réintroduire un stockage par langue : le process de contrôle externe (GLOSSAIRE.md) repose sur le terme comme unité.
+- **La détection d'impact compare la projection prompts, pas les changements d'import** — `BtnGlossary_Click` photographie `GetPromptEntries` (même `ProjectLocked(validatedOnly: true)` que prompts et empreinte) avant et après l'éditeur. Ne pas la rebrancher sur les `GlossaryChange` de l'import : les promotions En contrôle → Validé et les éditions manuelles changent les prompts sans passer par un import, et seraient perdues.
+- **La retraduction ciblée écrit dans les dictionnaires par code, jamais dans la vue active** — `RetranslateImpactedAsync` committe d'abord la vue active des lignes impactées de la langue affichée, écrit `Translations[code]` / `Comments[code]` pour chaque langue, invalide le verdict de mise en page des seules traductions réellement changées, et recharge la vue active à la fin. Écrire via `Translation` / `Comment` ne fonctionnerait que pour la langue affichée. Le score d'une ligne retraduite est effacé avant re-vérification : un score de l'ancien glossaire est périmé ; une réponse inexploitable laisse la ligne entière telle quelle (ancienne traduction + ancien score, cohérents entre eux).
+- **Un terme supprimé du glossaire ne déclenche pas de retraduction** — décision assumée (GLOSSAIRE.md) : une suppression lève une contrainte, elle n'invalide pas les traductions existantes. Ne pas « compléter » `ComputeChangedTerms` avec les termes disparus sans rouvrir cette décision.
 - **La migration v1 du glossaire est idempotente et non destructive** — rejouée en mémoire à chaque chargement tant que `glossary.json` n'a pas été réécrit ; les termes migrés naissent Validé (ils étaient déjà injectés) et l'empreinte projetée reste identique à celle du v1 : les caches survivent. Le champ legacy `EntriesByLanguage` ne doit jamais être réécrit (nul à la sauvegarde).
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **La température s'auto-désactive par modèle, ne pas la refixer inconditionnellement** — les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (erreur de validation Bedrock). `Translator` apprend le refus au premier appel (`IsTemperatureRejection` + `MarkTemperatureRejected`, garde anti-boucle) et rejoue sans. La mémoire est en session : le premier batch sur un tel modèle coûte un aller-retour de plus, c'est voulu — pas de liste de modèles à maintenir.

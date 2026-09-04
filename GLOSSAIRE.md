@@ -40,10 +40,15 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    un classeur restreint à une équipe de langue ne dit rien des autres colonnes, son silence ne
    clôt pas le contrôle. Un classeur complet revenu sans aucune correction clôt, lui, le contrôle
    de tous ses termes.
-4. **Retraduction ciblée** — pour chaque changement (terme, langue), les lignes dont le français
-   contient le terme source sont sélectionnées et retraduites, puis re-vérifiées, langue par
+4. **Retraduction ciblée** — à la fermeture de l'éditeur de glossaire, la projection injectée
+   dans les prompts (termes Validé, par langue) est comparée à celle de l'ouverture : tout terme
+   apparu ou modifié (destination, contexte) — qu'il vienne d'un import, d'une promotion Validé
+   ou d'une édition manuelle — sélectionne les lignes dont le français le contient, qui sont
+   retraduites puis re-vérifiées, langue par langue, après confirmation avec le compte par
    langue. L'empreinte garantit que le cache ne ressert pas les anciennes traductions.
-   Limite assumée : la détection est une inclusion insensible à la casse — les formes fléchies
+   Deux décisions assumées : un terme **supprimé** ne déclenche rien (une suppression lève une
+   contrainte, elle n'invalide pas l'existant — un terme erroné se corrige, il ne se supprime
+   pas) ; la détection est une **inclusion insensible à la casse** — les formes fléchies
    éloignées du terme canonique peuvent lui échapper, et l'approximation retraduira parfois une
    ligne de trop plutôt qu'une de moins.
 5. **Boucle** — le glossaire vit ; chaque campagne rejoue les phases 2 à 4. Le tableau de bord
@@ -56,11 +61,11 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
 | 1. Schéma v2 + migration | `GlossaryTerm` transversal, statuts, projection par langue, empreinte compatible | ✅ Fait |
 | 2. Éditeur multi-langues | `GlossaryForm` en grille terme × langue, colonne statut | ✅ Fait |
 | 3. Export / import Excel | ClosedXML, diff à l'import, backup daté | ✅ Fait |
-| 4. Retraduction ciblée | Détection des lignes impactées, batchs enchaînés par langue, compte rendu | À faire |
+| 4. Retraduction ciblée | Détection des lignes impactées, batchs enchaînés par langue, compte rendu | ✅ Fait |
 
-Décisions ouvertes avant le chantier 4 : sort des lignes dont un terme a été supprimé du
-glossaire (retraduire ou laisser), et politique de correspondance (inclusion simple ou détection
-des formes fléchies).
+Les deux décisions ouvertes ont été tranchées avec le chantier 4 (voir phase 4 ci-dessus) : un
+terme supprimé ne déclenche pas de retraduction, et la correspondance reste une inclusion
+insensible à la casse, sans détection des formes fléchies.
 
 ---
 

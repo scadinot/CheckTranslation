@@ -5,6 +5,13 @@ internal interface IGlossaryService
     IReadOnlyList<GlossaryEntry> GetEntries(string languageCode);
     void ReplaceEntries(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 
+    /// <summary>
+    /// Projection injectée dans les prompts pour une langue : les seuls termes Validé portant une
+    /// traduction non vide pour ce code. C'est l'état que la retraduction ciblée photographie
+    /// avant et après l'éditeur de glossaire pour détecter les contraintes qui ont changé.
+    /// </summary>
+    IReadOnlyList<GlossaryEntry> GetPromptEntries(string languageCode);
+
     /// <summary>Copie de travail des termes transversaux (isolée : modifier le retour est sans effet).</summary>
     IReadOnlyList<GlossaryTerm> GetTerms();
 

@@ -98,6 +98,20 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    /// <summary>
+    /// Projection prompts (termes Validé uniquement) — même source de vérité que
+    /// <see cref="BuildGlossarySection"/> et <see cref="GetGlossaryFingerprint"/> : la détection
+    /// d'impact de la retraduction ciblée compare exactement ce que les prompts voient.
+    /// </summary>
+    public IReadOnlyList<GlossaryEntry> GetPromptEntries(string languageCode)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            return ProjectLocked(languageCode, validatedOnly: true);
+        }
+    }
+
     public IReadOnlyList<GlossaryTerm> GetTerms()
     {
         EnsureLoaded();
