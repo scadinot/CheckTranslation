@@ -17,7 +17,11 @@ internal static partial class Translator
 {
     internal const int BatchSize = 20;
     private const float Temperature = 0.1f;
-    private const long AnthropicMaxTokens = 2048;
+    // Plafond de SORTIE, pas un coût : seul le texte effectivement produit est facturé. À 2048,
+    // l'extraction de termes (JSON verbeux : terme + traduction + contexte par entrée) était
+    // tronquée dès un lot de 20 textes — tableau jamais fermé, parseur muet, zéro candidat.
+    // Une traduction de 20 libellés longs pouvait subir le même sort en silence.
+    private const long AnthropicMaxTokens = 8192;
     private const int RetryCount = 3;
     private const int FixedParallelBatchRequests = 4;
 

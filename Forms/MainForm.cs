@@ -2694,6 +2694,25 @@ public partial class MainForm : Form
         await ExtractTermsRowsAsync(rows);
     }
 
+    /// <summary>
+    /// Compte rendu des lots d'extraction qui n'ont rien donné et pourquoi : échec d'appel (avec
+    /// le premier message d'erreur), réponse illisible, troncature par le plafond de tokens.
+    /// </summary>
+    private static string DescribeExtractionProblems(GlossaryExtractionResult result)
+    {
+        var lines = new List<string>();
+
+        if (result.FailedBatches > 0)
+            lines.Add($"{result.FailedBatches} lot(s) sur {result.Batches} : échec de l'appel à l'IA.");
+        if (result.UnreadableBatches > 0)
+            lines.Add($"{result.UnreadableBatches} lot(s) sur {result.Batches} : réponse de l'IA illisible"
+                + (result.Truncated ? " (réponse tronquée : plafond de tokens de sortie atteint)." : "."));
+        if (result.FirstError is not null)
+            lines.Add($"Première erreur : {result.FirstError}");
+
+        return string.Join("\n", lines);
+    }
+
     private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows)
     {
         if (rows.Count == 0)
@@ -2731,10 +2750,10 @@ public partial class MainForm : Form
             statusRowCount.Text = $"Extraction : {done} / {texts.Count}";
         });
 
-        IReadOnlyList<GlossaryEntry> candidates = Array.Empty<GlossaryEntry>();
+        GlossaryExtractionResult? result = null;
         try
         {
-            candidates = await _glossaryService.ExtractCandidatesAsync(
+            result = await _glossaryService.ExtractCandidatesAsync(
                 texts,
                 config,
                 _currentLanguage.Code,
@@ -2765,18 +2784,41 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
         }
 
-        if (candidates.Count == 0)
+        if (result is null)
+            return;
+
+        // Dire pourquoi la liste est vide : « l'IA n'a rien trouvé » et « l'IA n'a pas pu
+        // répondre » appellent des réactions opposées, et un même message les confondait.
+        string problems = DescribeExtractionProblems(result);
+        if (result.Candidates.Count == 0)
         {
-            MessageBox.Show(
-                "Aucun nouveau terme métier n'a été proposé pour la sélection.",
-                "Extraction",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            if (result.ProblemBatches > 0)
+            {
+                MessageBox.Show(
+                    "L'extraction n'a produit aucun terme exploitable.\n\n" + problems,
+                    "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else
+            {
+                var known = result.AlreadyKnown > 0
+                    ? $"\n\n{result.AlreadyKnown} terme(s) proposé(s) par l'IA étaient déjà au glossaire."
+                    : string.Empty;
+                MessageBox.Show(
+                    $"L'IA n'a identifié aucun nouveau terme métier dans les {texts.Count} ligne(s) sélectionnée(s).{known}",
+                    "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             return;
         }
 
+        if (result.ProblemBatches > 0)
+        {
+            MessageBox.Show(
+                "Extraction partielle : les candidats affichés proviennent des lots exploitables.\n\n" + problems,
+                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
         using var dialog = _extractionDialogFactory();
-        dialog.SetCandidates(candidates, _currentLanguage.Name);
+        dialog.SetCandidates(result.Candidates, _currentLanguage.Name);
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 

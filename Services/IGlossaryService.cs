@@ -78,10 +78,12 @@ internal interface IGlossaryService
     string GetGlossaryFingerprint(string languageCode);
 
     /// <summary>
-    /// Propose des termes candidats à partir des textes français sélectionnés. Les termes déjà présents
-    /// dans le glossaire pour la langue cible sont filtrés automatiquement.
+    /// Propose des termes candidats à partir des textes français sélectionnés. Les termes déjà
+    /// présents dans le glossaire pour la langue cible sont filtrés automatiquement. Le bilan
+    /// retourné compte aussi les lots en échec ou illisibles : une liste vide n'est pas un
+    /// résultat tant qu'on ne sait pas si l'IA n'a rien trouvé ou si elle n'a pas pu répondre.
     /// </summary>
-    Task<IReadOnlyList<GlossaryEntry>> ExtractCandidatesAsync(
+    Task<GlossaryExtractionResult> ExtractCandidatesAsync(
         IReadOnlyList<string> frenchTexts,
         AppConfig config,
         string languageCode,
