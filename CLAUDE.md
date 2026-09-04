@@ -121,6 +121,8 @@ CheckTranslation/
 │   └── GlossaryImpact.cs                     # Lignes impactées par un changement de glossaire (pure)
 ├── Controls/
 │   └── SortableBindingList.cs                # BindingList<T> triable
+├── CheckTranslation.Tests/                   # Tests xUnit de la logique pure (§11) — exclu du glob de l'exe
+├── .github/workflows/ci.yml                  # CI GitHub Actions : build + tests sur windows-latest
 ├── FormTest/                                 # Fixture : formulaire localisé en 7 langues, banc d'essai manuel de la vérification de mise en page (§11)
 ├── Resources/                                # Icônes PNG (drapeaux, toolbar, tabs)
 ├── Input.xlsx                                # Fichier Excel exemple (~3 Mo)
@@ -184,6 +186,9 @@ dotnet build -c Release
 
 # Lancer
 dotnet run
+
+# Tests (chemin explicite : voir §11)
+dotnet test CheckTranslation.Tests/CheckTranslation.Tests.csproj -c Release
 
 # Nettoyer
 dotnet clean
@@ -659,6 +664,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **L'analyse de mise en page ne compare que des rapports** — la `Size` sérialisée d'un contrôle `AutoSize` sert d'étalon, l'échelle du formulaire s'en déduit pour les contrôles fixes. Ne pas réintroduire de comparaison directe entre une mesure et une coordonnée du `.resx` : les deux ne sont pas dans le même repère, et l'écart observé sur le corpus est d'un facteur voisin de deux.
 - **Le multi-lignes se compte en retours à la ligne explicites** — la hauteur d'un `AutoSize` suit le rapport des nombres de lignes, un contrôle fixe est confronté à la hauteur d'étalon de sa police (médiane des `AutoSize` du formulaire, police par police). Le repli automatique (wrap) n'est pas prédit : ne pas conclure d'un « conforme » qu'une ligne longue ne se replie pas à l'exécution — c'est l'angle mort documenté dans [ROADMAP.md](ROADMAP.md) (vérification de débordement). L'orientation d'une troncature (`LayoutIssue.Vertical`) ne participe pas à la `Signature` : un contrôle déjà défectueux en français ne devient pas imputable à la traduction parce que l'axe change.
 - **`GdiTextWidthMeasurer` détient des handles GDI** — une instance par passe d'analyse, dans un `using`. Ne pas en faire un singleton : le cache de polices n'est jamais libéré autrement.
+- **`CheckTranslation.Tests` est exclu du glob de l'exécutable** — le projet principal vit à la racine du dépôt : sans les `Compile/EmbeddedResource/None/Content Remove="CheckTranslation.Tests\**"` de `CheckTranslation.csproj`, ses `.cs` seraient compilés dans l'exe et le build casserait (références xUnit absentes). L'accès des tests aux types `internal` passe par `InternalsVisibleTo` dans le même fichier. Ne retirer ni l'un ni l'autre.
 - **Annulation IA non disponible** : pas de `CancellationToken` exposé côté UI. Fermer l'app pendant un gros batch est tolérable mais brutal.
 - **Caches mémoire non persistés** : perdus à la fermeture.
 
@@ -666,19 +672,24 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 
 ## 11. Tests
 
-**État actuel** : aucun framework de test, aucun projet de test dans la solution.
+**Projet de tests** : `CheckTranslation.Tests/` (xUnit, `net8.0-windows`), câblé dans la solution.
+
+```bash
+# Lancer les tests (chemin explicite : voir la note .slnx ci-dessous)
+dotnet test CheckTranslation.Tests/CheckTranslation.Tests.csproj -c Release
+```
+
+Deux points de câblage à connaître :
+- **`InternalsVisibleTo("CheckTranslation.Tests")`** dans `CheckTranslation.csproj` — les classes du projet sont `internal`, c'est ce qui les rend visibles des tests.
+- **Le sous-dossier est exclu du glob de l'exécutable** (`Compile Remove="CheckTranslation.Tests\**"` etc. dans `CheckTranslation.csproj`) — le projet principal vit à la racine, sans cette exclusion ses globs par défaut compileraient les `.cs` des tests dans l'exe (références xUnit introuvables). Ne pas retirer ces lignes.
+
+**Couverture actuelle** (logique pure uniquement, aucun test d'UI) : `QualityScore` (parsing + palette), `TranslationRowFiltering` (contient / `=` exact / pseudo-filtres score, traduction, layout), `TranslationStatistics` (comptages dans les lignes traduites, moyennes nulles, cohérence tranche comptée / tranche filtrée), `GlossaryDiff` (types de changements, statuts, promotion sous couverture complète, doublon refusé), `GlossaryImpact` (projection avant/après, suppressions ignorées, sélection insensible à la casse), `GlossaryExcel` (aller-retour sur fichiers temporaires, refus des classeurs ambigus), `Translator.ParseNumberedList` (comportements caractérisés, dont : un numéro hors bornes est rattaché à l'entrée courante), caches de `TranslationService` (clés par langue + fingerprint, purge par modèle), `GlossaryService.NormalizeCell`.
+
+**Prochaines extensions naturelles** : `LayoutAnalyzer` (la mesure injectée `TextWidthMeasurer` existe pour ça), `ExcelReader.Merge` (fusion + conflits), `AppConfig` (round-trip DPAPI + compat legacy — attention : ne jamais écrire dans le vrai `%LocalAppData%`). De même, ne pas instancier `GlossaryService` dans un test : son chemin de stockage n'est pas injectable et `EnsureLoaded` lirait le glossaire réel de l'utilisateur.
 
 **Banc d'essai manuel** : le dossier `FormTest/` contient un formulaire localisé en 7 langues, jamais instancié par l'application — c'est une fixture, pas une fonctionnalité. Ouvrir `CheckTranslation.slnx` dans l'application elle-même le fait apparaître comme n'importe quel formulaire du corpus : ses contrôles calibrés (labels `AutoSize`, label à largeur fixe, bouton, case à cocher) et ses variantes de culture, dont les commentaires portent des scores connus, permettent de vérifier à la main la chaîne de mise en page (troncatures, collisions) et la colorisation par score. Faute de projet séparé, il est compilé dans l'exécutable ; l'en exclure est un choix ouvert.
 
-**Candidats prioritaires** pour un futur `CheckTranslation.Tests/` (xUnit ou NUnit) :
-- `Logic/QualityScore` (parsing + calcul couleur)
-- `Logic/TranslationRowFiltering` (texte + pseudo-filtres score)
-- `Services/TranslationService` (cache, dédup, invalidation par fingerprint)
-- `Services/ExcelReader.Merge` (fusion + conflits)
-- `Services/Translator.ParseNumberedList` (robustesse du parsing)
-- `Models/AppConfig` (round-trip DPAPI + compat legacy)
-
-**Pas de CI/CD** configuré actuellement. Pas d'`.editorconfig` ni d'analyseurs Roslyn / StyleCop.
+**CI** : workflow GitHub Actions `.github/workflows/ci.yml` — build de l'application puis build + exécution des tests, sur `windows-latest` (obligatoire : `net8.0-windows`), déclenché sur push `master` et sur toute PR. Les étapes visent les `.csproj` explicitement, pas la solution : la `.slnx` n'est reconnue par la CLI `dotnet` qu'à partir du SDK 9, et la CI ne doit pas dépendre du SDK du runner. Pas d'`.editorconfig` ni d'analyseurs Roslyn / StyleCop à ce jour.
 
 ---
 

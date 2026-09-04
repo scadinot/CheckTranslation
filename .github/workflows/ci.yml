@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-test:
+    # net8.0-windows + WinForms : le build exige un runner Windows.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Chemins de projet explicites plutôt que la solution : la .slnx n'est reconnue par la
+      # CLI dotnet qu'à partir du SDK 9, et la CI doit rester indépendante du SDK du runner.
+      - name: Build application
+        run: dotnet build CheckTranslation.csproj -c Release
+
+      - name: Build tests
+        run: dotnet build CheckTranslation.Tests/CheckTranslation.Tests.csproj -c Release
+
+      - name: Run tests
+        run: dotnet test CheckTranslation.Tests/CheckTranslation.Tests.csproj -c Release --no-build --verbosity normal

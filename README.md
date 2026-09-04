@@ -1,5 +1,7 @@
 # CheckTranslation
 
+![CI](https://github.com/scadinot/CheckTranslation/actions/workflows/ci.yml/badge.svg)
+
 Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la traduction et à la vérification des ressources d'un logiciel. Elle travaille sur **deux sources au choix** :
 
 - un fichier Excel exporté par **ResX Resource Manager** (extension Visual Studio) ;

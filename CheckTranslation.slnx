@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="CheckTranslation.csproj" />
+  <Project Path="CheckTranslation.Tests/CheckTranslation.Tests.csproj" />
 </Solution>

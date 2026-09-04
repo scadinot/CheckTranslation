@@ -318,7 +318,9 @@ internal static partial class Translator
         return trimmed;
     }
 
-    private static string[] ParseNumberedList(string content, int expectedCount)
+    // internal (et non private) : candidat de test prioritaire du §11 de CLAUDE.md — le parsing
+    // des réponses IA est le point le plus exposé aux régressions silencieuses.
+    internal static string[] ParseNumberedList(string content, int expectedCount)
     {
         var results = new string[expectedCount];
         var lines = content.Split('\n');
