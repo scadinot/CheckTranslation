@@ -501,17 +501,15 @@ internal sealed class GlossaryService : IGlossaryService
             {
                 raw = await Translator.CallApiAsync(systemPrompt, userMessage, config);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                // Une annulation demandée n'est pas un lot en échec : elle remonte telle quelle.
-                // Un TaskCanceledException de délai HTTP, lui, n'a pas ce jeton et reste compté.
-                throw;
-            }
             catch (Exception ex)
             {
                 // Un lot en échec ne fait pas tomber les autres, mais il ne disparaît pas non
                 // plus : compté et remonté à l'appelant, qui saura dire à l'utilisateur pourquoi
                 // il n'a rien (ou moins) reçu. Un échec avalé se lisait « aucun terme trouvé ».
+                // L'annulation n'est observée qu'entre deux lots (ThrowIfCancellationRequested en
+                // tête de boucle) : CallApiAsync ne prend pas de jeton — limite connue de toute
+                // l'application (ROADMAP, annulation des batchs IA). Un TaskCanceledException
+                // ici est donc un délai HTTP, c'est-à-dire un vrai échec de lot.
                 failedBatches++;
                 firstError ??= ex.Message;
                 processed += slice.Count;
@@ -531,13 +529,15 @@ internal sealed class GlossaryService : IGlossaryService
                 var key = candidate.Source.Trim();
                 if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(candidate.Destination))
                     continue;
+                // Une clé n'est comptée qu'une fois, connue ou candidate : l'IA répète parfois un
+                // terme d'un lot à l'autre, et le compte rendu parle de termes, pas d'occurrences.
+                if (!seenInBatches.Add(key))
+                    continue;
                 if (existingTerms.Contains(key))
                 {
                     alreadyKnown++;
                     continue;
                 }
-                if (!seenInBatches.Add(key))
-                    continue;
 
                 aggregated.Add(candidate);
             }
