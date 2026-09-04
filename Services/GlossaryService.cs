@@ -95,6 +95,91 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    public IReadOnlyList<GlossaryTerm> GetTerms()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            return _glossary.Terms.Select(CloneTerm).ToList();
+        }
+    }
+
+    public void ReplaceTerms(IReadOnlyList<GlossaryTerm> terms)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            var cleaned = new List<GlossaryTerm>();
+
+            foreach (var term in terms)
+            {
+                if (term is null || string.IsNullOrWhiteSpace(term.Source))
+                    continue;
+
+                var copy = CloneTerm(term);
+                copy.Source = copy.Source.Trim();
+                copy.Context = NormalizeCell(copy.Context);
+                copy.ReviewerComment = NormalizeCell(copy.ReviewerComment);
+
+                foreach (var (code, destination) in copy.Translations.ToList())
+                {
+                    var normalized = NormalizeCell(destination);
+                    if (normalized.Length == 0)
+                        copy.Translations.Remove(code);
+                    else
+                        copy.Translations[code] = normalized;
+                }
+
+                cleaned.Add(copy);
+            }
+
+            _glossary.Terms = cleaned;
+        }
+    }
+
+    public int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries)
+    {
+        if (string.IsNullOrWhiteSpace(languageCode))
+            return 0;
+
+        EnsureLoaded();
+        lock (_lock)
+        {
+            int touched = 0;
+
+            foreach (var entry in entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Source) || string.IsNullOrWhiteSpace(entry.Destination))
+                    continue;
+
+                var term = FindTermLocked(entry.Source);
+                if (term is null)
+                {
+                    // Un candidat d'extraction naît Proposé : il n'entre dans les prompts qu'une
+                    // fois validé (gouvernance de GLOSSAIRE.md).
+                    term = new GlossaryTerm
+                    {
+                        Source = entry.Source.Trim(),
+                        Context = NormalizeCell(entry.Context),
+                        Status = GlossaryTermStatus.Proposed,
+                    };
+                    _glossary.Terms.Add(term);
+                }
+                else if (term.Translations.TryGetValue(languageCode, out var existing)
+                    && !string.IsNullOrWhiteSpace(existing))
+                {
+                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
+                    continue;
+                }
+
+                term.Translations[languageCode] = NormalizeCell(entry.Destination);
+                touched++;
+            }
+
+            return touched;
+        }
+    }
+
     public void Save()
     {
         EnsureLoaded();
@@ -431,6 +516,15 @@ internal sealed class GlossaryService : IGlossaryService
         _glossary.EntriesByLanguage = null;
         _glossary.Version = 2;
     }
+
+    private static GlossaryTerm CloneTerm(GlossaryTerm term) => new()
+    {
+        Source = term.Source,
+        Context = term.Context,
+        Status = term.Status,
+        ReviewerComment = term.ReviewerComment,
+        Translations = new Dictionary<string, string>(term.Translations, StringComparer.OrdinalIgnoreCase),
+    };
 
     private GlossaryTerm? FindTermLocked(string source)
     {

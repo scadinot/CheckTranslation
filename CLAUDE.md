@@ -73,7 +73,7 @@ CheckTranslation/
 │   ├── MergeDifferenceForm.cs                # Dialog résolution conflits de fusion
 │   ├── MergeDifferenceForm.Designer.cs
 │   ├── MergeDifferenceForm.resx
-│   ├── GlossaryForm.cs                       # Éditeur du glossaire par langue
+│   ├── GlossaryForm.cs                       # Éditeur du glossaire transversal (terme × langue, statuts)
 │   ├── GlossaryForm.Designer.cs
 │   ├── GlossaryForm.resx
 │   ├── GlossaryExtractionDialog.cs           # Extraction IA assistée (validation terme par terme)
@@ -281,7 +281,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`Forms/MergeDifferenceForm.cs`** — dialog affichant côte à côte ligne source et ligne destination ; deux checkboxes ("reporter français+commentaire", "reporter traduction+commentaire") + bouton Continuer/Annuler. Colonnes DataGridView générées dynamiquement selon le contexte.
 
-**`Forms/GlossaryForm.cs`** — éditeur du glossaire métier : `ComboBox` de langue + `DataGridView` triable des entrées `Source` / `Destination` / `Context`. Boutons Ajouter / Supprimer / Annuler / Enregistrer. Prompt de confirmation si modifications non enregistrées à la fermeture.
+**`Forms/GlossaryForm.cs`** — éditeur du glossaire transversal : une ligne par terme, une colonne par langue (créées par code depuis `MainForm.Languages`), plus Statut (Proposé / En contrôle / Validé) et Commentaire réviseur (lecture seule, rempli par l'import). Grille non liée : les dictionnaires de `GlossaryTerm` ne se prêtent pas au binding. Doublons de Source refusés à l'enregistrement, terme saisi à la main Validé par défaut, confirmation si modifications non enregistrées.
 
 **`Forms/GlossaryExtractionDialog.cs`** — dialog d'extraction assistée : l'IA propose une liste de termes candidats (source + destination + contexte), l'utilisateur coche ceux à ajouter (édition possible inline) puis valide. Retourne `AcceptedEntries` (liste filtrée).
 
@@ -335,6 +335,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`GlossaryService`** (implémente `IGlossaryService`) :
 - Stockage **transversal** (`GlossaryTerm` : un terme français, ses traductions par langue, un statut Proposé / En contrôle / Validé, un commentaire réviseur — voir [GLOSSAIRE.md](GLOSSAIRE.md)) dans `%LocalAppData%\CheckTranslation\glossary.json`. L'ancien schéma par langue (v1) est migré au chargement (idempotent, fichier réécrit en v2 à la première sauvegarde) ; les termes migrés naissent Validé pour ne pas changer le comportement des prompts.
+- `GetTerms()` / `ReplaceTerms(terms)` : la surface de l'éditeur multi-langues, terme entier (copies isolées, normalisation à l'écriture). `AddProposedTerms(code, entries)` : versement des candidats d'extraction — terme nouveau Proposé, case déjà tranchée jamais écrasée.
 - `GetEntries(code)` / `ReplaceEntries(code, entries)` / `Save()` : la surface par langue est conservée par **projection** — l'éditeur actuel et l'extraction fonctionnent sans connaître le schéma transversal. Une écriture par l'éditeur vaut décision humaine : le terme passe Validé.
 - `BuildGlossarySection(langueCode, langueName)` : produit la section texte injectée à la place du placeholder `{glossary}`. Chaîne vide si aucune entrée → aucun impact sur le prompt.
 - `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées, inclus dans les clés de cache → **invalidation automatique** dès qu'une entrée change.
@@ -534,8 +535,8 @@ Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l
 4. `MainForm.ApplyDrillDown` bascule sur la langue, **remet tous les filtres à zéro**, puis pose le filtre demandé : dans la zone de saisie ou la liste déroulante de la colonne concernée, sauf pour Projet et Fichier qui n'ont plus de colonne — leur filtre passe par l'arborescence, en sélection exacte (`SelectTreeExactly`), avec la même garantie que l'ancien filtre « = » : le chiffre cliqué et la grille comptent la même chose.
 
 ### 7.11 Glossaire
-- **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`. L'utilisateur sélectionne une langue, ajoute/modifie/supprime des entrées.
-- **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → validation → ajout au glossaire de la langue active.
+- **Édition manuelle** : bouton toolbar `btnGlossary` → `GlossaryForm`, grille transversale terme × langue avec statuts. Seuls les termes Validé sont injectés dans les prompts.
+- **Extraction assistée** : menu contextuel "Extraire les termes métier…" sur une sélection → IA propose des candidats → `GlossaryExtractionDialog` → acceptation → versement en termes **Proposé** (`AddProposedTerms`), à valider dans l'éditeur ou par le contrôle externe avant d'entrer dans les prompts.
 - **Injection dans les prompts** : à chaque appel de `TranslateInBatchesAsync` / `VerifyInBatchesAsync`, `MainForm` construit `glossarySection` (texte) et `glossaryFingerprint` (SHA256) pour la langue active. Le fingerprint invalide automatiquement les entrées de cache périmées.
 
 ---
