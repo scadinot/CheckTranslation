@@ -22,8 +22,8 @@ internal sealed class GlossaryService : IGlossaryService
     private readonly object _lock = new();
     private Glossary _glossary;
     private bool _loaded;
-    // Vrai si glossary.json existe mais n'a pas pu etre lu : Save refuse alors d'ecrire, sans quoi
-    // un glossaire vide de repli ecraserait des donnees existantes.
+    // Vrai si glossary.json existe mais n'a pas pu être lu : Save refuse alors d'écrire, sans quoi
+    // un glossaire vide de repli écraserait des données existantes.
     private bool _loadFailed;
 
     public GlossaryService()
@@ -132,6 +132,13 @@ internal sealed class GlossaryService : IGlossaryService
         if (entries.Count == 0)
             return string.Empty;
 
+        // Même tri que l'empreinte : le prompt doit être une fonction du contenu, pas de l'ordre
+        // de stockage — sinon réordonner les termes changerait le prompt sans invalider le cache.
+        var ordered = entries
+            .OrderBy(entry => entry.Source, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Destination, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Context, StringComparer.Ordinal);
+
         var sb = new StringBuilder();
         sb.Append("## Glossaire métier ").Append(languageName).AppendLine();
         sb.AppendLine();
@@ -140,7 +147,7 @@ internal sealed class GlossaryService : IGlossaryService
         sb.AppendLine("| Source | Destination | Contexte |");
         sb.AppendLine("|---|---|---|");
 
-        foreach (var entry in entries)
+        foreach (var entry in ordered)
         {
             sb.Append("| ")
               .Append(EscapeMarkdownCell(entry.Source)).Append(" | ")
