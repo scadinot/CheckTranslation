@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CheckTranslation;
 
@@ -9,26 +10,48 @@ internal sealed class GlossaryService : IGlossaryService
     private static readonly string FilePath = Path.Combine(AppConfig.ConfigDirectory, "glossary.json");
     private const int ExtractionBatchSize = 20;
 
+    // Statuts en toutes lettres dans le JSON (lisible par un humain, robuste aux réordonnancements
+    // de l'enum) ; EntriesByLanguage nul non réécrit : le fichier migre en v2 à la première sauvegarde.
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     private readonly object _lock = new();
     private Glossary _glossary;
     private bool _loaded;
+    // Vrai si glossary.json existe mais n'a pas pu être lu : Save refuse alors d'écrire, sans quoi
+    // un glossaire vide de repli écraserait des données existantes.
+    private bool _loadFailed;
 
     public GlossaryService()
     {
         _glossary = new Glossary();
     }
 
+    /// <summary>
+    /// Projection du glossaire transversal sur une langue : les termes qui portent une traduction
+    /// non vide pour ce code, sous la forme historique (Source / Destination / Contexte). C'est la
+    /// seule lecture par langue — l'éditeur actuel et l'extraction continuent de fonctionner sans
+    /// rien savoir du schéma transversal.
+    /// </summary>
     public IReadOnlyList<GlossaryEntry> GetEntries(string languageCode)
     {
         EnsureLoaded();
         lock (_lock)
         {
-            if (_glossary.EntriesByLanguage.TryGetValue(languageCode, out var entries))
-                return entries.Select(Clone).ToList();
-            return Array.Empty<GlossaryEntry>();
+            return ProjectLocked(languageCode, validatedOnly: false);
         }
     }
 
+    /// <summary>
+    /// La liste devient exactement l'ensemble des entrées de cette langue : les traductions
+    /// citées sont posées sur leur terme (créé au besoin), celles qui ne le sont plus sont
+    /// retirées. Un terme qui ne porte plus aucune traduction disparaît. Une écriture par
+    /// l'éditeur est une décision humaine : le terme passe <see cref="GlossaryTermStatus.Validated"/>.
+    /// </summary>
     public void ReplaceEntries(string languageCode, IReadOnlyList<GlossaryEntry> entries)
     {
         if (string.IsNullOrWhiteSpace(languageCode))
@@ -39,13 +62,36 @@ internal sealed class GlossaryService : IGlossaryService
         {
             var cleaned = entries
                 .Where(e => !string.IsNullOrWhiteSpace(e.Source) && !string.IsNullOrWhiteSpace(e.Destination))
-                .Select(Clone)
                 .ToList();
 
-            if (cleaned.Count == 0)
-                _glossary.EntriesByLanguage.Remove(languageCode);
-            else
-                _glossary.EntriesByLanguage[languageCode] = cleaned;
+            var keptSources = new HashSet<string>(cleaned.Select(e => e.Source.Trim()), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in cleaned)
+            {
+                var term = FindTermLocked(entry.Source);
+                if (term is null)
+                {
+                    term = new GlossaryTerm { Source = entry.Source.Trim() };
+                    _glossary.Terms.Add(term);
+                }
+
+                // Normalisé à l'écriture (espaces de bord, retours à la ligne) : le stockage,
+                // l'empreinte et le rendu du prompt restent alignés. La migration v1, elle, copie
+                // verbatim pour préserver les empreintes existantes.
+                term.Translations[languageCode] = NormalizeCell(entry.Destination);
+                // Le contexte est désormais commun à toutes les langues : dernier éditeur gagnant,
+                // comme pour n'importe quel champ partagé.
+                term.Context = NormalizeCell(entry.Context);
+                term.Status = GlossaryTermStatus.Validated;
+            }
+
+            foreach (var term in _glossary.Terms)
+            {
+                if (!keptSources.Contains(term.Source.Trim()))
+                    term.Translations.Remove(languageCode);
+            }
+
+            _glossary.Terms.RemoveAll(term => term.Translations.Count == 0);
         }
     }
 
@@ -54,10 +100,14 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
+            if (_loadFailed)
+                throw new InvalidOperationException(
+                    "Le glossaire existant n'a pas pu être lu : enregistrer maintenant écraserait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
+
             try
             {
                 Directory.CreateDirectory(AppConfig.ConfigDirectory);
-                var json = JsonSerializer.Serialize(_glossary, new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(_glossary, JsonOptions);
                 AtomicFile.WriteAllText(FilePath, json);
             }
             catch (IOException ex)
@@ -71,13 +121,23 @@ internal sealed class GlossaryService : IGlossaryService
     public string BuildGlossarySection(string languageCode, string languageName)
     {
         EnsureLoaded();
-        List<GlossaryEntry> entries;
+        IReadOnlyList<GlossaryEntry> entries;
         lock (_lock)
         {
-            if (!_glossary.EntriesByLanguage.TryGetValue(languageCode, out var stored) || stored.Count == 0)
-                return string.Empty;
-            entries = stored.Select(Clone).ToList();
+            // Seuls les termes validés sont injectés : une proposition en attente de contrôle
+            // ne doit pas contaminer les traductions (gouvernance décrite dans GLOSSAIRE.md).
+            entries = ProjectLocked(languageCode, validatedOnly: true);
         }
+
+        if (entries.Count == 0)
+            return string.Empty;
+
+        // Même tri que l'empreinte : le prompt doit être une fonction du contenu, pas de l'ordre
+        // de stockage — sinon réordonner les termes changerait le prompt sans invalider le cache.
+        var ordered = entries
+            .OrderBy(entry => entry.Source, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Destination, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Context, StringComparer.Ordinal);
 
         var sb = new StringBuilder();
         sb.Append("## Glossaire métier ").Append(languageName).AppendLine();
@@ -87,7 +147,7 @@ internal sealed class GlossaryService : IGlossaryService
         sb.AppendLine("| Source | Destination | Contexte |");
         sb.AppendLine("|---|---|---|");
 
-        foreach (var entry in entries)
+        foreach (var entry in ordered)
         {
             sb.Append("| ")
               .Append(EscapeMarkdownCell(entry.Source)).Append(" | ")
@@ -101,13 +161,18 @@ internal sealed class GlossaryService : IGlossaryService
     public string GetGlossaryFingerprint(string languageCode)
     {
         EnsureLoaded();
-        List<GlossaryEntry> entries;
+        IReadOnlyList<GlossaryEntry> entries;
         lock (_lock)
         {
-            if (!_glossary.EntriesByLanguage.TryGetValue(languageCode, out var stored) || stored.Count == 0)
-                return "empty";
-            entries = stored.Select(Clone).ToList();
+            // Même périmètre que l'injection (termes validés). L'empreinte hache les valeurs
+            // stockées ; le rendu du prompt n'y ajoute que l'échappement markdown, déterministe et
+            // injectif : à contenu stocké égal, prompt égal. Sur des données migrées telles
+            // quelles, elle est identique à celle du schéma v1 : les caches survivent.
+            entries = ProjectLocked(languageCode, validatedOnly: true);
         }
+
+        if (entries.Count == 0)
+            return "empty";
 
         // Entrées triées avant hachage : réordonner le glossaire sans en changer le contenu
         // ne modifie pas le fingerprint, donc n'invalide pas le cache.
@@ -294,29 +359,113 @@ internal sealed class GlossaryService : IGlossaryService
             try
             {
                 var json = File.ReadAllText(FilePath);
-                var loaded = JsonSerializer.Deserialize<Glossary>(json);
-                _glossary = loaded ?? new Glossary();
-                if (_glossary.EntriesByLanguage.Comparer is not StringComparer comparer || comparer != StringComparer.OrdinalIgnoreCase)
+                _glossary = JsonSerializer.Deserialize<Glossary>(json, JsonOptions) ?? new Glossary();
+
+                // Un fichier édité à la main peut porter des null explicites : les neutraliser
+                // plutôt que de basculer tout le glossaire en mode vide sur une exception. La
+                // reconstruction des dictionnaires rétablit aussi le comparateur, que la
+                // désérialisation perd (codes de langue insensibles à la casse, comme en v1).
+                _glossary.Terms ??= new List<GlossaryTerm>();
+                _glossary.Terms.RemoveAll(term => term is null);
+                foreach (var term in _glossary.Terms)
                 {
-                    _glossary.EntriesByLanguage = new Dictionary<string, List<GlossaryEntry>>(
-                        _glossary.EntriesByLanguage,
+                    term.Source ??= string.Empty;
+                    term.Context ??= string.Empty;
+                    term.ReviewerComment ??= string.Empty;
+                    term.Translations = new Dictionary<string, string>(
+                        term.Translations ?? new Dictionary<string, string>(),
                         StringComparer.OrdinalIgnoreCase);
                 }
+
+                MigrateFromV1Locked();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[GlossaryService] Chargement impossible : {ex.Message}");
                 _glossary = new Glossary();
+                _loadFailed = true;
             }
         }
     }
 
-    private static GlossaryEntry Clone(GlossaryEntry source) => new()
+    /// <summary>Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.</summary>
+    private static string NormalizeCell(string? value)
+        => (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+
+    /// <summary>
+    /// Migration du schéma v1 (entrées par langue) vers le schéma transversal : les entrées de
+    /// même Source fusionnent en un terme, le premier contexte non vide l'emporte. Les entrées v1
+    /// étaient déjà injectées dans les prompts : les termes migrés naissent donc
+    /// <see cref="GlossaryTermStatus.Validated"/>, sans quoi la migration changerait le
+    /// comportement des traductions. Idempotente : rejouée à chaque chargement tant que le fichier
+    /// n'a pas été réécrit en v2, plus jamais ensuite (EntriesByLanguage nul n'est pas réécrit).
+    /// </summary>
+    private void MigrateFromV1Locked()
     {
-        Source = source.Source,
-        Destination = source.Destination,
-        Context = source.Context,
-    };
+        if (_glossary.EntriesByLanguage is not { Count: > 0 } legacy)
+        {
+            _glossary.EntriesByLanguage = null;
+            return;
+        }
+
+        foreach (var (languageCode, entries) in legacy)
+        {
+            foreach (var entry in entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Source) || string.IsNullOrWhiteSpace(entry.Destination))
+                    continue;
+
+                var term = FindTermLocked(entry.Source);
+                if (term is null)
+                {
+                    term = new GlossaryTerm { Source = entry.Source.Trim(), Status = GlossaryTermStatus.Validated };
+                    _glossary.Terms.Add(term);
+                }
+
+                term.Translations[languageCode] = entry.Destination;
+                if (term.Context.Length == 0 && !string.IsNullOrWhiteSpace(entry.Context))
+                    term.Context = entry.Context;
+            }
+        }
+
+        _glossary.EntriesByLanguage = null;
+        _glossary.Version = 2;
+    }
+
+    private GlossaryTerm? FindTermLocked(string source)
+    {
+        var trimmed = source.Trim();
+        return _glossary.Terms.Find(term => string.Equals(term.Source.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Projette les termes sur une langue, sous la forme historique Source / Destination /
+    /// Contexte. <paramref name="validatedOnly"/> distingue les deux usages : l'édition voit tout,
+    /// les prompts et l'empreinte ne voient que le validé. À appeler sous <see cref="_lock"/>.
+    /// </summary>
+    private List<GlossaryEntry> ProjectLocked(string languageCode, bool validatedOnly)
+    {
+        var entries = new List<GlossaryEntry>();
+
+        foreach (var term in _glossary.Terms)
+        {
+            if (validatedOnly && term.Status != GlossaryTermStatus.Validated)
+                continue;
+
+            if (!term.Translations.TryGetValue(languageCode, out var destination)
+                || string.IsNullOrWhiteSpace(destination))
+                continue;
+
+            entries.Add(new GlossaryEntry
+            {
+                Source = term.Source,
+                Destination = destination,
+                Context = term.Context,
+            });
+        }
+
+        return entries;
+    }
 
     private static string EscapeMarkdownCell(string? value)
     {

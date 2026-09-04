@@ -88,6 +88,17 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 
 ---
 
+## 8. Glossaire transversal (process GLOSSAIRE.md)
+
+| Prio | Chantier | État |
+|:--:|---|---|
+| 🔴 | 1. Schéma v2 + migration + projection par langue | ✅ Fait |
+| 🔴 | 2. Éditeur multi-langues (grille terme × langue, statuts) | À faire |
+| 🟡 | 3. Export / import Excel avec diff et backup | À faire |
+| 🔴 | 4. Retraduction ciblée des lignes impactées | À faire |
+
+---
+
 # Historique
 
 > Les renvois « §N » de ce tableau visent les sections de [CLAUDE.md](CLAUDE.md), où ce suivi
@@ -153,6 +164,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 2026-09-01 | Traduction partielle (roadmap §13.4) : une entrée inexploitable dans une réponse IA restaure la valeur d'avant le batch au lieu de laisser le placeholder « Traduction en cours... » / « Vérification... » — qui pouvait être sauvegardé tel quel dans le .resx ou l'Excel. Messages d'avertissement explicités (les lignes ont retrouvé leur valeur précédente) |
 | 2026-09-01 | Documentation scindée : la feuille de route et l'historique quittent CLAUDE.md pour ROADMAP.md (ce fichier). CLAUDE.md recentré sur le guide technique (§1 à §11), le seul contenu chargé automatiquement par les sessions assistées ; renvois croisés mis à jour (README, `AtomicFile.cs`) |
 | 2026-09-02 | Température auto-adaptative : les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (validation Bedrock) — `Translator` mémorise le refus par fournisseur-modèle au premier appel et rejoue sans, sur les deux dialectes. Les modèles qui l'acceptent continuent de recevoir 0.1 |
+| 2026-09-02 | **Glossaire transversal (chantier 1 de GLOSSAIRE.md)** : `GlossaryTerm` (un terme FR, ses traductions par langue, statut Proposé / En contrôle / Validé, commentaire réviseur), migration v1 idempotente au chargement (termes migrés Validé, empreinte projetée inchangée, caches préservés), surface par langue conservée par projection — éditeur et extraction inchangés. Seuls les termes Validé sont injectés. Process complet consigné dans GLOSSAIRE.md |
 
 ---
 
