@@ -100,4 +100,37 @@ public class GlossaryServiceTests
         Assert.Equal("borne", entry.Source);
         Assert.Equal(string.Empty, entry.Destination);
     }
+
+    [Fact]
+    public void ParseExtractionResponse_IgnoresBracketsInProseAroundTheArray()
+    {
+        // « [1] » avant n'est pas un tableau d'objets, « [2] » après ne décale pas la fin :
+        // ni l'un ni l'autre ne doit faire passer une réponse valide pour illisible.
+        const string raw = """
+            Termes extraits selon la norme [1] :
+            [ { "term": "borne", "translation": "Klemme", "context": "raccordement" } ]
+            Références : voir [2] et [3].
+            """;
+
+        var parse = GlossaryService.ParseExtractionResponse(raw);
+
+        Assert.True(parse.Success);
+        Assert.Equal("Klemme", Assert.Single(parse.Entries).Destination);
+    }
+
+    [Fact]
+    public void ParseExtractionResponse_BracketsInsideStrings_DoNotCloseTheArray()
+    {
+        const string raw = """
+            [
+              { "term": "câble", "translation": "Kabel", "context": "voir [1] et l'échappement \"[\" ici" },
+              { "term": "borne", "translation": "Klemme", "context": "" }
+            ]
+            """;
+
+        var parse = GlossaryService.ParseExtractionResponse(raw);
+
+        Assert.True(parse.Success);
+        Assert.Equal(2, parse.Entries.Count);
+    }
 }

@@ -578,47 +578,105 @@ internal sealed class GlossaryService : IGlossaryService
     /// la seconde un défaut à signaler. Un tableau ouvert et jamais fermé est la signature d'une
     /// réponse tronquée par le plafond de tokens de sortie — cas vécu : à 2048 tokens, un lot de
     /// 20 textes s'arrêtait au milieu d'un objet et l'utilisateur lisait « aucun terme proposé ».
+    ///
+    /// Le tableau est délimité par un balayage qui ignore les crochets à l'intérieur des chaînes
+    /// JSON, pas par le dernier <c>]</c> de la réponse : de la prose autour (« voir [1] ») ne doit
+    /// ni décaler la fin du tableau ni faire passer une réponse valide pour illisible. Chaque
+    /// <c>[</c> est essayé dans l'ordre jusqu'à trouver un tableau d'objets ; un <c>[</c> jamais
+    /// refermé arrête la recherche, rien après lui ne peut l'être non plus.
     /// </summary>
     internal static ExtractionParse ParseExtractionResponse(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return ExtractionParse.Unreadable(truncated: false);
 
-        var start = raw.IndexOf('[');
-        if (start < 0)
-            return ExtractionParse.Unreadable(truncated: false);
+        int searchFrom = 0;
+        int start;
+        while ((start = raw.IndexOf('[', searchFrom)) >= 0)
+        {
+            var end = FindArrayEnd(raw, start);
+            if (end < 0)
+                return ExtractionParse.Unreadable(truncated: true);
 
-        var end = raw.LastIndexOf(']');
-        if (end <= start)
-            return ExtractionParse.Unreadable(truncated: true);
+            if (TryReadEntries(raw.AsSpan(start, end - start + 1), out var entries))
+                return new ExtractionParse(entries, Success: true, Truncated: false);
 
+            searchFrom = start + 1;
+        }
+
+        return ExtractionParse.Unreadable(truncated: false);
+    }
+
+    /// <summary>
+    /// Index du <c>]</c> qui referme le tableau ouvert en <paramref name="start"/>, ou -1 s'il
+    /// n'est jamais refermé. Les crochets rencontrés à l'intérieur d'une chaîne JSON (guillemets
+    /// doubles, échappements <c>\</c> respectés) ne comptent pas.
+    /// </summary>
+    private static int FindArrayEnd(string text, int start)
+    {
+        int depth = 0;
+        bool inString = false;
+
+        for (int i = start; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (inString)
+            {
+                if (c == '\\')
+                    i++;
+                else if (c == '"')
+                    inString = false;
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"': inString = true; break;
+                case '[': depth++; break;
+                case ']':
+                    if (--depth == 0)
+                        return i;
+                    break;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Vrai si le fragment est un tableau JSON d'objets (vide accepté : « rien trouvé »). Un
+    /// tableau sans aucun objet — « [1] » dans une phrase — n'est pas la réponse attendue et
+    /// laisse la recherche continuer.
+    /// </summary>
+    private static bool TryReadEntries(ReadOnlySpan<char> json, out List<GlossaryEntry> entries)
+    {
+        entries = new List<GlossaryEntry>();
         try
         {
-            using var doc = JsonDocument.Parse(raw.Substring(start, end - start + 1));
+            using var doc = JsonDocument.Parse(json.ToString());
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
-                return ExtractionParse.Unreadable(truncated: false);
+                return false;
 
-            var result = new List<GlossaryEntry>();
+            int items = 0;
             foreach (var element in doc.RootElement.EnumerateArray())
             {
+                items++;
                 if (element.ValueKind != JsonValueKind.Object)
                     continue;
 
-                result.Add(new GlossaryEntry
+                entries.Add(new GlossaryEntry
                 {
                     Source = ReadString(element, "term"),
                     Destination = ReadString(element, "translation"),
                     Context = ReadString(element, "context"),
                 });
             }
-            return new ExtractionParse(result, Success: true, Truncated: false);
+
+            return items == 0 || entries.Count > 0;
         }
         catch (JsonException)
         {
-            // Un ']' existe mais le document reste invalide : réponse coupée au milieu d'un
-            // objet dont un ']' intérieur a survécu, ou JSON malformé — dans les deux cas
-            // illisible, et le premier est le plus fréquent.
-            return ExtractionParse.Unreadable(truncated: !raw.TrimEnd().EndsWith(']'));
+            return false;
         }
     }
 
