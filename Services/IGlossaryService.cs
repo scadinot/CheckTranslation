@@ -17,12 +17,44 @@ internal interface IGlossaryService
     void ReplaceTerms(IReadOnlyList<GlossaryTerm> terms);
 
     /// <summary>
-    /// Verse des candidats d'extraction dans le glossaire : un terme nouveau naît
+    /// <see cref="ReplaceTerms"/> puis <see cref="Save"/>, transactionnellement : si la
+    /// persistance échoue, l'état mémoire est restauré tel qu'avant l'appel — le service ne
+    /// reste jamais muté en mémoire pendant que l'UI signale un échec.
+    /// </summary>
+    void ReplaceTermsAndSave(IReadOnlyList<GlossaryTerm> terms);
+
+    /// <summary>
+    /// Verse des candidats d'extraction dans le glossaire ET persiste : un terme nouveau naît
     /// <see cref="GlossaryTermStatus.Proposed"/> (le contrôle le validera — voir GLOSSAIRE.md) ;
     /// un terme existant reçoit la traduction proposée seulement si sa case pour cette langue est
-    /// vide, et garde son statut. Retourne le nombre de termes créés ou complétés.
+    /// vide, et garde son statut. Si la persistance échoue, l'état mémoire est restauré et
+    /// l'exception remonte. Retourne le nombre de termes créés ou complétés — un compte de
+    /// termes, pas d'entrées : des candidats en doublon sur la même source ne comptent qu'une
+    /// fois, la garde de non-écrasement écartant les suivants.
     /// </summary>
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
+
+    /// <summary>
+    /// Empreinte de la totalité du glossaire (tous champs, toutes langues), écrite dans le
+    /// classeur d'export et comparée à l'import pour détecter que le glossaire a changé côté
+    /// application pendant le contrôle externe.
+    /// </summary>
+    string GetExportStamp();
+
+    /// <summary>
+    /// Exporte le glossaire vers un classeur de contrôle, transactionnellement : les termes
+    /// Proposé passent En contrôle (les Validé restent injectés pendant le contrôle), le
+    /// classeur est écrit avec l'empreinte de cet état, puis la bascule est persistée. Si une
+    /// étape échoue, les statuts sont restaurés : le glossaire ne reste jamais « En contrôle »
+    /// sans classeur produit. Retourne le nombre de termes basculés.
+    /// </summary>
+    int ExportForReview(string filePath, IReadOnlyList<LanguageInfo> languages);
+
+    /// <summary>
+    /// Écrit une copie datée du glossaire courant à côté de glossary.json, avant qu'un import
+    /// n'applique ses changements. Retourne le chemin du fichier créé.
+    /// </summary>
+    string CreateBackup();
 
     void Save();
 

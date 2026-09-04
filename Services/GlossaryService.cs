@@ -148,14 +148,41 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    public void ReplaceTermsAndSave(IReadOnlyList<GlossaryTerm> terms)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            // Copie profonde : la restauration doit rendre l'état exact d'avant l'appel, sans
+            // repasser par la normalisation de ReplaceTerms.
+            var snapshot = _glossary.Terms.Select(CloneTerm).ToList();
+
+            ReplaceTerms(terms);
+            try
+            {
+                Save();
+            }
+            catch
+            {
+                _glossary.Terms = snapshot;
+                throw;
+            }
+        }
+    }
+
     public int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries)
     {
-        if (string.IsNullOrWhiteSpace(languageCode))
+        if (string.IsNullOrWhiteSpace(languageCode) || entries.Count == 0)
             return 0;
 
         EnsureLoaded();
         lock (_lock)
         {
+            // Copie profonde avant mutation : la méthode modifie des termes existants en place,
+            // la restauration en cas d'échec de persistance doit rendre l'état exact. Paresseuse :
+            // prise à la première mutation avérée seulement — une extraction qui ne propose que
+            // des doublons ne paie pas le clone du glossaire entier.
+            List<GlossaryTerm>? snapshot = null;
             int touched = 0;
 
             foreach (var entry in entries)
@@ -164,6 +191,16 @@ internal sealed class GlossaryService : IGlossaryService
                     continue;
 
                 var term = FindTermLocked(entry.Source);
+                if (term is not null
+                    && term.Translations.TryGetValue(languageCode, out var existing)
+                    && !string.IsNullOrWhiteSpace(existing))
+                {
+                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
+                    continue;
+                }
+
+                snapshot ??= _glossary.Terms.Select(CloneTerm).ToList();
+
                 if (term is null)
                 {
                     // Un candidat d'extraction naît Proposé : il n'entre dans les prompts qu'une
@@ -176,19 +213,138 @@ internal sealed class GlossaryService : IGlossaryService
                     };
                     _glossary.Terms.Add(term);
                 }
-                else if (term.Translations.TryGetValue(languageCode, out var existing)
-                    && !string.IsNullOrWhiteSpace(existing))
-                {
-                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
-                    continue;
-                }
 
+                // Un incrément par terme, jamais par entrée : un doublon de source dans les
+                // candidats retombe sur la garde de non-écrasement (la case vient d'être
+                // remplie, jamais vide ni blanche) et est écarté avant d'arriver ici.
                 term.Translations[languageCode] = NormalizeCell(entry.Destination);
                 touched++;
             }
 
+            if (touched > 0)
+            {
+                try
+                {
+                    Save();
+                }
+                catch
+                {
+                    // touched > 0 implique que le snapshot a été pris (première mutation).
+                    _glossary.Terms = snapshot!;
+                    throw;
+                }
+            }
+
             return touched;
         }
+    }
+
+    public string GetExportStamp()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            var sb = new StringBuilder();
+
+            foreach (var term in _glossary.Terms.OrderBy(t => t.Source, StringComparer.Ordinal))
+            {
+                sb.Append(term.Source).Append('\u001F')
+                  .Append(term.Context).Append('\u001F')
+                  .Append(term.Status).Append('\u001F')
+                  .Append(term.ReviewerComment).Append('\u001F');
+
+                foreach (var (code, destination) in term.Translations.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                    sb.Append(code).Append('=').Append(destination).Append('\u001D');
+
+                sb.Append('\u001E');
+            }
+
+            // Empreinte complète : la valeur sert précisément à détecter un glossaire modifié
+            // pendant le contrôle, et ne coûte qu'une cellule de la feuille Infos — la tronquer
+            // n'achèterait rien.
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
+            return Convert.ToHexString(bytes);
+        }
+    }
+
+    public int ExportForReview(string filePath, IReadOnlyList<LanguageInfo> languages)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            // Refus immédiat : sinon le classeur serait écrit (vide) avant que Save n'échoue,
+            // et un fichier d'export existerait malgré l'échec affiché.
+            ThrowIfLoadFailed();
+
+            // La bascule Proposé -> En contrôle précède l'écriture pour que l'empreinte du
+            // classeur décrive l'état qui restera dans l'application — mais elle n'est
+            // persistée qu'après un export réussi, et restaurée si quoi que ce soit échoue :
+            // le glossaire ne doit jamais rester « En contrôle » sans classeur produit.
+            var flipped = new List<GlossaryTerm>();
+            foreach (var term in _glossary.Terms)
+            {
+                if (term.Status == GlossaryTermStatus.Proposed)
+                {
+                    term.Status = GlossaryTermStatus.InReview;
+                    flipped.Add(term);
+                }
+            }
+
+            try
+            {
+                // Les verrous étant réentrants, GetTerms / GetExportStamp / Save s'appellent
+                // tels quels depuis la section verrouillée.
+                GlossaryExcel.Export(filePath, GetTerms(), GetExportStamp(), languages);
+                Save();
+                return flipped.Count;
+            }
+            catch
+            {
+                foreach (var term in flipped)
+                    term.Status = GlossaryTermStatus.Proposed;
+
+                // Si l'export a réussi mais pas la persistance, le classeur existe avec une
+                // empreinte décrivant un état restauré : on ne le supprime pas (il a pu écraser
+                // un export précédent), l'import signalera simplement l'écart d'empreinte.
+                throw;
+            }
+        }
+    }
+
+    public string CreateBackup()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            // Un backup pris sur un glossaire illisible serait vide : trompeur pour une
+            // fonction de récupération — même refus que les autres écritures.
+            ThrowIfLoadFailed();
+
+            // Suffixe numérique si le nom horodaté existe déjà : deux imports dans la même
+            // seconde ne doivent pas écraser le même backup, ce qui annulerait son intérêt.
+            var baseName = $"glossary-{DateTime.Now:yyyyMMdd-HHmmss}";
+            var backupPath = Path.Combine(AppConfig.ConfigDirectory, baseName + ".bak.json");
+            for (int n = 1; File.Exists(backupPath); n++)
+                backupPath = Path.Combine(AppConfig.ConfigDirectory, $"{baseName}-{n}.bak.json");
+
+            Directory.CreateDirectory(AppConfig.ConfigDirectory);
+            var json = JsonSerializer.Serialize(_glossary, JsonOptions);
+            AtomicFile.WriteAllText(backupPath, json);
+            return backupPath;
+        }
+    }
+
+    /// <summary>
+    /// Refus commun à toutes les écritures disque (enregistrement, export pour contrôle, backup)
+    /// quand le glossaire existant n'a pas pu être lu : l'état mémoire est vide, enregistrer
+    /// écraserait le fichier, et un classeur d'export ou un backup produits de cet état seraient
+    /// trompeurs — un backup vide est pire que pas de backup.
+    /// </summary>
+    private void ThrowIfLoadFailed()
+    {
+        if (_loadFailed)
+            throw new InvalidOperationException(
+                "Le glossaire existant n'a pas pu être lu : toute écriture (enregistrement, export, sauvegarde) partirait d'un état vide et écraserait ou masquerait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
     }
 
     public void Save()
@@ -196,9 +352,7 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
-            if (_loadFailed)
-                throw new InvalidOperationException(
-                    "Le glossaire existant n'a pas pu être lu : enregistrer maintenant écraserait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
+            ThrowIfLoadFailed();
 
             try
             {

@@ -2569,11 +2569,12 @@ public partial class MainForm : Form
 
         // Un candidat accepté devient un terme Proposé : il n'entre dans les prompts qu'une fois
         // validé, dans l'éditeur ou par le cycle de contrôle externe (GLOSSAIRE.md). Un terme
-        // existant n'est complété que si sa case pour cette langue est vide.
-        int added = _glossaryService.AddProposedTerms(_currentLanguage.Code, accepted);
+        // existant n'est complété que si sa case pour cette langue est vide. L'appel persiste
+        // lui-même, transactionnellement : en cas d'échec, l'état mémoire est restauré.
+        int added;
         try
         {
-            _glossaryService.Save();
+            added = _glossaryService.AddProposedTerms(_currentLanguage.Code, accepted);
         }
         catch (Exception ex)
         {
@@ -2585,7 +2586,7 @@ public partial class MainForm : Form
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
         statusRowCount.Text = added > 0
-            ? $"Glossaire : {added} terme(s) proposé(s) — à valider dans l'éditeur du glossaire"
+            ? $"Glossaire : {added} terme(s) créé(s) ou complété(s) — à valider dans l'éditeur du glossaire"
             : "Glossaire : aucun terme nouveau (déjà présents ou traductions déjà tranchées)";
     }
 

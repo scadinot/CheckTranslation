@@ -17,6 +17,9 @@ internal sealed partial class GlossaryForm : Form
     private DataGridViewComboBoxColumn colStatus = null!;
     private DataGridViewTextBoxColumn colReviewer = null!;
     private bool _dirty;
+    // Vrai pendant un rechargement programmatique de la grille : remplir les cellules lève
+    // CellValueChanged, qui ne doit pas marquer le formulaire modifié.
+    private bool _suppressDirty;
 
     public GlossaryForm() : this(new GlossaryService())
     {
@@ -34,6 +37,8 @@ internal sealed partial class GlossaryForm : Form
         grid.DataError += (_, e) => e.ThrowException = false;
         btnAdd.Click += (_, _) => AddTermRow();
         btnRemove.Click += (_, _) => RemoveSelectedRows();
+        btnExport.Click += BtnExport_Click;
+        btnImport.Click += BtnImport_Click;
         btnOk.Click += BtnOk_Click;
         FormClosing += GlossaryForm_FormClosing;
 
@@ -201,8 +206,7 @@ internal sealed partial class GlossaryForm : Form
 
         try
         {
-            _glossaryService.ReplaceTerms(terms);
-            _glossaryService.Save();
+            _glossaryService.ReplaceTermsAndSave(terms);
             _dirty = false;
             DialogResult = DialogResult.OK;
             Close();
@@ -215,6 +219,198 @@ internal sealed partial class GlossaryForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
+    }
+
+    // --- Export / import pour le contrôle externe (GLOSSAIRE.md, phases 2 et 3) ---
+
+    /// <summary>
+    /// Exporte l'état ENREGISTRÉ du glossaire : les modifications en cours dans la grille doivent
+    /// d'abord être enregistrées, sans quoi le classeur ne correspondrait à rien de rejouable. Les
+    /// termes Proposé passent En contrôle (les Validé restent injectés pendant le contrôle), puis
+    /// le classeur est écrit avec l'empreinte de cet état : l'import saura le rapprocher.
+    /// </summary>
+    private void BtnExport_Click(object? sender, EventArgs e)
+    {
+        // Committe une édition de cellule encore ouverte : sans quoi CellValueChanged n'a pas
+        // été levé et _dirty peut mentir.
+        grid.EndEdit();
+
+        if (_dirty)
+        {
+            MessageBox.Show(this,
+                "Des modifications ne sont pas enregistrées : l'export porte sur l'état enregistré du glossaire.\n\nEnregistrez d'abord, puis exportez.",
+                "Export du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        if (_glossaryService.GetTerms().Count == 0)
+        {
+            MessageBox.Show(this, "Le glossaire est vide : rien à exporter.",
+                "Export du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Exporter le glossaire pour contrôle",
+            Filter = "Classeur Excel (*.xlsx)|*.xlsx",
+            FileName = $"Glossaire-{DateTime.Now:yyyyMMdd}.xlsx",
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        try
+        {
+            // Transactionnel côté service : bascule des Proposé, export, persistance — et
+            // restauration des statuts si une étape échoue.
+            int moved = _glossaryService.ExportForReview(dialog.FileName, MainForm.Languages);
+
+            ReloadGrid();
+            MessageBox.Show(this,
+                $"Glossaire exporté vers :\n{dialog.FileName}"
+                + (moved > 0 ? $"\n\n{moved} terme(s) Proposé passé(s) En contrôle." : string.Empty),
+                "Export du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Impossible d'exporter le glossaire :\n\n{ex.Message}",
+                "Export du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Importe un classeur de contrôle : différences présentées une par une (acceptation
+    /// individuelle), sauvegarde datée de l'ancien glossaire avant application, compte rendu.
+    /// </summary>
+    private void BtnImport_Click(object? sender, EventArgs e)
+    {
+        // Même précaution que l'export : committer une édition de cellule encore ouverte.
+        grid.EndEdit();
+
+        if (_dirty)
+        {
+            MessageBox.Show(this,
+                "Des modifications ne sont pas enregistrées : l'import comparerait le classeur à un état qui n'existe plus.\n\nEnregistrez d'abord, puis importez.",
+                "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Importer un glossaire contrôlé",
+            Filter = "Classeur Excel (*.xlsx)|*.xlsx",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        try
+        {
+            var file = GlossaryExcel.Import(dialog.FileName, MainForm.Languages);
+            var current = _glossaryService.GetTerms();
+
+            // Seules les langues présentes dans le classeur sont comparées : une colonne
+            // supprimée (volontairement ou par erreur) ne doit pas produire une suppression
+            // massive des traductions de cette langue. Les absentes sont signalées dans le
+            // dialog de résolution.
+            var presentLanguages = MainForm.Languages
+                .Where(language => file.LanguageCodes.Contains(language.Code, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            var missingLanguages = MainForm.Languages
+                .Where(language => !file.LanguageCodes.Contains(language.Code, StringComparer.OrdinalIgnoreCase))
+                .Select(language => language.Name)
+                .ToList();
+
+            bool coversAllLanguages = missingLanguages.Count == 0;
+            // Calculé avant le chemin « zéro différence » : signaler que le glossaire a bougé
+            // côté application depuis l'export est le rôle de la feuille Infos, y compris quand
+            // l'import ne produit aucune différence.
+            bool stampMismatch = file.Stamp is not null
+                && !string.Equals(file.Stamp, _glossaryService.GetExportStamp(), StringComparison.OrdinalIgnoreCase);
+            string stampWarning = stampMismatch
+                ? "\n\n⚠ Le glossaire a été modifié dans l'application depuis cet export."
+                : string.Empty;
+            var icon = stampMismatch ? MessageBoxIcon.Warning : MessageBoxIcon.Information;
+
+            var changes = GlossaryDiff.Compute(current, file.Terms, presentLanguages);
+
+            if (changes.Count == 0)
+            {
+                // Pas de correction, mais un classeur complet revenu tel quel clôt le contrôle :
+                // les termes En contrôle qu'il couvre repassent Validé (règle de GlossaryDiff.Apply).
+                // Sans ce passage, un retour de contrôle sans remarque laisserait les termes
+                // bloqués En contrôle, donc hors des prompts, sans aucune action possible ici.
+                var promoted = GlossaryDiff.Apply(current, file.Terms, changes, coversAllLanguages);
+                int validated = promoted.Zip(current, (after, before) => after.Status != before.Status ? 1 : 0).Sum();
+                if (validated == 0)
+                {
+                    // Un classeur partiel ne compare pas les colonnes absentes et ne clôt pas le
+                    // contrôle : sans cette mention, l'utilisateur n'a aucun indice du pourquoi.
+                    string missingNote = missingLanguages.Count > 0
+                        ? $"\n\nColonnes absentes du classeur, non comparées : {string.Join(", ", missingLanguages)}. Un classeur partiel ne clôt pas le contrôle des termes En contrôle."
+                        : string.Empty;
+                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel." + missingNote + stampWarning,
+                        "Import du glossaire", MessageBoxButtons.OK, icon);
+                    return;
+                }
+
+                var statusBackupPath = _glossaryService.CreateBackup();
+                _glossaryService.ReplaceTermsAndSave(promoted);
+                ReloadGrid();
+                MessageBox.Show(this,
+                    $"Aucune correction dans le classeur : contrôle terminé, {validated} terme(s) En contrôle validé(s).{stampWarning}\n\nSauvegarde de l'ancien glossaire :\n{statusBackupPath}",
+                    "Import du glossaire", MessageBoxButtons.OK, icon);
+                return;
+            }
+
+            using var diffForm = new GlossaryImportDiffForm(changes, stampMismatch, missingLanguages);
+            if (diffForm.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            int accepted = changes.Count(change => change.Accepted);
+            if (accepted == 0)
+            {
+                MessageBox.Show(this, "Aucun changement accepté : le glossaire est inchangé.",
+                    "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var backupPath = _glossaryService.CreateBackup();
+            var merged = GlossaryDiff.Apply(current, file.Terms, changes, coversAllLanguages);
+            // Transactionnel : si la persistance échoue, le service restaure son état mémoire —
+            // l'UI et le service racontent la même histoire, l'export suivant ne partirait pas
+            // d'un état non enregistré.
+            _glossaryService.ReplaceTermsAndSave(merged);
+
+            ReloadGrid();
+            MessageBox.Show(this,
+                $"Import appliqué : {accepted} changement(s) sur {changes.Count}.\n\nSauvegarde de l'ancien glossaire :\n{backupPath}",
+                "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Impossible d'importer le glossaire :\n\n{ex.Message}",
+                "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>Recharge la grille depuis le service, sans marquer le formulaire modifié.</summary>
+    private void ReloadGrid()
+    {
+        _suppressDirty = true;
+        try
+        {
+            grid.Rows.Clear();
+            LoadTerms();
+        }
+        finally
+        {
+            _suppressDirty = false;
+        }
+
+        _dirty = false;
     }
 
     private void GlossaryForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -232,7 +428,11 @@ internal sealed partial class GlossaryForm : Form
             e.Cancel = true;
     }
 
-    private void MarkDirty() => _dirty = true;
+    private void MarkDirty()
+    {
+        if (!_suppressDirty)
+            _dirty = true;
+    }
 
     private void UpdateCountLabel()
     {

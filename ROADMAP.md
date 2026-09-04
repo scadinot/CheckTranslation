@@ -94,7 +94,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 |:--:|---|---|
 | 🔴 | 1. Schéma v2 + migration + projection par langue | ✅ Fait |
 | 🔴 | 2. Éditeur multi-langues (grille terme × langue, statuts) | ✅ Fait |
-| 🟡 | 3. Export / import Excel avec diff et backup | À faire |
+| 🟡 | 3. Export / import Excel avec diff et backup | ✅ Fait |
 | 🔴 | 4. Retraduction ciblée des lignes impactées | À faire |
 
 ---
@@ -166,6 +166,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 2026-09-02 | Température auto-adaptative : les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (validation Bedrock) — `Translator` mémorise le refus par fournisseur-modèle au premier appel et rejoue sans, sur les deux dialectes. Les modèles qui l'acceptent continuent de recevoir 0.1 |
 | 2026-09-02 | **Glossaire transversal (chantier 1 de GLOSSAIRE.md)** : `GlossaryTerm` (un terme FR, ses traductions par langue, statut Proposé / En contrôle / Validé, commentaire réviseur), migration v1 idempotente au chargement (termes migrés Validé, empreinte projetée inchangée, caches préservés), surface par langue conservée par projection — éditeur et extraction inchangés. Seuls les termes Validé sont injectés. Process complet consigné dans GLOSSAIRE.md |
 | 2026-09-04 | Glossaire : éditeur multi-langues (chantier 2) — `GlossaryForm` en grille transversale terme × langue (colonnes dynamiques depuis `MainForm.Languages`), statut éditable, commentaire réviseur en lecture seule, doublons refusés. L'extraction verse désormais des termes Proposé (`AddProposedTerms`), sans écraser une case déjà tranchée ; nouvelles API `GetTerms` / `ReplaceTerms` |
+| 2026-09-04 | Glossaire : export / import Excel (chantier 3) — export daté portant l'empreinte du glossaire (feuille Infos), colonnes de langue retrouvées par leur code à l'import (réordonnancement toléré), diff par terme et par champ (`GlossaryDiff`, logique pure) avec acceptation individuelle (`GlossaryImportDiffForm`, suppressions décochées par défaut), backup daté avant application. Les Proposé exportés passent En contrôle, les Validé restent injectés, un terme En contrôle revenu inchangé repasse Validé |
 
 ---
 
