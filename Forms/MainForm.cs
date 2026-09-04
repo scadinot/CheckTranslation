@@ -389,18 +389,28 @@ public partial class MainForm : Form
 
     private async void BtnGlossary_Click(object? sender, EventArgs e)
     {
-        // Photographie de la projection prompts avant l'éditeur : toute modification qui change
-        // les prompts (correction importée, promotion Validé, édition manuelle) sera détectée par
-        // comparaison à la fermeture, quel que soit le chemin qui l'a produite dans l'éditeur.
-        var projectionBefore = SnapshotPromptProjections();
-
-        using (var form = _glossaryFormFactory())
+        // async void : une exception qui s'échapperait du handler remonterait au
+        // SynchronizationContext et abattrait l'application — tout le corps est donc encadré.
+        try
         {
-            form.SelectLanguage(_currentLanguage.Code);
-            form.ShowDialog(this);
-        }
+            // Photographie de la projection prompts avant l'éditeur : toute modification qui
+            // change les prompts (correction importée, promotion Validé, édition manuelle) sera
+            // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
+            var projectionBefore = SnapshotPromptProjections();
 
-        await ProposeTargetedRetranslationAsync(projectionBefore);
+            using (var form = _glossaryFormFactory())
+            {
+                form.SelectLanguage(_currentLanguage.Code);
+                form.ShowDialog(this);
+            }
+
+            await ProposeTargetedRetranslationAsync(projectionBefore);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant la détection des lignes impactées :\n\n{ex.Message}",
+                "Retraduction ciblée", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     // --- Retraduction ciblée (GLOSSAIRE.md, phase 4) ---
