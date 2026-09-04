@@ -18,7 +18,7 @@ internal enum GlossaryTermStatus
 }
 
 /// <summary>
-/// Un terme métier transversal : un source français canonique et ses traductions imposées dans
+/// Un terme métier transversal : un terme source français canonique et ses traductions imposées dans
 /// chaque langue cible. Le terme est l'unité de gouvernance (statut, contexte, commentaire de
 /// révision) ; les langues n'en sont que les colonnes. Remplace le stockage par langue du schéma
 /// v1, où chaque langue ignorait les autres.

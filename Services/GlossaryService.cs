@@ -22,6 +22,9 @@ internal sealed class GlossaryService : IGlossaryService
     private readonly object _lock = new();
     private Glossary _glossary;
     private bool _loaded;
+    // Vrai si glossary.json existe mais n'a pas pu etre lu : Save refuse alors d'ecrire, sans quoi
+    // un glossaire vide de repli ecraserait des donnees existantes.
+    private bool _loadFailed;
 
     public GlossaryService()
     {
@@ -72,10 +75,13 @@ internal sealed class GlossaryService : IGlossaryService
                     _glossary.Terms.Add(term);
                 }
 
-                term.Translations[languageCode] = entry.Destination;
+                // Normalisé à l'écriture (espaces de bord, retours à la ligne) : le stockage,
+                // l'empreinte et le rendu du prompt restent alignés. La migration v1, elle, copie
+                // verbatim pour préserver les empreintes existantes.
+                term.Translations[languageCode] = NormalizeCell(entry.Destination);
                 // Le contexte est désormais commun à toutes les langues : dernier éditeur gagnant,
                 // comme pour n'importe quel champ partagé.
-                term.Context = entry.Context ?? string.Empty;
+                term.Context = NormalizeCell(entry.Context);
                 term.Status = GlossaryTermStatus.Validated;
             }
 
@@ -94,6 +100,10 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
+            if (_loadFailed)
+                throw new InvalidOperationException(
+                    "Le glossaire existant n'a pas pu être lu : enregistrer maintenant écraserait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
+
             try
             {
                 Directory.CreateDirectory(AppConfig.ConfigDirectory);
@@ -147,9 +157,10 @@ internal sealed class GlossaryService : IGlossaryService
         IReadOnlyList<GlossaryEntry> entries;
         lock (_lock)
         {
-            // Même périmètre que l'injection (termes validés) : l'empreinte décrit exactement ce
-            // que les prompts reçoivent, ni plus ni moins. Sur des données migrées telles quelles,
-            // elle est identique à celle du schéma v1 : les caches survivent à la migration.
+            // Même périmètre que l'injection (termes validés). L'empreinte hache les valeurs
+            // stockées ; le rendu du prompt n'y ajoute que l'échappement markdown, déterministe et
+            // injectif : à contenu stocké égal, prompt égal. Sur des données migrées telles
+            // quelles, elle est identique à celle du schéma v1 : les caches survivent.
             entries = ProjectLocked(languageCode, validatedOnly: true);
         }
 
@@ -343,10 +354,21 @@ internal sealed class GlossaryService : IGlossaryService
                 var json = File.ReadAllText(FilePath);
                 _glossary = JsonSerializer.Deserialize<Glossary>(json, JsonOptions) ?? new Glossary();
 
-                // La désérialisation perd le comparateur : les codes de langue doivent rester
-                // insensibles à la casse (même règle que le schéma v1).
+                // Un fichier édité à la main peut porter des null explicites : les neutraliser
+                // plutôt que de basculer tout le glossaire en mode vide sur une exception. La
+                // reconstruction des dictionnaires rétablit aussi le comparateur, que la
+                // désérialisation perd (codes de langue insensibles à la casse, comme en v1).
+                _glossary.Terms ??= new List<GlossaryTerm>();
+                _glossary.Terms.RemoveAll(term => term is null);
                 foreach (var term in _glossary.Terms)
-                    term.Translations = new Dictionary<string, string>(term.Translations, StringComparer.OrdinalIgnoreCase);
+                {
+                    term.Source ??= string.Empty;
+                    term.Context ??= string.Empty;
+                    term.ReviewerComment ??= string.Empty;
+                    term.Translations = new Dictionary<string, string>(
+                        term.Translations ?? new Dictionary<string, string>(),
+                        StringComparer.OrdinalIgnoreCase);
+                }
 
                 MigrateFromV1Locked();
             }
@@ -354,9 +376,14 @@ internal sealed class GlossaryService : IGlossaryService
             {
                 System.Diagnostics.Debug.WriteLine($"[GlossaryService] Chargement impossible : {ex.Message}");
                 _glossary = new Glossary();
+                _loadFailed = true;
             }
         }
     }
+
+    /// <summary>Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.</summary>
+    private static string NormalizeCell(string? value)
+        => (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
 
     /// <summary>
     /// Migration du schéma v1 (entrées par langue) vers le schéma transversal : les entrées de
