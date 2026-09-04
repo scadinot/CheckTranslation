@@ -311,7 +311,20 @@ internal sealed partial class GlossaryForm : Form
         {
             var file = GlossaryExcel.Import(dialog.FileName, MainForm.Languages);
             var current = _glossaryService.GetTerms();
-            var changes = GlossaryDiff.Compute(current, file.Terms, MainForm.Languages);
+
+            // Seules les langues présentes dans le classeur sont comparées : une colonne
+            // supprimée (volontairement ou par erreur) ne doit pas produire une suppression
+            // massive des traductions de cette langue. Les absentes sont signalées dans le
+            // dialog de résolution.
+            var presentLanguages = MainForm.Languages
+                .Where(language => file.LanguageCodes.Contains(language.Code, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            var missingLanguages = MainForm.Languages
+                .Where(language => !file.LanguageCodes.Contains(language.Code, StringComparer.OrdinalIgnoreCase))
+                .Select(language => language.Name)
+                .ToList();
+
+            var changes = GlossaryDiff.Compute(current, file.Terms, presentLanguages);
 
             if (changes.Count == 0)
             {
@@ -323,7 +336,7 @@ internal sealed partial class GlossaryForm : Form
             bool stampMismatch = file.Stamp is not null
                 && !string.Equals(file.Stamp, _glossaryService.GetExportStamp(), StringComparison.OrdinalIgnoreCase);
 
-            using var diffForm = new GlossaryImportDiffForm(changes, stampMismatch);
+            using var diffForm = new GlossaryImportDiffForm(changes, stampMismatch, missingLanguages);
             if (diffForm.ShowDialog(this) != DialogResult.OK)
                 return;
 

@@ -13,7 +13,7 @@ internal sealed partial class GlossaryImportDiffForm : Form
 
     private readonly IReadOnlyList<GlossaryChange> _changes;
 
-    public GlossaryImportDiffForm(IReadOnlyList<GlossaryChange> changes, bool stampMismatch)
+    public GlossaryImportDiffForm(IReadOnlyList<GlossaryChange> changes, bool stampMismatch, IReadOnlyList<string> missingLanguages)
     {
         _changes = changes;
         InitializeComponent();
@@ -33,6 +33,7 @@ internal sealed partial class GlossaryImportDiffForm : Form
         int modifications = changes.Count - removals - additions;
 
         lblSummary.Text = $"{changes.Count} différence(s) : {modifications} modification(s), {additions} nouveau(x) terme(s), {removals} suppression(s)."
+            + (missingLanguages.Count > 0 ? $" Colonnes absentes du classeur, non comparées : {string.Join(", ", missingLanguages)}." : string.Empty)
             + (stampMismatch ? " ⚠ Le glossaire a été modifié dans l'application depuis cet export : vérifiez les lignes avant d'appliquer." : string.Empty);
 
         btnAll.Click += (_, _) => SetAll(true);

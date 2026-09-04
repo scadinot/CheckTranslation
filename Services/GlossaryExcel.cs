@@ -173,7 +173,7 @@ internal static class GlossaryExcel
             }
         }
 
-        return new GlossaryImportFile(terms, stamp);
+        return new GlossaryImportFile(terms, stamp, languageColumns.Keys.ToList());
     }
 
     private static string? ExtractLanguageCode(string headerText, IReadOnlyList<LanguageInfo> languages)
@@ -195,5 +195,10 @@ internal static class GlossaryExcel
     };
 }
 
-/// <summary>Contenu relu d'un classeur de contrôle : les termes, et l'empreinte de l'export d'origine si la feuille Infos a survécu.</summary>
-internal sealed record GlossaryImportFile(List<GlossaryTerm> Terms, string? Stamp);
+/// <summary>
+/// Contenu relu d'un classeur de contrôle : les termes, l'empreinte de l'export d'origine si la
+/// feuille Infos a survécu, et les codes des colonnes de langue réellement présentes — le diff ne
+/// compare que celles-là : une colonne supprimée du classeur ne doit pas se lire comme
+/// l'effacement de toute une langue.
+/// </summary>
+internal sealed record GlossaryImportFile(List<GlossaryTerm> Terms, string? Stamp, List<string> LanguageCodes);
