@@ -387,11 +387,218 @@ public partial class MainForm : Form
         return LoadIcon("config.png", 24);
     }
 
-    private void BtnGlossary_Click(object? sender, EventArgs e)
+    private async void BtnGlossary_Click(object? sender, EventArgs e)
     {
-        using var form = _glossaryFormFactory();
-        form.SelectLanguage(_currentLanguage.Code);
-        form.ShowDialog(this);
+        // Photographie de la projection prompts avant l'éditeur : toute modification qui change
+        // les prompts (correction importée, promotion Validé, édition manuelle) sera détectée par
+        // comparaison à la fermeture, quel que soit le chemin qui l'a produite dans l'éditeur.
+        var projectionBefore = SnapshotPromptProjections();
+
+        using (var form = _glossaryFormFactory())
+        {
+            form.SelectLanguage(_currentLanguage.Code);
+            form.ShowDialog(this);
+        }
+
+        await ProposeTargetedRetranslationAsync(projectionBefore);
+    }
+
+    // --- Retraduction ciblée (GLOSSAIRE.md, phase 4) ---
+
+    private Dictionary<string, IReadOnlyList<GlossaryEntry>> SnapshotPromptProjections()
+    {
+        var snapshot = new Dictionary<string, IReadOnlyList<GlossaryEntry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var language in Languages)
+            snapshot[language.Code] = _glossaryService.GetPromptEntries(language.Code);
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Confronte la projection prompts d'avant l'éditeur à celle d'après, sélectionne les lignes
+    /// dont le français contient un terme dont la contrainte a changé, et propose de les
+    /// retraduire. Sans source chargée ou sans impact, ne dit rien : le glossaire s'appliquera
+    /// de lui-même aux prochaines traductions.
+    /// </summary>
+    private async Task ProposeTargetedRetranslationAsync(Dictionary<string, IReadOnlyList<GlossaryEntry>> projectionBefore)
+    {
+        if (_allRows is null || _allRows.Count == 0)
+            return;
+
+        var changedTerms = GlossaryImpact.ComputeChangedTerms(projectionBefore, SnapshotPromptProjections());
+        if (changedTerms.Count == 0)
+            return;
+
+        // Sélection par langue, dans l'ordre de la toolbar pour un compte rendu stable.
+        var work = new List<(LanguageInfo Language, IReadOnlyList<TranslationRow> Rows)>();
+        foreach (var language in Languages)
+        {
+            if (!changedTerms.TryGetValue(language.Code, out var terms))
+                continue;
+
+            var impacted = GlossaryImpact.SelectImpactedRows(_allRows, terms);
+            if (impacted.Count > 0)
+                work.Add((language, impacted));
+        }
+
+        if (work.Count == 0)
+            return;
+
+        var summary = string.Join("\n", work.Select(w => $"  {w.Language.Name} ({w.Language.Code}) : {w.Rows.Count} ligne(s)"));
+        var answer = MessageBox.Show(this,
+            "Le glossaire injecté dans les prompts a changé. Lignes impactées :\n\n" + summary
+            + "\n\nRetraduire puis re-vérifier ces lignes maintenant ?\nLes traductions actuelles des lignes concernées seront remplacées.",
+            "Retraduction ciblée", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+        if (answer == DialogResult.Yes)
+            await RetranslateImpactedAsync(work);
+    }
+
+    /// <summary>
+    /// Retraduit puis re-vérifie les lignes impactées, langue par langue, en écrivant dans les
+    /// dictionnaires par code — jamais dans la vue active, rechargée à la fin pour la seule
+    /// langue affichée. L'empreinte du glossaire ayant changé, le cache ne peut pas resservir
+    /// les anciennes traductions.
+    /// </summary>
+    private async Task RetranslateImpactedAsync(IReadOnlyList<(LanguageInfo Language, IReadOnlyList<TranslationRow> Rows)> work)
+    {
+        var config = AppConfig.Current;
+        if (!HasApiConfig(config))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Même gel que TranslateRowsAsync : les résultats s'écrivent dans les dictionnaires des
+        // lignes, changer de langue, fusionner ou rafraîchir pendant l'attente les corromprait.
+        dataGridView.EndEdit();
+        toolStrip.Enabled = false;
+        dataGridView.Enabled = false;
+        statusProgressBar.Visible = true;
+        UseWaitCursor = true;
+        Application.UseWaitCursor = true;
+
+        int errors = 0;
+        var report = new List<string>();
+
+        try
+        {
+            foreach (var (language, rows) in work)
+            {
+                // La langue affichée ne vit que dans Translation / Comment tant qu'elle n'est pas
+                // poussée : sans ce commit, l'écriture dans son dictionnaire serait écrasée au
+                // prochain commit de la vue active.
+                if (string.Equals(language.Code, _currentLanguage.Code, StringComparison.OrdinalIgnoreCase))
+                    foreach (var row in rows)
+                        row.CommitActiveLanguage(_currentLanguage.Code);
+
+                var glossarySection = _glossaryService.BuildGlossarySection(language.Code, language.Name);
+                var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(language.Code);
+                var texts = rows.Select(r => r.French).ToList();
+
+                statusProgressBar.Maximum = rows.Count;
+                statusProgressBar.Value = 0;
+                var translateProgress = new Progress<int>(done =>
+                {
+                    statusProgressBar.Value = Math.Min(done, rows.Count);
+                    statusRowCount.Text = $"Retraduction {language.Code} : {done} / {rows.Count}";
+                });
+
+                var batches = await _translationService.TranslateInBatchesAsync(texts, config, language.Name, glossarySection, glossaryFingerprint, translateProgress);
+
+                // Une réponse inexploitable laisse la ligne telle quelle : son ancienne traduction
+                // et son ancien score restent cohérents entre eux. Une ligne retraduite voit son
+                // score effacé avant re-vérification — un score de l'ancien glossaire est périmé.
+                var translatedRows = new List<TranslationRow>();
+                int rowIndex = 0;
+                foreach (var batch in batches)
+                {
+                    for (int i = 0; i < batch.Length && rowIndex < rows.Count; i++, rowIndex++)
+                    {
+                        if (string.IsNullOrEmpty(batch[i]))
+                        {
+                            errors++;
+                            continue;
+                        }
+
+                        var row = rows[rowIndex];
+                        if (!string.Equals(row.Translations.GetValueOrDefault(language.Code), batch[i], StringComparison.Ordinal))
+                            row.InvalidateLayoutVerdict(language.Code);
+                        row.Translations[language.Code] = batch[i];
+                        row.Comments[language.Code] = string.Empty;
+                        translatedRows.Add(row);
+                    }
+                }
+
+                // Re-vérification de toutes les lignes retraduites, même celles revenues au même
+                // texte : le score juge la conformité au glossaire, qui vient de changer.
+                if (translatedRows.Count > 0)
+                {
+                    var pairs = translatedRows.Select(r => (r.French, r.Translations[language.Code])).ToList();
+                    statusProgressBar.Maximum = translatedRows.Count;
+                    statusProgressBar.Value = 0;
+                    var verifyProgress = new Progress<int>(done =>
+                    {
+                        statusProgressBar.Value = Math.Min(done, translatedRows.Count);
+                        statusRowCount.Text = $"Re-vérification {language.Code} : {done} / {translatedRows.Count}";
+                    });
+
+                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, glossarySection, glossaryFingerprint, verifyProgress);
+
+                    rowIndex = 0;
+                    foreach (var batch in verifyBatches)
+                    {
+                        for (int i = 0; i < batch.Length && rowIndex < translatedRows.Count; i++, rowIndex++)
+                        {
+                            if (string.IsNullOrEmpty(batch[i]))
+                                errors++; // score laissé vide : la traduction est nouvelle, l'ancien score serait faux
+                            else
+                                translatedRows[rowIndex].Comments[language.Code] = batch[i];
+                        }
+                    }
+                }
+
+                report.Add($"{language.Name} ({language.Code}) : {translatedRows.Count} / {rows.Count} ligne(s) retraduite(s)");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur pendant la retraduction ciblée :\n\n{ex.Message}",
+                "Retraduction ciblée", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            // Recharge la vue active de la langue affichée depuis les dictionnaires : c'est là
+            // que la retraduction a écrit.
+            foreach (var (language, rows) in work)
+                if (string.Equals(language.Code, _currentLanguage.Code, StringComparison.OrdinalIgnoreCase))
+                    foreach (var row in rows)
+                        row.SelectLanguage(_currentLanguage.Code);
+
+            dataGridView.Refresh();
+            statusProgressBar.Visible = false;
+
+            // Même précaution que le finally de TranslateRowsAsync : ne pas rouvrir l'UI si une
+            // écriture disque a pris le relais, et réactiver avant MarkViewRefreshPendingIfNeeded.
+            if (!_isWriting)
+            {
+                toolStrip.Enabled = true;
+                dataGridView.Enabled = true;
+            }
+
+            MarkViewRefreshPendingIfNeeded();
+            RestoreStatusBar();
+            UseWaitCursor = false;
+            Application.UseWaitCursor = false;
+        }
+
+        if (report.Count > 0)
+        {
+            MessageBox.Show(this,
+                "Retraduction ciblée :\n\n" + string.Join("\n", report)
+                + (errors > 0 ? $"\n\n{errors} réponse(s) inexploitables : les lignes concernées ont conservé leur valeur précédente ou restent sans score." : string.Empty),
+                "Retraduction ciblée", MessageBoxButtons.OK, errors > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
     }
 
     private void InitDashboardButton()

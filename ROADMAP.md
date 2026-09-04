@@ -95,7 +95,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🔴 | 1. Schéma v2 + migration + projection par langue | ✅ Fait |
 | 🔴 | 2. Éditeur multi-langues (grille terme × langue, statuts) | ✅ Fait |
 | 🟡 | 3. Export / import Excel avec diff et backup | ✅ Fait |
-| 🔴 | 4. Retraduction ciblée des lignes impactées | À faire |
+| 🔴 | 4. Retraduction ciblée des lignes impactées | ✅ Fait |
 
 ---
 
@@ -167,6 +167,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 2026-09-02 | **Glossaire transversal (chantier 1 de GLOSSAIRE.md)** : `GlossaryTerm` (un terme FR, ses traductions par langue, statut Proposé / En contrôle / Validé, commentaire réviseur), migration v1 idempotente au chargement (termes migrés Validé, empreinte projetée inchangée, caches préservés), surface par langue conservée par projection — éditeur et extraction inchangés. Seuls les termes Validé sont injectés. Process complet consigné dans GLOSSAIRE.md |
 | 2026-09-04 | Glossaire : éditeur multi-langues (chantier 2) — `GlossaryForm` en grille transversale terme × langue (colonnes dynamiques depuis `MainForm.Languages`), statut éditable, commentaire réviseur en lecture seule, doublons refusés. L'extraction verse désormais des termes Proposé (`AddProposedTerms`), sans écraser une case déjà tranchée ; nouvelles API `GetTerms` / `ReplaceTerms` |
 | 2026-09-04 | Glossaire : export / import Excel (chantier 3) — export daté portant l'empreinte du glossaire (feuille Infos), colonnes de langue retrouvées par leur code à l'import (réordonnancement toléré), diff par terme et par champ (`GlossaryDiff`, logique pure) avec acceptation individuelle (`GlossaryImportDiffForm`, suppressions décochées par défaut), backup daté avant application. Les Proposé exportés passent En contrôle, les Validé restent injectés, un terme En contrôle revenu inchangé repasse Validé |
+| 2026-09-04 | Glossaire : retraduction ciblée (chantier 4) — la projection prompts (termes Validé, par langue) est photographiée avant/après l'éditeur de glossaire (`GetPromptEntries`) ; `GlossaryImpact` (logique pure) en déduit les termes dont la contrainte a changé (apparus ou modifiés — les supprimés n'impactent pas, décision assumée) et sélectionne les lignes par inclusion insensible à la casse. Après confirmation avec compte par langue, retraduction + re-vérification par batchs enchaînés, écrites dans les dictionnaires par code (jamais la vue active), verdicts de mise en page invalidés, compte rendu final |
 
 ---
 
