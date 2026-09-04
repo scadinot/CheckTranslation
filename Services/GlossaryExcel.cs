@@ -115,7 +115,7 @@ internal static class GlossaryExcel
                 RejectDuplicateHeader("Contexte", contextColumn, c);
                 contextColumn = c;
             }
-            else if (headerText.StartsWith("Commentaire", StringComparison.OrdinalIgnoreCase))
+            else if (IsReviewerHeader(headerText))
             {
                 RejectDuplicateHeader("Commentaire réviseur", reviewerColumn, c);
                 reviewerColumn = c;
@@ -197,6 +197,16 @@ internal static class GlossaryExcel
             throw new InvalidDataException(
                 $"L'en-tête « {label} » apparaît deux fois (colonnes {firstColumn} et {column}). Supprimez la colonne en double puis réimportez.");
     }
+
+    /// <summary>
+    /// « Commentaire » seul serait trop permissif : une colonne « Commentaire interne » ajoutée
+    /// par un réviseur serait lue à sa place, ou refusée comme doublon. Le mot « réviseur » est
+    /// exigé, avec tolérance sur l'accent (en-tête ressaisi à la main).
+    /// </summary>
+    private static bool IsReviewerHeader(string headerText) =>
+        headerText.StartsWith("Commentaire", StringComparison.OrdinalIgnoreCase)
+        && (headerText.Contains("réviseur", StringComparison.OrdinalIgnoreCase)
+            || headerText.Contains("reviseur", StringComparison.OrdinalIgnoreCase));
 
     private static string? ExtractLanguageCode(string headerText, IReadOnlyList<LanguageInfo> languages)
     {
