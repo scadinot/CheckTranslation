@@ -172,8 +172,16 @@ internal static class GlossaryDiff
         foreach (var term in terms)
         {
             var key = Normalize(term.Source);
-            if (key.Length > 0 && !index.ContainsKey(key))
-                index[key] = term;
+            if (key.Length == 0)
+                continue;
+
+            // Un doublon départagé en silence (premier gagnant) ferait porter le diff et
+            // l'application sur le mauvais terme. L'éditeur et l'import Excel refusent déjà les
+            // doublons : en trouver un ici signifie un glossary.json édité à la main — état
+            // ambigu, refusé explicitement plutôt que corrompu en silence.
+            if (!index.TryAdd(key, term))
+                throw new InvalidDataException(
+                    $"Le glossaire contient deux termes de même source « {key} » : impossible de savoir auquel appliquer l'import. Supprimez le doublon dans l'éditeur du glossaire puis recommencez.");
         }
         return index;
     }
