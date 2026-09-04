@@ -324,6 +324,16 @@ internal sealed partial class GlossaryForm : Form
                 .ToList();
 
             bool coversAllLanguages = missingLanguages.Count == 0;
+            // Calculé avant le chemin « zéro différence » : signaler que le glossaire a bougé
+            // côté application depuis l'export est le rôle de la feuille Infos, y compris quand
+            // l'import ne produit aucune différence.
+            bool stampMismatch = file.Stamp is not null
+                && !string.Equals(file.Stamp, _glossaryService.GetExportStamp(), StringComparison.OrdinalIgnoreCase);
+            string stampWarning = stampMismatch
+                ? "\n\n⚠ Le glossaire a été modifié dans l'application depuis cet export."
+                : string.Empty;
+            var icon = stampMismatch ? MessageBoxIcon.Warning : MessageBoxIcon.Information;
+
             var changes = GlossaryDiff.Compute(current, file.Terms, presentLanguages);
 
             if (changes.Count == 0)
@@ -336,8 +346,8 @@ internal sealed partial class GlossaryForm : Form
                 int validated = promoted.Zip(current, (after, before) => after.Status != before.Status ? 1 : 0).Sum();
                 if (validated == 0)
                 {
-                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel.",
-                        "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel." + stampWarning,
+                        "Import du glossaire", MessageBoxButtons.OK, icon);
                     return;
                 }
 
@@ -345,13 +355,10 @@ internal sealed partial class GlossaryForm : Form
                 _glossaryService.ReplaceTermsAndSave(promoted);
                 ReloadGrid();
                 MessageBox.Show(this,
-                    $"Aucune correction dans le classeur : contrôle terminé, {validated} terme(s) En contrôle validé(s).\n\nSauvegarde de l'ancien glossaire :\n{statusBackupPath}",
-                    "Import du glossaire", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    $"Aucune correction dans le classeur : contrôle terminé, {validated} terme(s) En contrôle validé(s).{stampWarning}\n\nSauvegarde de l'ancien glossaire :\n{statusBackupPath}",
+                    "Import du glossaire", MessageBoxButtons.OK, icon);
                 return;
             }
-
-            bool stampMismatch = file.Stamp is not null
-                && !string.Equals(file.Stamp, _glossaryService.GetExportStamp(), StringComparison.OrdinalIgnoreCase);
 
             using var diffForm = new GlossaryImportDiffForm(changes, stampMismatch, missingLanguages);
             if (diffForm.ShowDialog(this) != DialogResult.OK)
