@@ -28,9 +28,6 @@ internal sealed partial class GlossaryForm : Form
         InitializeComponent();
         InitDynamicColumns();
 
-        grid.CellValueChanged += (_, _) => MarkDirty();
-        grid.UserAddedRow += (_, _) => MarkDirty();
-        grid.UserDeletedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
         // Une valeur de ComboBox invalide (statut inconnu) lèverait un DataError modal par
         // défaut : on neutralise, la cellule garde sa valeur et la sauvegarde retombera sur
         // Validé par défaut.
@@ -41,6 +38,12 @@ internal sealed partial class GlossaryForm : Form
         FormClosing += GlossaryForm_FormClosing;
 
         LoadTerms();
+
+        // Câblés APRÈS le chargement : remplir la grille lève CellValueChanged, et le formulaire
+        // s'ouvrirait déjà « modifié » — fausse alerte de perte à la fermeture sans édition.
+        grid.CellValueChanged += (_, _) => MarkDirty();
+        grid.UserAddedRow += (_, _) => MarkDirty();
+        grid.UserDeletedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
     }
 
     /// <summary>
@@ -160,7 +163,10 @@ internal sealed partial class GlossaryForm : Form
             if (row.IsNewRow)
                 continue;
 
-            var source = (row.Cells[colSource.Index].Value as string)?.Trim() ?? string.Empty;
+            // Même normalisation que le stockage : deux lignes qui ne diffèrent que par un retour
+            // à la ligne doivent être vues en doublon ICI, avec message, pas dédupliquées en
+            // silence par le service.
+            var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
             if (source.Length == 0)
                 continue;
 

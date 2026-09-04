@@ -64,7 +64,10 @@ internal sealed class GlossaryService : IGlossaryService
                 .Where(e => !string.IsNullOrWhiteSpace(e.Source) && !string.IsNullOrWhiteSpace(e.Destination))
                 .ToList();
 
-            var keptSources = new HashSet<string>(cleaned.Select(e => e.Source.Trim()), StringComparer.OrdinalIgnoreCase);
+            // Clés de conservation sur la même normalisation que le stockage : avec un simple
+            // Trim, une Source contenant un retour à la ligne serait ajoutée normalisée puis
+            // jugée absente par la boucle de suppression, et sa traduction retirée aussitôt.
+            var keptSources = new HashSet<string>(cleaned.Select(e => NormalizeCell(e.Source)), StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in cleaned)
             {
@@ -87,7 +90,7 @@ internal sealed class GlossaryService : IGlossaryService
 
             foreach (var term in _glossary.Terms)
             {
-                if (!keptSources.Contains(term.Source.Trim()))
+                if (!keptSources.Contains(NormalizeCell(term.Source)))
                     term.Translations.Remove(languageCode);
             }
 
@@ -481,8 +484,12 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
-    /// <summary>Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.</summary>
-    private static string NormalizeCell(string? value)
+    /// <summary>
+    /// Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.
+    /// Interne : l'éditeur s'en sert pour que sa détection de doublons juge sur la même forme
+    /// que le stockage.
+    /// </summary>
+    internal static string NormalizeCell(string? value)
         => (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
 
     /// <summary>
