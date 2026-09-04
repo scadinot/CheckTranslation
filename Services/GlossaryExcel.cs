@@ -84,7 +84,10 @@ internal static class GlossaryExcel
             ?? throw new InvalidDataException(
                 $"Feuille « {TermsSheetName} » introuvable dans le classeur. Importez un fichier issu de l'export de l'application.");
 
-        int lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+        // Bornes prises sur le contenu réel, jamais sur LastRowUsed()/LastColumnUsed() nus : une
+        // mise en forme appliquée à une grande plage (fréquent après édition dans Excel) les
+        // gonfle jusqu'au million de lignes et ferait boucler l'import sur des cellules vides.
+        int lastColumn = sheet.Row(1).LastCellUsed(XLCellsUsedOptions.Contents)?.Address.ColumnNumber ?? 0;
         int sourceColumn = 0, contextColumn = 0, reviewerColumn = 0;
         var languageColumns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -135,7 +138,9 @@ internal static class GlossaryExcel
 
         var terms = new List<GlossaryTerm>();
         var rowBySource = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        int lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
+        // Même règle : la dernière ligne est celle du dernier contenu de la colonne Source — les
+        // lignes sans Source sont ignorées plus bas, inutile d'aller au-delà.
+        int lastRow = sheet.Column(sourceColumn).LastCellUsed(XLCellsUsedOptions.Contents)?.Address.RowNumber ?? 1;
 
         for (int r = 2; r <= lastRow; r++)
         {
@@ -173,7 +178,7 @@ internal static class GlossaryExcel
         var infoSheet = workbook.Worksheets.FirstOrDefault(ws => string.Equals(ws.Name, InfoSheetName, StringComparison.OrdinalIgnoreCase));
         if (infoSheet is not null)
         {
-            int infoLastRow = infoSheet.LastRowUsed()?.RowNumber() ?? 0;
+            int infoLastRow = infoSheet.Column(1).LastCellUsed(XLCellsUsedOptions.Contents)?.Address.RowNumber ?? 0;
             for (int r = 1; r <= infoLastRow; r++)
             {
                 if (string.Equals(infoSheet.Cell(r, 1).GetString().Trim(), StampLabel, StringComparison.OrdinalIgnoreCase))

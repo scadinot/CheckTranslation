@@ -11,11 +11,8 @@ internal sealed partial class GlossaryImportDiffForm : Form
 {
     private static readonly Color RemovalBackColor = Color.FromArgb(255, 228, 228);
 
-    private readonly IReadOnlyList<GlossaryChange> _changes;
-
     public GlossaryImportDiffForm(IReadOnlyList<GlossaryChange> changes, bool stampMismatch, IReadOnlyList<string> missingLanguages)
     {
-        _changes = changes;
         InitializeComponent();
 
         foreach (var change in changes)
