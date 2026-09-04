@@ -19,6 +19,12 @@ internal sealed partial class GlossaryExtractionDialog : Form
         btnOk.Click += BtnOk_Click;
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        ScreenFit.Apply(this);
+    }
+
     public void SetCandidates(IReadOnlyList<GlossaryEntry> entries, string languageName)
     {
         _candidates.Clear();

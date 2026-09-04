@@ -100,7 +100,7 @@ partial class GlossaryExtractionDialog
         bottomPanel.Controls.Add(btnCancel);
         bottomPanel.Controls.Add(btnOk);
         bottomPanel.Dock = DockStyle.Bottom;
-        bottomPanel.Height = 48;
+        bottomPanel.Size = new Size(1100, 48);
         bottomPanel.Name = "bottomPanel";
         bottomPanel.Padding = new Padding(10, 8, 10, 8);
         //

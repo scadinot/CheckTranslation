@@ -38,6 +38,12 @@ internal sealed partial class GlossaryImportDiffForm : Form
         btnOk.Click += BtnOk_Click;
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        ScreenFit.Apply(this);
+    }
+
     private void SetAll(bool accepted)
     {
         foreach (DataGridViewRow row in grid.Rows)
