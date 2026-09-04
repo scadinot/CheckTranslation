@@ -69,9 +69,10 @@ internal sealed partial class ConfigForm : Form
         base.OnLoad(e);
 
         // Après base.OnLoad : la mise à l'échelle selon le DPI est faite, les tailles lues ici
-        // sont celles qui seront réellement affichées.
+        // sont celles qui seront réellement affichées. Le dialogue est haut — quatre fournisseurs
+        // sous deux éditeurs de prompt — et dépasse un 1080p dès 150 % : voir ScreenFit.
         StretchProviderFields();
-        FitToWorkingArea();
+        ScreenFit.Apply(this);
     }
 
     /// <summary>
@@ -100,38 +101,6 @@ internal sealed partial class ConfigForm : Form
                     if (width > 0)
                         field.Width = width;
                 }
-    }
-
-    /// <summary>
-    /// Ramène la fenêtre dans l'écran.
-    ///
-    /// Le dialogue est haut — quatre fournisseurs sous deux éditeurs de prompt — et sa hauteur est
-    /// multipliée par la mise à l'échelle Windows : à 150 %, il dépasse un écran 1080p et les
-    /// boutons OK / Annuler se retrouvent hors champ, donc hors de portée. La
-    /// <see cref="Form.MinimumSize"/> subit la même mise à l'échelle : sans la borner d'abord, elle
-    /// empêcherait la fenêtre de rétrécir et le réglage n'aurait aucun effet.
-    ///
-    /// L'écran de référence est celui du propriétaire, pas celui du dialogue : le dialogue est
-    /// modal (<c>ShowDialog(this)</c>) et n'a pas encore été recentré sur son parent au moment du
-    /// chargement. Se fier à sa propre position ferait dimensionner et recentrer sur l'écran
-    /// principal une fenêtre qui doit s'afficher sur celui du parent.
-    /// </summary>
-    private void FitToWorkingArea()
-    {
-        var reference = Owner ?? (Control)this;
-        var working = Screen.FromControl(reference).WorkingArea;
-
-        MinimumSize = new Size(
-            Math.Min(MinimumSize.Width, working.Width),
-            Math.Min(MinimumSize.Height, working.Height));
-
-        Size = new Size(
-            Math.Min(Width, working.Width),
-            Math.Min(Height, working.Height));
-
-        Location = new Point(
-            working.Left + Math.Max(0, (working.Width - Width) / 2),
-            working.Top + Math.Max(0, (working.Height - Height) / 2));
     }
 
     private void BtnClearTranslationCache_Click(object? sender, EventArgs e)

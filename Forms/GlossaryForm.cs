@@ -51,6 +51,15 @@ internal sealed partial class GlossaryForm : Form
         grid.UserDeletedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+
+        // Le dialogue est large (une colonne par langue) : ramené dans l'écran comme ConfigForm,
+        // sans quoi les boutons ancrés à droite sortiraient du champ sur un petit écran.
+        ScreenFit.Apply(this);
+    }
+
     /// <summary>
     /// Amène la colonne d'une langue à l'écran (appelé par MainForm avec la langue active de la
     /// grille principale). Le glossaire étant transversal, il n'y a plus rien à « sélectionner » :
