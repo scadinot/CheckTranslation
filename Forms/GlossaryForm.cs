@@ -1,13 +1,21 @@
-using System.ComponentModel;
-
 namespace CheckTranslation;
 
+/// <summary>
+/// Éditeur du glossaire transversal : une ligne par terme, une colonne par langue, plus le statut
+/// de gouvernance et le commentaire des réviseurs externes (lecture seule, rempli par l'import —
+/// voir GLOSSAIRE.md). La grille est non liée : les colonnes de langue sont dynamiques et les
+/// dictionnaires d'un <see cref="GlossaryTerm"/> ne se prêtent pas au binding WinForms.
+/// </summary>
 internal sealed partial class GlossaryForm : Form
 {
-    private readonly IGlossaryService _glossaryService;
+    private const string StatusProposed = "Proposé";
+    private const string StatusInReview = "En contrôle";
+    private const string StatusValidated = "Validé";
 
-    private readonly Dictionary<string, SortableBindingList<GlossaryEntry>> _bindingsByLanguage = new(StringComparer.OrdinalIgnoreCase);
-    private string _currentLanguageCode = string.Empty;
+    private readonly IGlossaryService _glossaryService;
+    private readonly List<DataGridViewTextBoxColumn> _languageColumns = new();
+    private DataGridViewComboBoxColumn colStatus = null!;
+    private DataGridViewTextBoxColumn colReviewer = null!;
     private bool _dirty;
 
     public GlossaryForm() : this(new GlossaryService())
@@ -18,102 +26,182 @@ internal sealed partial class GlossaryForm : Form
     {
         _glossaryService = glossaryService;
         InitializeComponent();
+        InitDynamicColumns();
 
-        languageCombo.SelectedIndexChanged += LanguageCombo_SelectedIndexChanged;
-        grid.CellValueChanged += (_, _) => MarkDirty();
-        grid.UserAddedRow += (_, _) => MarkDirty();
-        grid.UserDeletedRow += (_, _) => MarkDirty();
-        btnAdd.Click += (_, _) => AddEntry();
-        btnRemove.Click += (_, _) => RemoveSelectedEntries();
+        // Une valeur de ComboBox invalide (statut inconnu) lèverait un DataError modal par
+        // défaut : on neutralise, la cellule garde sa valeur et la sauvegarde retombera sur
+        // Validé par défaut.
+        grid.DataError += (_, e) => e.ThrowException = false;
+        btnAdd.Click += (_, _) => AddTermRow();
+        btnRemove.Click += (_, _) => RemoveSelectedRows();
         btnOk.Click += BtnOk_Click;
         FormClosing += GlossaryForm_FormClosing;
 
-        InitLanguages();
+        LoadTerms();
+
+        // Câblés APRÈS le chargement : remplir la grille lève CellValueChanged, et le formulaire
+        // s'ouvrirait déjà « modifié » — fausse alerte de perte à la fermeture sans édition.
+        grid.CellValueChanged += (_, _) => MarkDirty();
+        grid.UserAddedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
+        grid.UserDeletedRow += (_, _) => { MarkDirty(); UpdateCountLabel(); };
     }
 
     /// <summary>
-    /// Ouvre l'éditeur en pré-sélectionnant une langue particulière.
+    /// Amène la colonne d'une langue à l'écran (appelé par MainForm avec la langue active de la
+    /// grille principale). Le glossaire étant transversal, il n'y a plus rien à « sélectionner » :
+    /// c'est un simple confort de positionnement.
     /// </summary>
     public void SelectLanguage(string languageCode)
     {
-        for (int i = 0; i < languageCombo.Items.Count; i++)
-        {
-            if (languageCombo.Items[i] is LanguageInfo lang
-                && string.Equals(lang.Code, languageCode, StringComparison.OrdinalIgnoreCase))
-            {
-                languageCombo.SelectedIndex = i;
-                return;
-            }
-        }
-    }
-
-    private void InitLanguages()
-    {
-        foreach (var lang in MainForm.Languages)
-            languageCombo.Items.Add(lang);
-        languageCombo.DisplayMember = nameof(LanguageInfo.Name);
-        if (languageCombo.Items.Count > 0)
-            languageCombo.SelectedIndex = 0;
-    }
-
-    private void LanguageCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        if (languageCombo.SelectedItem is not LanguageInfo lang)
+        var column = _languageColumns.Find(c => string.Equals((string)c.Tag!, languageCode, StringComparison.OrdinalIgnoreCase));
+        if (column is null)
             return;
 
-        _currentLanguageCode = lang.Code;
+        if (grid.Rows.Count > 0)
+            grid.CurrentCell = grid.Rows[0].Cells[column.Index];
+    }
 
-        if (!_bindingsByLanguage.TryGetValue(lang.Code, out var binding))
+    // Colonnes dynamiques : une par langue (l'ordre est celui de la toolbar principale), puis le
+    // statut et le commentaire réviseur. Créées par code, comme les colonnes de MainForm : le
+    // Designer ne connaît que Source et Contexte.
+    private void InitDynamicColumns()
+    {
+        foreach (var language in MainForm.Languages)
         {
-            var entries = _glossaryService.GetEntries(lang.Code).Select(Clone).ToList();
-            binding = new SortableBindingList<GlossaryEntry>(entries);
-            binding.ListChanged += (_, _) => UpdateCountLabel();
-            _bindingsByLanguage[lang.Code] = binding;
+            var column = new DataGridViewTextBoxColumn
+            {
+                Name = "colLang_" + language.Code,
+                HeaderText = language.Name,
+                FillWeight = 9F,
+                SortMode = DataGridViewColumnSortMode.Automatic,
+                Tag = language.Code,
+            };
+            _languageColumns.Add(column);
+            grid.Columns.Add(column);
         }
 
-        grid.DataSource = binding;
+        colStatus = new DataGridViewComboBoxColumn
+        {
+            Name = "colStatus",
+            HeaderText = "Statut",
+            FillWeight = 8F,
+            FlatStyle = FlatStyle.Flat,
+            SortMode = DataGridViewColumnSortMode.Automatic,
+        };
+        colStatus.Items.AddRange(StatusProposed, StatusInReview, StatusValidated);
+        grid.Columns.Add(colStatus);
+
+        colReviewer = new DataGridViewTextBoxColumn
+        {
+            Name = "colReviewer",
+            HeaderText = "Commentaire réviseur",
+            FillWeight = 12F,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Automatic,
+        };
+        grid.Columns.Add(colReviewer);
+    }
+
+    private void LoadTerms()
+    {
+        foreach (var term in _glossaryService.GetTerms())
+        {
+            int index = grid.Rows.Add();
+            var row = grid.Rows[index];
+            row.Tag = term;
+            row.Cells[colSource.Index].Value = term.Source;
+            row.Cells[colContext.Index].Value = term.Context;
+
+            foreach (var column in _languageColumns)
+                row.Cells[column.Index].Value = term.Translations.GetValueOrDefault((string)column.Tag!, string.Empty);
+
+            row.Cells[colStatus.Index].Value = StatusLabel(term.Status);
+            row.Cells[colReviewer.Index].Value = term.ReviewerComment;
+        }
+
         UpdateCountLabel();
     }
 
-    private void AddEntry()
+    private void AddTermRow()
     {
-        if (grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
-            return;
-        binding.Add(new GlossaryEntry());
+        // Un terme saisi à la main dans l'éditeur est une décision humaine : Validé par défaut,
+        // la colonne Statut reste modifiable pour qui veut le soumettre au contrôle d'abord.
+        int index = grid.Rows.Add();
+        grid.Rows[index].Cells[colStatus.Index].Value = StatusValidated;
+        grid.CurrentCell = grid.Rows[index].Cells[colSource.Index];
+        grid.BeginEdit(true);
         MarkDirty();
+        UpdateCountLabel();
     }
 
-    private void RemoveSelectedEntries()
+    private void RemoveSelectedRows()
     {
-        if (grid.DataSource is not SortableBindingList<GlossaryEntry> binding)
-            return;
-
         var toRemove = grid.SelectedRows
             .Cast<DataGridViewRow>()
-            .Select(r => r.DataBoundItem as GlossaryEntry)
-            .Where(e => e is not null)
-            .Cast<GlossaryEntry>()
+            .Where(row => !row.IsNewRow)
             .ToList();
 
-        foreach (var entry in toRemove)
-            binding.Remove(entry);
+        foreach (var row in toRemove)
+            grid.Rows.Remove(row);
 
         if (toRemove.Count > 0)
+        {
             MarkDirty();
+            UpdateCountLabel();
+        }
     }
 
     private void BtnOk_Click(object? sender, EventArgs e)
     {
+        grid.EndEdit();
+
+        var terms = new List<GlossaryTerm>();
+        var seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            if (row.IsNewRow)
+                continue;
+
+            // Même normalisation que le stockage : deux lignes qui ne diffèrent que par un retour
+            // à la ligne doivent être vues en doublon ICI, avec message, pas dédupliquées en
+            // silence par le service.
+            var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
+            if (source.Length == 0)
+                continue;
+
+            if (!seenSources.Add(source))
+            {
+                MessageBox.Show(this,
+                    $"Le terme « {source} » apparaît plusieurs fois. Fusionnez les lignes avant d'enregistrer.",
+                    "Glossaire",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var term = new GlossaryTerm
+            {
+                Source = source,
+                Context = row.Cells[colContext.Index].Value as string ?? string.Empty,
+                Status = ParseStatus(row.Cells[colStatus.Index].Value as string),
+                // Le commentaire réviseur appartient au cycle d'import : il se transporte, il ne
+                // s'édite pas ici.
+                ReviewerComment = (row.Tag as GlossaryTerm)?.ReviewerComment ?? string.Empty,
+            };
+
+            foreach (var column in _languageColumns)
+            {
+                if (row.Cells[column.Index].Value is string destination && !string.IsNullOrWhiteSpace(destination))
+                    term.Translations[(string)column.Tag!] = destination;
+            }
+
+            terms.Add(term);
+        }
+
         try
         {
-            CommitCurrentEdit();
-            foreach (var (langCode, binding) in _bindingsByLanguage)
-            {
-                var cleaned = binding
-                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Source) && !string.IsNullOrWhiteSpace(entry.Destination))
-                    .ToList();
-                _glossaryService.ReplaceEntries(langCode, cleaned);
-            }
+            _glossaryService.ReplaceTerms(terms);
             _glossaryService.Save();
             _dirty = false;
             DialogResult = DialogResult.OK;
@@ -126,16 +214,6 @@ internal sealed partial class GlossaryForm : Form
                 "Glossaire",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-        }
-    }
-
-    private void CommitCurrentEdit()
-    {
-        grid.EndEdit();
-        if (grid.DataSource is SortableBindingList<GlossaryEntry> binding)
-        {
-            if (grid.BindingContext?[binding] is CurrencyManager cm)
-                cm.EndCurrentEdit();
         }
     }
 
@@ -158,16 +236,21 @@ internal sealed partial class GlossaryForm : Form
 
     private void UpdateCountLabel()
     {
-        if (grid.DataSource is SortableBindingList<GlossaryEntry> binding)
-            lblCount.Text = $"{binding.Count} entrée(s)";
-        else
-            lblCount.Text = string.Empty;
+        int count = grid.Rows.Cast<DataGridViewRow>().Count(row => !row.IsNewRow);
+        lblCount.Text = $"{count} terme(s) — seuls les termes au statut Validé sont injectés dans les prompts";
     }
 
-    private static GlossaryEntry Clone(GlossaryEntry source) => new()
+    private static string StatusLabel(GlossaryTermStatus status) => status switch
     {
-        Source = source.Source,
-        Destination = source.Destination,
-        Context = source.Context,
+        GlossaryTermStatus.Proposed => StatusProposed,
+        GlossaryTermStatus.InReview => StatusInReview,
+        _ => StatusValidated,
+    };
+
+    private static GlossaryTermStatus ParseStatus(string? label) => label switch
+    {
+        StatusProposed => GlossaryTermStatus.Proposed,
+        StatusInReview => GlossaryTermStatus.InReview,
+        _ => GlossaryTermStatus.Validated,
     };
 }

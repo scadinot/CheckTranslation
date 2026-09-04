@@ -2567,21 +2567,10 @@ public partial class MainForm : Form
         if (accepted.Count == 0)
             return;
 
-        var existing = _glossaryService.GetEntries(_currentLanguage.Code).ToList();
-        var keys = new HashSet<string>(
-            existing.Select(entry => entry.Source.Trim()),
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var entry in accepted)
-        {
-            if (string.IsNullOrWhiteSpace(entry.Source))
-                continue;
-            if (!keys.Add(entry.Source.Trim()))
-                continue;
-            existing.Add(entry);
-        }
-
-        _glossaryService.ReplaceEntries(_currentLanguage.Code, existing);
+        // Un candidat accepté devient un terme Proposé : il n'entre dans les prompts qu'une fois
+        // validé, dans l'éditeur ou par le cycle de contrôle externe (GLOSSAIRE.md). Un terme
+        // existant n'est complété que si sa case pour cette langue est vide.
+        int added = _glossaryService.AddProposedTerms(_currentLanguage.Code, accepted);
         try
         {
             _glossaryService.Save();
@@ -2595,7 +2584,9 @@ public partial class MainForm : Form
 
         UpdateTranslationCacheCountStatus();
         UpdateVerificationCacheCountStatus();
-        statusRowCount.Text = $"Glossaire : {accepted.Count} terme(s) ajouté(s)";
+        statusRowCount.Text = added > 0
+            ? $"Glossaire : {added} terme(s) proposé(s) — à valider dans l'éditeur du glossaire"
+            : "Glossaire : aucun terme nouveau (déjà présents ou traductions déjà tranchées)";
     }
 
     // --- Icônes ---

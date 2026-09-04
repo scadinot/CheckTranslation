@@ -64,14 +64,17 @@ internal sealed class GlossaryService : IGlossaryService
                 .Where(e => !string.IsNullOrWhiteSpace(e.Source) && !string.IsNullOrWhiteSpace(e.Destination))
                 .ToList();
 
-            var keptSources = new HashSet<string>(cleaned.Select(e => e.Source.Trim()), StringComparer.OrdinalIgnoreCase);
+            // Clés de conservation sur la même normalisation que le stockage : avec un simple
+            // Trim, une Source contenant un retour à la ligne serait ajoutée normalisée puis
+            // jugée absente par la boucle de suppression, et sa traduction retirée aussitôt.
+            var keptSources = new HashSet<string>(cleaned.Select(e => NormalizeCell(e.Source)), StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in cleaned)
             {
                 var term = FindTermLocked(entry.Source);
                 if (term is null)
                 {
-                    term = new GlossaryTerm { Source = entry.Source.Trim() };
+                    term = new GlossaryTerm { Source = NormalizeCell(entry.Source) };
                     _glossary.Terms.Add(term);
                 }
 
@@ -87,11 +90,104 @@ internal sealed class GlossaryService : IGlossaryService
 
             foreach (var term in _glossary.Terms)
             {
-                if (!keptSources.Contains(term.Source.Trim()))
+                if (!keptSources.Contains(NormalizeCell(term.Source)))
                     term.Translations.Remove(languageCode);
             }
 
             _glossary.Terms.RemoveAll(term => term.Translations.Count == 0);
+        }
+    }
+
+    public IReadOnlyList<GlossaryTerm> GetTerms()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            return _glossary.Terms.Select(CloneTerm).ToList();
+        }
+    }
+
+    public void ReplaceTerms(IReadOnlyList<GlossaryTerm> terms)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            var cleaned = new List<GlossaryTerm>();
+            var seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var term in terms)
+            {
+                if (term is null || string.IsNullOrWhiteSpace(term.Source))
+                    continue;
+
+                var copy = CloneTerm(term);
+                // Source normalisée comme les autres champs (retours à la ligne compris) : c'est
+                // la clé d'identité du terme, la déduplication et les prompts en dépendent. Un
+                // doublon après normalisation est écarté (premier gagnant) — l'éditeur les refuse
+                // déjà, ceci protège les autres appelants.
+                copy.Source = NormalizeCell(copy.Source);
+                if (!seenSources.Add(copy.Source))
+                    continue;
+
+                copy.Context = NormalizeCell(copy.Context);
+                copy.ReviewerComment = NormalizeCell(copy.ReviewerComment);
+
+                foreach (var (code, destination) in copy.Translations.ToList())
+                {
+                    var normalized = NormalizeCell(destination);
+                    if (normalized.Length == 0)
+                        copy.Translations.Remove(code);
+                    else
+                        copy.Translations[code] = normalized;
+                }
+
+                cleaned.Add(copy);
+            }
+
+            _glossary.Terms = cleaned;
+        }
+    }
+
+    public int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries)
+    {
+        if (string.IsNullOrWhiteSpace(languageCode))
+            return 0;
+
+        EnsureLoaded();
+        lock (_lock)
+        {
+            int touched = 0;
+
+            foreach (var entry in entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Source) || string.IsNullOrWhiteSpace(entry.Destination))
+                    continue;
+
+                var term = FindTermLocked(entry.Source);
+                if (term is null)
+                {
+                    // Un candidat d'extraction naît Proposé : il n'entre dans les prompts qu'une
+                    // fois validé (gouvernance de GLOSSAIRE.md).
+                    term = new GlossaryTerm
+                    {
+                        Source = NormalizeCell(entry.Source),
+                        Context = NormalizeCell(entry.Context),
+                        Status = GlossaryTermStatus.Proposed,
+                    };
+                    _glossary.Terms.Add(term);
+                }
+                else if (term.Translations.TryGetValue(languageCode, out var existing)
+                    && !string.IsNullOrWhiteSpace(existing))
+                {
+                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
+                    continue;
+                }
+
+                term.Translations[languageCode] = NormalizeCell(entry.Destination);
+                touched++;
+            }
+
+            return touched;
         }
     }
 
@@ -388,8 +484,12 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
-    /// <summary>Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.</summary>
-    private static string NormalizeCell(string? value)
+    /// <summary>
+    /// Normalisation des valeurs saisies : espaces de bord retirés, retours à la ligne aplatis.
+    /// Interne : l'éditeur s'en sert pour que sa détection de doublons juge sur la même forme
+    /// que le stockage.
+    /// </summary>
+    internal static string NormalizeCell(string? value)
         => (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
 
     /// <summary>
@@ -432,10 +532,21 @@ internal sealed class GlossaryService : IGlossaryService
         _glossary.Version = 2;
     }
 
+    private static GlossaryTerm CloneTerm(GlossaryTerm term) => new()
+    {
+        Source = term.Source,
+        Context = term.Context,
+        Status = term.Status,
+        ReviewerComment = term.ReviewerComment,
+        Translations = new Dictionary<string, string>(term.Translations, StringComparer.OrdinalIgnoreCase),
+    };
+
     private GlossaryTerm? FindTermLocked(string source)
     {
-        var trimmed = source.Trim();
-        return _glossary.Terms.Find(term => string.Equals(term.Source.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+        // Comparaison sur la forme normalisée : l'identité d'un terme ne doit dépendre ni des
+        // espaces de bord ni d'un retour à la ligne collé par mégarde.
+        var normalized = NormalizeCell(source);
+        return _glossary.Terms.Find(term => string.Equals(NormalizeCell(term.Source), normalized, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

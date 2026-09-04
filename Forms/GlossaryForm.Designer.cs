@@ -19,12 +19,9 @@ partial class GlossaryForm
     {
         components = new System.ComponentModel.Container();
         topPanel = new Panel();
-        lblLanguage = new Label();
-        languageCombo = new ComboBox();
         lblCount = new Label();
         grid = new DataGridView();
         colSource = new DataGridViewTextBoxColumn();
-        colDestination = new DataGridViewTextBoxColumn();
         colContext = new DataGridViewTextBoxColumn();
         bottomPanel = new Panel();
         btnAdd = new Button();
@@ -38,33 +35,17 @@ partial class GlossaryForm
         //
         // topPanel
         //
-        topPanel.Controls.Add(lblLanguage);
-        topPanel.Controls.Add(languageCombo);
         topPanel.Controls.Add(lblCount);
         topPanel.Dock = DockStyle.Top;
-        topPanel.Height = 40;
+        topPanel.Height = 36;
         topPanel.Name = "topPanel";
         topPanel.Padding = new Padding(10, 8, 10, 4);
-        //
-        // lblLanguage
-        //
-        lblLanguage.AutoSize = true;
-        lblLanguage.Location = new Point(10, 12);
-        lblLanguage.Name = "lblLanguage";
-        lblLanguage.Text = "Langue :";
-        //
-        // languageCombo
-        //
-        languageCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        languageCombo.Location = new Point(80, 8);
-        languageCombo.Name = "languageCombo";
-        languageCombo.Width = 220;
         //
         // lblCount
         //
         lblCount.AutoSize = true;
         lblCount.ForeColor = SystemColors.GrayText;
-        lblCount.Location = new Point(320, 12);
+        lblCount.Location = new Point(10, 10);
         lblCount.Name = "lblCount";
         //
         // grid
@@ -75,7 +56,7 @@ partial class GlossaryForm
         grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
         grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-        grid.Columns.AddRange(new DataGridViewColumn[] { colSource, colDestination, colContext });
+        grid.Columns.AddRange(new DataGridViewColumn[] { colSource, colContext });
         grid.Dock = DockStyle.Fill;
         grid.Name = "grid";
         grid.RowHeadersVisible = false;
@@ -83,24 +64,14 @@ partial class GlossaryForm
         //
         // colSource
         //
-        colSource.DataPropertyName = "Source";
-        colSource.FillWeight = 30F;
-        colSource.HeaderText = "Source";
+        colSource.FillWeight = 14F;
+        colSource.HeaderText = "Source (FR)";
         colSource.Name = "colSource";
         colSource.SortMode = DataGridViewColumnSortMode.Automatic;
         //
-        // colDestination
-        //
-        colDestination.DataPropertyName = "Destination";
-        colDestination.FillWeight = 30F;
-        colDestination.HeaderText = "Destination";
-        colDestination.Name = "colDestination";
-        colDestination.SortMode = DataGridViewColumnSortMode.Automatic;
-        //
         // colContext
         //
-        colContext.DataPropertyName = "Context";
-        colContext.FillWeight = 40F;
+        colContext.FillWeight = 18F;
         colContext.HeaderText = "Contexte";
         colContext.Name = "colContext";
         colContext.SortMode = DataGridViewColumnSortMode.Automatic;
@@ -136,7 +107,7 @@ partial class GlossaryForm
         //
         btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         btnCancel.DialogResult = DialogResult.Cancel;
-        btnCancel.Location = new Point(870, 10);
+        btnCancel.Location = new Point(1070, 10);
         btnCancel.Name = "btnCancel";
         btnCancel.Size = new Size(100, 28);
         btnCancel.Text = "Annuler";
@@ -145,7 +116,7 @@ partial class GlossaryForm
         // btnOk
         //
         btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        btnOk.Location = new Point(980, 10);
+        btnOk.Location = new Point(1180, 10);
         btnOk.Name = "btnOk";
         btnOk.Size = new Size(100, 28);
         btnOk.Text = "Enregistrer";
@@ -157,18 +128,18 @@ partial class GlossaryForm
         AutoScaleDimensions = new SizeF(8F, 20F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = btnCancel;
-        ClientSize = new Size(1100, 600);
+        ClientSize = new Size(1300, 600);
         Controls.Add(grid);
         Controls.Add(topPanel);
         Controls.Add(bottomPanel);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
         MinimizeBox = false;
-        MinimumSize = new Size(900, 500);
+        MinimumSize = new Size(1000, 500);
         Name = "GlossaryForm";
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        Text = "Glossaire métier";
+        Text = "Glossaire métier (toutes langues)";
         topPanel.ResumeLayout(false);
         topPanel.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)grid).EndInit();
@@ -179,12 +150,9 @@ partial class GlossaryForm
     #endregion
 
     private Panel topPanel;
-    private Label lblLanguage;
-    private ComboBox languageCombo;
     private Label lblCount;
     private DataGridView grid;
     private DataGridViewTextBoxColumn colSource;
-    private DataGridViewTextBoxColumn colDestination;
     private DataGridViewTextBoxColumn colContext;
     private Panel bottomPanel;
     private Button btnAdd;
