@@ -122,8 +122,16 @@ internal static class GlossaryExcel
             }
         }
 
+        // Source, Contexte et Commentaire réviseur sont des colonnes universelles que l'export
+        // écrit toujours : leur absence est un accident de manipulation, et les traiter comme
+        // vides produirait un diff effaçant ces champs en masse. Seules les colonnes de langue
+        // peuvent légitimement manquer (classeur restreint à une équipe de langue).
         if (sourceColumn == 0)
             throw new InvalidDataException("Colonne « Source (FR) » introuvable dans la première ligne du classeur.");
+        if (contextColumn == 0)
+            throw new InvalidDataException("Colonne « Contexte » introuvable dans la première ligne du classeur.");
+        if (reviewerColumn == 0)
+            throw new InvalidDataException("Colonne « Commentaire réviseur » introuvable dans la première ligne du classeur.");
 
         var terms = new List<GlossaryTerm>();
         var rowBySource = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -147,8 +155,8 @@ internal static class GlossaryExcel
             var term = new GlossaryTerm
             {
                 Source = source,
-                Context = contextColumn > 0 ? sheet.Cell(r, contextColumn).GetString() : string.Empty,
-                ReviewerComment = reviewerColumn > 0 ? sheet.Cell(r, reviewerColumn).GetString() : string.Empty,
+                Context = sheet.Cell(r, contextColumn).GetString(),
+                ReviewerComment = sheet.Cell(r, reviewerColumn).GetString(),
             };
 
             foreach (var (code, columnIndex) in languageColumns)
