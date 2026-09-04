@@ -4,6 +4,7 @@ Guide technique du projet **CheckTranslation**, destiné aux humains comme aux a
 
 > Documentation utilisateur et installation : voir [README.md](README.md).
 > Feuille de route et historique des changements : voir [ROADMAP.md](ROADMAP.md).
+> Process et gouvernance du glossaire : voir [GLOSSAIRE.md](GLOSSAIRE.md).
 
 ---
 
@@ -88,8 +89,8 @@ CheckTranslation/
 │   ├── MergeDifference.cs               # Différence source vs destination
 │   ├── MergeDifferenceResolution.cs     # Décision utilisateur par ligne (fusion)
 │   ├── MergeRowSnapshot.cs              # Snapshot lecture seule pour l'UI de fusion
-│   ├── Glossary.cs                      # Conteneur du glossaire
-│   ├── GlossaryEntry.cs                 # Source / Destination / Context
+│   ├── Glossary.cs                      # Glossaire transversal (GlossaryTerm, statuts) + legacy v1
+│   ├── GlossaryEntry.cs                 # Projection d'un terme sur une langue (Source / Destination / Context)
 │   └── LayoutStatus.cs                  # Enum verdict de mise en page (NotChecked / Ok / Truncated / Collision / Unverifiable)
 ├── Services/
 │   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save / SupportsMerge)
@@ -333,8 +334,8 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - **Deux niveaux de correspondance de clé** : les `Get*Count` matchent `Provider|Url|Model|Language|GlossaryFingerprint` (le fingerprint est un paramètre obligatoire) → les entrées devenues inatteignables après modification du glossaire ne sont plus comptées ; les `Clear*` matchent uniquement `Provider|Url|Model` → la purge emporte aussi les entrées périmées.
 
 **`GlossaryService`** (implémente `IGlossaryService`) :
-- Persistance JSON par langue dans `%LocalAppData%\CheckTranslation`.
-- `GetEntries(langueCode)` / `ReplaceEntries(langueCode, entries)` / `Save()`.
+- Stockage **transversal** (`GlossaryTerm` : un terme français, ses traductions par langue, un statut Proposé / En contrôle / Validé, un commentaire réviseur — voir [GLOSSAIRE.md](GLOSSAIRE.md)) dans `%LocalAppData%\CheckTranslation\glossary.json`. L'ancien schéma par langue (v1) est migré au chargement (idempotent, fichier réécrit en v2 à la première sauvegarde) ; les termes migrés naissent Validé pour ne pas changer le comportement des prompts.
+- `GetEntries(code)` / `ReplaceEntries(code, entries)` / `Save()` : la surface par langue est conservée par **projection** — l'éditeur actuel et l'extraction fonctionnent sans connaître le schéma transversal. Une écriture par l'éditeur vaut décision humaine : le terme passe Validé.
 - `BuildGlossarySection(langueCode, langueName)` : produit la section texte injectée à la place du placeholder `{glossary}`. Chaîne vide si aucune entrée → aucun impact sur le prompt.
 - `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées, inclus dans les clés de cache → **invalidation automatique** dès qu'une entrée change.
 - L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict ; filtrage des termes déjà connus avant proposition à l'utilisateur.
@@ -412,8 +413,10 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 - `MergeDifferenceResolution(UpdateFrenchAndComment, UpdateTranslationAndComment)` : décision utilisateur (bool + bool). Propriété dérivée `HasAnyChange`.
 
 **Glossaire** :
-- `Glossary` : conteneur.
-- `GlossaryEntry(Source, Destination, Context)` : triplet. La structure de l'entrée reste générique, mais le stockage actuel du glossaire est indexé par `languageCode` côté cible (`EntriesByLanguage`) et suppose donc implicitement une source FR ; les autres couples source/destination ne sont pas encore pris en charge tels quels sans faire évoluer le format de clé.
+- `Glossary` : conteneur v2 — liste de `GlossaryTerm` + champ legacy `EntriesByLanguage` relu pour migration, jamais réécrit.
+- `GlossaryTerm` : terme transversal (Source FR canonique, Contexte commun, Statut, Commentaire réviseur, `Translations` par code de langue).
+- `GlossaryTermStatus` : Proposé / En contrôle / Validé — seuls les Validé sont injectés dans les prompts.
+- `GlossaryEntry(Source, Destination, Context)` : triplet de projection d'un terme sur une langue — la forme sous laquelle l'éditeur, l'extraction, les prompts et l'empreinte voient le glossaire. La source reste implicitement le français.
 
 ### 6.6 Configuration persistante (`AppConfig`)
 
@@ -620,6 +623,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
   rend 6 % pour un binaire doublé, un préchauffage 8 %, et désactiver la compilation étagée coûte
   47 % sur tout le reste. **Aucune n'est activée.** Ne pas y revenir sans une mesure nouvelle — et
   si `PublishReadyToRun` revient, avec la condition sur le RID que documente le §5.2.
+- **Le glossaire est transversal, sa surface par langue est une projection** — `GetEntries` / `ReplaceEntries` / `BuildGlossarySection` / `GetGlossaryFingerprint` projettent les `GlossaryTerm` sur une langue. Seuls les termes **Validé** alimentent prompts et empreinte ; l'éditeur et l'extraction valident ce qu'ils écrivent. Ne pas réintroduire un stockage par langue : le process de contrôle externe (GLOSSAIRE.md) repose sur le terme comme unité.
+- **La migration v1 du glossaire est idempotente et non destructive** — rejouée en mémoire à chaque chargement tant que `glossary.json` n'a pas été réécrit ; les termes migrés naissent Validé (ils étaient déjà injectés) et l'empreinte projetée reste identique à celle du v1 : les caches survivent. Le champ legacy `EntriesByLanguage` ne doit jamais être réécrit (nul à la sauvegarde).
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **La température s'auto-désactive par modèle, ne pas la refixer inconditionnellement** — les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (erreur de validation Bedrock). `Translator` apprend le refus au premier appel (`IsTemperatureRejection` + `MarkTemperatureRejected`, garde anti-boucle) et rejoue sans. La mémoire est en session : le premier batch sur un tel modèle coûte un aller-retour de plus, c'est voulu — pas de liste de modèles à maintenir.
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
