@@ -93,6 +93,7 @@ CheckTranslation/
 │   ├── MergeRowSnapshot.cs              # Snapshot lecture seule pour l'UI de fusion
 │   ├── Glossary.cs                      # Glossaire transversal (GlossaryTerm, statuts) + legacy v1
 │   ├── GlossaryEntry.cs                 # Projection d'un terme sur une langue (Source / Destination / Context)
+│   ├── GlossaryExtractionResult.cs      # Bilan d'extraction (candidats + lots en échec / illisibles / tronqués) et lecture d'une réponse
 │   └── LayoutStatus.cs                  # Enum verdict de mise en page (NotChecked / Ok / Truncated / Collision / Unverifiable)
 ├── Services/
 │   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save / SupportsMerge)
@@ -349,7 +350,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 - `GetEntries(code)` / `ReplaceEntries(code, entries)` / `Save()` : la surface par langue est conservée par **projection** — l'éditeur actuel et l'extraction fonctionnent sans connaître le schéma transversal. Une écriture par l'éditeur vaut décision humaine : le terme passe Validé.
 - `BuildGlossarySection(langueCode, langueName)` : produit la section texte injectée à la place du placeholder `{glossary}`. Chaîne vide si aucune entrée → aucun impact sur le prompt.
 - `GetGlossaryFingerprint(langueCode)` : SHA256 des entrées triées, inclus dans les clés de cache → **invalidation automatique** dès qu'une entrée change.
-- L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict ; filtrage des termes déjà connus avant proposition à l'utilisateur.
+- L'extraction IA réutilise `Translator.CallApiAsync` (pipeline Polly multi-providers) avec un prompt JSON strict, par lots de `ExtractionBatchSize = 10` textes ; filtrage des termes déjà connus avant proposition à l'utilisateur. Retourne un `GlossaryExtractionResult` : candidats **et** bilan des lots (échec d'appel, réponse illisible, troncature, déjà connus) — `MainForm` en fait un message d'erreur, d'avertissement (extraction partielle) ou d'information (« l'IA n'a rien trouvé »), jamais le même pour les trois.
 
 ### 6.4 Logic
 
@@ -564,7 +565,8 @@ Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l
 - `Temperature = 0.1f` — envoyée seulement aux modèles qui l'acceptent : au premier refus (« temperature is deprecated », Claude Sonnet 5 et au-delà), le couple fournisseur-modèle est mémorisé (`TemperatureRejectedByModel`) et l'appel rejoué sans température
 - `FixedParallelBatchRequests = 4`
 - `RetryCount = 3`
-- `AnthropicMaxTokens = 2048`
+- `AnthropicMaxTokens = 8192` — plafond de sortie, pas un coût (seul le texte produit est facturé). À 2048, l'extraction de termes (JSON verbeux) était tronquée dès un lot de 20 textes ; voir §10.
+- `ExtractionBatchSize = 10` (`GlossaryService`) — lots plus petits que la traduction : la réponse par texte est bien plus longue.
 
 ### 8.2 Progression temps réel
 Historiquement, `TranslationService` passait `null` en progress à `Translator` et ne reportait qu'après `Task.WhenAll` — la progress bar sautait de 0 à 100 % à la fin. Depuis la PR #7 :
@@ -648,6 +650,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **La migration v1 du glossaire est idempotente et non destructive** — rejouée en mémoire à chaque chargement tant que `glossary.json` n'a pas été réécrit ; les termes migrés naissent Validé (ils étaient déjà injectés) et l'empreinte projetée reste identique à celle du v1 : les caches survivent. Le champ legacy `EntriesByLanguage` ne doit jamais être réécrit (nul à la sauvegarde).
 - **Icône du bouton Glossaire** : `LoadGlossaryIcon()` teste l'existence de `Resources/glossary.png` et retombe sur `Resources/config.png` si absent.
 - **La température s'auto-désactive par modèle, ne pas la refixer inconditionnellement** — les modèles récents (Claude Sonnet 5+) refusent le paramètre `temperature` (erreur de validation Bedrock). `Translator` apprend le refus au premier appel (`IsTemperatureRejection` + `MarkTemperatureRejected`, garde anti-boucle) et rejoue sans. La mémoire est en session : le premier batch sur un tel modèle coûte un aller-retour de plus, c'est voulu — pas de liste de modèles à maintenir.
+- **Une extraction qui ne rend rien doit dire pourquoi** — `ExtractCandidatesAsync` retourne un `GlossaryExtractionResult` (candidats + lots en échec d'appel, lots illisibles, troncature, déjà connus), jamais une simple liste : un échec d'API ou un JSON tronqué se lisait « Aucun nouveau terme métier n'a été proposé », indiscernable d'une vraie absence de termes (cas vécu : plafond de sortie Anthropic à 2048 tokens, réponse coupée au milieu d'un objet, parseur muet). Ne pas revenir à un `catch` qui `continue` en silence, et ne pas rebaisser `AnthropicMaxTokens` sans re-tester l'extraction sur un lot plein. `ParseExtractionResponse` distingue « tableau vide » (succès, zéro entrée) de « illisible » (`Success = false`) et signale la troncature (tableau jamais fermé).
 - **Clé API facultative en mode Bifrost uniquement** — `HasApiConfig` et `Translator.ResolveApiKey` s'appuient sur `AppConfig.IsBifrost`. Ne pas rendre la clé facultative pour les accès directs : l'appel partirait et échouerait côté serveur au lieu d'être bloqué en amont.
 - **Les quatre `RadioButton` de fournisseur vivent dans des containers différents** (les panneaux des deux `SplitContainer` de `grpAuth`) : WinForms ne gère donc pas l'exclusivité, elle est faite à la main dans `ProviderChanged` sous le garde-fou `_isUpdatingProvider`. Tout nouveau fournisseur doit être ajouté à `ProviderButtons`, sinon il ne sera ni sélectionnable ni relu.
 - **Le tableau de bord commence lui aussi par `CommitActiveLanguage`** — il lit les dictionnaires par code de langue, jamais la vue active. Sans ce commit, les éditions en cours seraient comptées comme non traduites.
@@ -684,7 +687,7 @@ Deux points de câblage à connaître :
 - **`InternalsVisibleTo("CheckTranslation.Tests")`** dans `CheckTranslation.csproj` — les classes du projet sont `internal`, c'est ce qui les rend visibles des tests.
 - **Le sous-dossier est exclu du glob de l'exécutable** (`Compile Remove="CheckTranslation.Tests\**"` etc. dans `CheckTranslation.csproj`) — le projet principal vit à la racine, sans cette exclusion ses globs par défaut compileraient les `.cs` des tests dans l'exe (références xUnit introuvables). Ne pas retirer ces lignes.
 
-**Couverture actuelle** (logique pure uniquement, aucun test d'UI) : `QualityScore` (parsing + palette), `TranslationRowFiltering` (contient / `=` exact / pseudo-filtres score, traduction, layout), `TranslationStatistics` (comptages dans les lignes traduites, moyennes nulles, cohérence tranche comptée / tranche filtrée), `GlossaryDiff` (types de changements, statuts, promotion sous couverture complète, doublon refusé), `GlossaryImpact` (projection avant/après, suppressions ignorées, sélection insensible à la casse), `GlossaryExcel` (aller-retour sur fichiers temporaires, refus des classeurs ambigus), `Translator.ParseNumberedList` (comportements caractérisés, dont : un numéro hors bornes est rattaché à l'entrée courante), caches de `TranslationService` (clés par langue + fingerprint, purge par modèle), `GlossaryService.NormalizeCell`.
+**Couverture actuelle** (logique pure uniquement, aucun test d'UI) : `QualityScore` (parsing + palette), `TranslationRowFiltering` (contient / `=` exact / pseudo-filtres score, traduction, layout), `TranslationStatistics` (comptages dans les lignes traduites, moyennes nulles, cohérence tranche comptée / tranche filtrée), `GlossaryDiff` (types de changements, statuts, promotion sous couverture complète, doublon refusé), `GlossaryImpact` (projection avant/après, suppressions ignorées, sélection insensible à la casse), `GlossaryExcel` (aller-retour sur fichiers temporaires, refus des classeurs ambigus), `Translator.ParseNumberedList` (comportements caractérisés, dont : un numéro hors bornes est rattaché à l'entrée courante), caches de `TranslationService` (clés par langue + fingerprint, purge par modèle), `GlossaryService.NormalizeCell` et `GlossaryService.ParseExtractionResponse` (JSON dans de la prose ou des fences, tableau vide = succès, troncature détectée avec ou sans `]` intérieur survivant).
 
 **Prochaines extensions naturelles** : `LayoutAnalyzer` (la mesure injectée `TextWidthMeasurer` existe pour ça), `ExcelReader.Merge` (fusion + conflits), `AppConfig` (round-trip DPAPI + compat legacy — attention : ne jamais écrire dans le vrai `%LocalAppData%`). De même, ne pas instancier `GlossaryService` dans un test : son chemin de stockage n'est pas injectable et `EnsureLoaded` lirait le glossaire réel de l'utilisateur.
 

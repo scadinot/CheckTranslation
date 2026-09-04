@@ -8,7 +8,10 @@ namespace CheckTranslation;
 internal sealed class GlossaryService : IGlossaryService
 {
     private static readonly string FilePath = Path.Combine(AppConfig.ConfigDirectory, "glossary.json");
-    private const int ExtractionBatchSize = 20;
+    // Plus petit que les lots de traduction : la réponse est un JSON verbeux (terme, traduction,
+    // contexte par entrée), dix textes tiennent largement sous le plafond de sortie du modèle et
+    // la progression est plus fine.
+    private const int ExtractionBatchSize = 10;
 
     // Statuts en toutes lettres dans le JSON (lisible par un humain, robuste aux réordonnancements
     // de l'enum) ; EntriesByLanguage nul non réécrit : le fichier migre en v2 à la première sauvegarde.
@@ -457,7 +460,7 @@ internal sealed class GlossaryService : IGlossaryService
         return Convert.ToHexString(bytes, 0, 8);
     }
 
-    public async Task<IReadOnlyList<GlossaryEntry>> ExtractCandidatesAsync(
+    public async Task<GlossaryExtractionResult> ExtractCandidatesAsync(
         IReadOnlyList<string> frenchTexts,
         AppConfig config,
         string languageCode,
@@ -466,7 +469,7 @@ internal sealed class GlossaryService : IGlossaryService
         CancellationToken cancellationToken = default)
     {
         if (frenchTexts.Count == 0)
-            return Array.Empty<GlossaryEntry>();
+            return new GlossaryExtractionResult(Array.Empty<GlossaryEntry>(), 0, 0, 0, 0, false, null);
 
         EnsureLoaded();
         var existing = GetEntries(languageCode);
@@ -481,7 +484,9 @@ internal sealed class GlossaryService : IGlossaryService
 
         var aggregated = new List<GlossaryEntry>();
         var seenInBatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int processed = 0;
+        int processed = 0, batches = 0, failedBatches = 0, unreadableBatches = 0, alreadyKnown = 0;
+        bool truncated = false;
+        string? firstError = null;
 
         for (int offset = 0; offset < frenchTexts.Count; offset += ExtractionBatchSize)
         {
@@ -489,6 +494,7 @@ internal sealed class GlossaryService : IGlossaryService
 
             var slice = frenchTexts.Skip(offset).Take(ExtractionBatchSize).ToList();
             var userMessage = BuildNumberedUserMessage(slice);
+            batches++;
 
             string raw;
             try
@@ -497,22 +503,41 @@ internal sealed class GlossaryService : IGlossaryService
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[GlossaryService] Échec extraction (batch {offset}) : {ex.Message}");
+                // Un lot en échec ne fait pas tomber les autres, mais il ne disparaît pas non
+                // plus : compté et remonté à l'appelant, qui saura dire à l'utilisateur pourquoi
+                // il n'a rien (ou moins) reçu. Un échec avalé se lisait « aucun terme trouvé ».
+                // L'annulation n'est observée qu'entre deux lots (ThrowIfCancellationRequested en
+                // tête de boucle) : CallApiAsync ne prend pas de jeton — limite connue de toute
+                // l'application (ROADMAP, annulation des batchs IA). Un TaskCanceledException
+                // ici est donc un délai HTTP, c'est-à-dire un vrai échec de lot.
+                failedBatches++;
+                firstError ??= ex.Message;
                 processed += slice.Count;
                 progress?.Report(processed);
                 continue;
             }
 
             var parsed = ParseExtractionResponse(raw);
-            foreach (var candidate in parsed)
+            if (!parsed.Success)
+            {
+                unreadableBatches++;
+                truncated |= parsed.Truncated;
+            }
+
+            foreach (var candidate in parsed.Entries)
             {
                 var key = candidate.Source.Trim();
                 if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(candidate.Destination))
                     continue;
-                if (existingTerms.Contains(key))
-                    continue;
+                // Une clé n'est comptée qu'une fois, connue ou candidate : l'IA répète parfois un
+                // terme d'un lot à l'autre, et le compte rendu parle de termes, pas d'occurrences.
                 if (!seenInBatches.Add(key))
                     continue;
+                if (existingTerms.Contains(key))
+                {
+                    alreadyKnown++;
+                    continue;
+                }
 
                 aggregated.Add(candidate);
             }
@@ -521,7 +546,7 @@ internal sealed class GlossaryService : IGlossaryService
             progress?.Report(processed);
         }
 
-        return aggregated;
+        return new GlossaryExtractionResult(aggregated, batches, failedBatches, unreadableBatches, alreadyKnown, truncated, firstError);
     }
 
     private static string BuildExistingTermsBlock(IReadOnlyList<GlossaryEntry> existing)
@@ -552,51 +577,130 @@ internal sealed class GlossaryService : IGlossaryService
         return sb.ToString();
     }
 
-    private static List<GlossaryEntry> ParseExtractionResponse(string raw)
+    /// <summary>
+    /// Lit la réponse JSON de l'extraction. Ne confond jamais « le modèle n'a rien trouvé »
+    /// (tableau vide, <see cref="ExtractionParse.Success"/> vrai) avec « la réponse est
+    /// illisible » (<see cref="ExtractionParse.Success"/> faux) : la première est un résultat,
+    /// la seconde un défaut à signaler. Un tableau ouvert et jamais fermé est la signature d'une
+    /// réponse tronquée par le plafond de tokens de sortie — cas vécu : à 2048 tokens, un lot de
+    /// 20 textes s'arrêtait au milieu d'un objet et l'utilisateur lisait « aucun terme proposé ».
+    ///
+    /// Le tableau est délimité par un balayage qui ignore les crochets à l'intérieur des chaînes
+    /// JSON, pas par le dernier <c>]</c> de la réponse : de la prose autour (« voir [1] ») ne doit
+    /// ni décaler la fin du tableau ni faire passer une réponse valide pour illisible. Seuls les
+    /// <c>[</c> qui peuvent ouvrir le tableau attendu — suivis de <c>{</c> (objet) ou <c>]</c>
+    /// (vide) — sont candidats : un crochet de prose ou de lien Markdown, même jamais refermé,
+    /// est ignoré. Les candidats sont essayés dans l'ordre ; un candidat jamais refermé signe la
+    /// troncature et arrête la recherche, rien après lui ne peut l'être non plus.
+    /// </summary>
+    internal static ExtractionParse ParseExtractionResponse(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return new List<GlossaryEntry>();
+            return ExtractionParse.Unreadable(truncated: false);
 
-        var jsonText = ExtractJsonArray(raw);
-        if (string.IsNullOrWhiteSpace(jsonText))
-            return new List<GlossaryEntry>();
+        int searchFrom = 0;
+        int start;
+        while ((start = raw.IndexOf('[', searchFrom)) >= 0)
+        {
+            searchFrom = start + 1;
+            if (!OpensExpectedArray(raw, start))
+                continue;
 
+            var end = FindArrayEnd(raw, start);
+            if (end < 0)
+                return ExtractionParse.Unreadable(truncated: true);
+
+            if (TryReadEntries(raw.AsSpan(start, end - start + 1), out var entries))
+                return new ExtractionParse(entries, Success: true, Truncated: false);
+        }
+
+        return ExtractionParse.Unreadable(truncated: false);
+    }
+
+    /// <summary>Le premier caractère non blanc après le <c>[</c> est <c>{</c> ou <c>]</c>.</summary>
+    private static bool OpensExpectedArray(string text, int start)
+    {
+        for (int i = start + 1; i < text.Length; i++)
+        {
+            if (char.IsWhiteSpace(text[i]))
+                continue;
+            return text[i] is '{' or ']';
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Index du <c>]</c> qui referme le tableau ouvert en <paramref name="start"/>, ou -1 s'il
+    /// n'est jamais refermé. Les crochets rencontrés à l'intérieur d'une chaîne JSON (guillemets
+    /// doubles, échappements <c>\</c> respectés) ne comptent pas.
+    /// </summary>
+    private static int FindArrayEnd(string text, int start)
+    {
+        int depth = 0;
+        bool inString = false;
+
+        for (int i = start; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (inString)
+            {
+                if (c == '\\')
+                    i++;
+                else if (c == '"')
+                    inString = false;
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"': inString = true; break;
+                case '[': depth++; break;
+                case ']':
+                    if (--depth == 0)
+                        return i;
+                    break;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Vrai si le fragment est un tableau JSON d'objets (vide accepté : « rien trouvé »). Un
+    /// tableau sans aucun objet — « [1] » dans une phrase — n'est pas la réponse attendue et
+    /// laisse la recherche continuer.
+    /// </summary>
+    private static bool TryReadEntries(ReadOnlySpan<char> json, out List<GlossaryEntry> entries)
+    {
+        entries = new List<GlossaryEntry>();
         try
         {
-            using var doc = JsonDocument.Parse(jsonText);
+            using var doc = JsonDocument.Parse(json.ToString());
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
-                return new List<GlossaryEntry>();
+                return false;
 
-            var result = new List<GlossaryEntry>();
+            int items = 0;
             foreach (var element in doc.RootElement.EnumerateArray())
             {
+                items++;
                 if (element.ValueKind != JsonValueKind.Object)
                     continue;
 
-                var entry = new GlossaryEntry
+                entries.Add(new GlossaryEntry
                 {
                     Source = ReadString(element, "term"),
                     Destination = ReadString(element, "translation"),
                     Context = ReadString(element, "context"),
-                };
-                result.Add(entry);
+                });
             }
-            return result;
-        }
-        catch (JsonException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[GlossaryService] JSON invalide : {ex.Message}");
-            return new List<GlossaryEntry>();
-        }
-    }
 
-    private static string ExtractJsonArray(string raw)
-    {
-        var start = raw.IndexOf('[');
-        var end = raw.LastIndexOf(']');
-        if (start < 0 || end <= start)
-            return string.Empty;
-        return raw.Substring(start, end - start + 1);
+            return items == 0 || entries.Count > 0;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static string ReadString(JsonElement element, string propertyName)
