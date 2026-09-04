@@ -231,7 +231,7 @@ internal sealed partial class GlossaryForm : Form
     private void UpdateCountLabel()
     {
         int count = grid.Rows.Cast<DataGridViewRow>().Count(row => !row.IsNewRow);
-        lblCount.Text = $"{count} terme(s) — seuls les termes Validé sont injectés dans les prompts";
+        lblCount.Text = $"{count} terme(s) — seuls les termes au statut Validé sont injectés dans les prompts";
     }
 
     private static string StatusLabel(GlossaryTermStatus status) => status switch

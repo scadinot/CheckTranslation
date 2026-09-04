@@ -71,7 +71,7 @@ internal sealed class GlossaryService : IGlossaryService
                 var term = FindTermLocked(entry.Source);
                 if (term is null)
                 {
-                    term = new GlossaryTerm { Source = entry.Source.Trim() };
+                    term = new GlossaryTerm { Source = NormalizeCell(entry.Source) };
                     _glossary.Terms.Add(term);
                 }
 
@@ -110,6 +110,7 @@ internal sealed class GlossaryService : IGlossaryService
         lock (_lock)
         {
             var cleaned = new List<GlossaryTerm>();
+            var seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var term in terms)
             {
@@ -117,7 +118,14 @@ internal sealed class GlossaryService : IGlossaryService
                     continue;
 
                 var copy = CloneTerm(term);
-                copy.Source = copy.Source.Trim();
+                // Source normalisée comme les autres champs (retours à la ligne compris) : c'est
+                // la clé d'identité du terme, la déduplication et les prompts en dépendent. Un
+                // doublon après normalisation est écarté (premier gagnant) — l'éditeur les refuse
+                // déjà, ceci protège les autres appelants.
+                copy.Source = NormalizeCell(copy.Source);
+                if (!seenSources.Add(copy.Source))
+                    continue;
+
                 copy.Context = NormalizeCell(copy.Context);
                 copy.ReviewerComment = NormalizeCell(copy.ReviewerComment);
 
@@ -159,7 +167,7 @@ internal sealed class GlossaryService : IGlossaryService
                     // fois validé (gouvernance de GLOSSAIRE.md).
                     term = new GlossaryTerm
                     {
-                        Source = entry.Source.Trim(),
+                        Source = NormalizeCell(entry.Source),
                         Context = NormalizeCell(entry.Context),
                         Status = GlossaryTermStatus.Proposed,
                     };
@@ -528,8 +536,10 @@ internal sealed class GlossaryService : IGlossaryService
 
     private GlossaryTerm? FindTermLocked(string source)
     {
-        var trimmed = source.Trim();
-        return _glossary.Terms.Find(term => string.Equals(term.Source.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+        // Comparaison sur la forme normalisée : l'identité d'un terme ne doit dépendre ni des
+        // espaces de bord ni d'un retour à la ligne collé par mégarde.
+        var normalized = NormalizeCell(source);
+        return _glossary.Terms.Find(term => string.Equals(NormalizeCell(term.Source), normalized, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
