@@ -172,7 +172,7 @@ internal sealed class GlossaryService : IGlossaryService
 
     public int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries)
     {
-        if (string.IsNullOrWhiteSpace(languageCode))
+        if (string.IsNullOrWhiteSpace(languageCode) || entries.Count == 0)
             return 0;
 
         EnsureLoaded();
