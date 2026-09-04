@@ -119,6 +119,36 @@ public class GlossaryServiceTests
     }
 
     [Fact]
+    public void ParseExtractionResponse_UnclosedProseBracketBeforeJson_IsNotATruncation()
+    {
+        // Un lien Markdown amputé ou un crochet de prose jamais refermé ne peut pas ouvrir le
+        // tableau attendu : il est ignoré, le vrai JSON plus loin est lu normalement.
+        const string raw = """
+            D'après la norme [CEI 60364 (voir la référence en ligne
+            [ { "term": "borne", "translation": "Klemme", "context": "raccordement" } ]
+            """;
+
+        var parse = GlossaryService.ParseExtractionResponse(raw);
+
+        Assert.True(parse.Success);
+        Assert.Equal("borne", Assert.Single(parse.Entries).Source);
+    }
+
+    [Fact]
+    public void ParseExtractionResponse_TruncatedAfterProseBracket_IsStillFlaggedTruncated()
+    {
+        const string raw = """
+            Voir [1].
+            [ { "term": "borne", "translation": "Klem
+            """;
+
+        var parse = GlossaryService.ParseExtractionResponse(raw);
+
+        Assert.False(parse.Success);
+        Assert.True(parse.Truncated);
+    }
+
+    [Fact]
     public void ParseExtractionResponse_BracketsInsideStrings_DoNotCloseTheArray()
     {
         const string raw = """

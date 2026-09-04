@@ -501,6 +501,12 @@ internal sealed class GlossaryService : IGlossaryService
             {
                 raw = await Translator.CallApiAsync(systemPrompt, userMessage, config);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Une annulation demandée n'est pas un lot en échec : elle remonte telle quelle.
+                // Un TaskCanceledException de délai HTTP, lui, n'a pas ce jeton et reste compté.
+                throw;
+            }
             catch (Exception ex)
             {
                 // Un lot en échec ne fait pas tomber les autres, mais il ne disparaît pas non
@@ -581,9 +587,11 @@ internal sealed class GlossaryService : IGlossaryService
     ///
     /// Le tableau est délimité par un balayage qui ignore les crochets à l'intérieur des chaînes
     /// JSON, pas par le dernier <c>]</c> de la réponse : de la prose autour (« voir [1] ») ne doit
-    /// ni décaler la fin du tableau ni faire passer une réponse valide pour illisible. Chaque
-    /// <c>[</c> est essayé dans l'ordre jusqu'à trouver un tableau d'objets ; un <c>[</c> jamais
-    /// refermé arrête la recherche, rien après lui ne peut l'être non plus.
+    /// ni décaler la fin du tableau ni faire passer une réponse valide pour illisible. Seuls les
+    /// <c>[</c> qui peuvent ouvrir le tableau attendu — suivis de <c>{</c> (objet) ou <c>]</c>
+    /// (vide) — sont candidats : un crochet de prose ou de lien Markdown, même jamais refermé,
+    /// est ignoré. Les candidats sont essayés dans l'ordre ; un candidat jamais refermé signe la
+    /// troncature et arrête la recherche, rien après lui ne peut l'être non plus.
     /// </summary>
     internal static ExtractionParse ParseExtractionResponse(string raw)
     {
@@ -594,17 +602,32 @@ internal sealed class GlossaryService : IGlossaryService
         int start;
         while ((start = raw.IndexOf('[', searchFrom)) >= 0)
         {
+            searchFrom = start + 1;
+            if (!OpensExpectedArray(raw, start))
+                continue;
+
             var end = FindArrayEnd(raw, start);
             if (end < 0)
                 return ExtractionParse.Unreadable(truncated: true);
 
             if (TryReadEntries(raw.AsSpan(start, end - start + 1), out var entries))
                 return new ExtractionParse(entries, Success: true, Truncated: false);
-
-            searchFrom = start + 1;
         }
 
         return ExtractionParse.Unreadable(truncated: false);
+    }
+
+    /// <summary>Le premier caractère non blanc après le <c>[</c> est <c>{</c> ou <c>]</c>.</summary>
+    private static bool OpensExpectedArray(string text, int start)
+    {
+        for (int i = start + 1; i < text.Length; i++)
+        {
+            if (char.IsWhiteSpace(text[i]))
+                continue;
+            return text[i] is '{' or ']';
+        }
+
+        return false;
     }
 
     /// <summary>
