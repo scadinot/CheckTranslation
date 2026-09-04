@@ -272,6 +272,10 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
+            // Refus immédiat : sinon le classeur serait écrit (vide) avant que Save n'échoue,
+            // et un fichier d'export existerait malgré l'échec affiché.
+            ThrowIfLoadFailed();
+
             // La bascule Proposé -> En contrôle précède l'écriture pour que l'empreinte du
             // classeur décrive l'état qui restera dans l'application — mais elle n'est
             // persistée qu'après un export réussi, et restaurée si quoi que ce soit échoue :
@@ -312,6 +316,10 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
+            // Un backup pris sur un glossaire illisible serait vide : trompeur pour une
+            // fonction de récupération — même refus que les autres écritures.
+            ThrowIfLoadFailed();
+
             // Suffixe numérique si le nom horodaté existe déjà : deux imports dans la même
             // seconde ne doivent pas écraser le même backup, ce qui annulerait son intérêt.
             var baseName = $"glossary-{DateTime.Now:yyyyMMdd-HHmmss}";
@@ -326,14 +334,25 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    /// <summary>
+    /// Refus commun à toutes les écritures disque (enregistrement, export pour contrôle, backup)
+    /// quand le glossaire existant n'a pas pu être lu : l'état mémoire est vide, enregistrer
+    /// écraserait le fichier, et un classeur d'export ou un backup produits de cet état seraient
+    /// trompeurs — un backup vide est pire que pas de backup.
+    /// </summary>
+    private void ThrowIfLoadFailed()
+    {
+        if (_loadFailed)
+            throw new InvalidOperationException(
+                "Le glossaire existant n'a pas pu être lu : toute écriture (enregistrement, export, sauvegarde) partirait d'un état vide et écraserait ou masquerait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
+    }
+
     public void Save()
     {
         EnsureLoaded();
         lock (_lock)
         {
-            if (_loadFailed)
-                throw new InvalidOperationException(
-                    "Le glossaire existant n'a pas pu être lu : enregistrer maintenant écraserait son contenu. Corrigez ou supprimez glossary.json puis relancez l'application.");
+            ThrowIfLoadFailed();
 
             try
             {
