@@ -179,8 +179,10 @@ internal sealed class GlossaryService : IGlossaryService
         lock (_lock)
         {
             // Copie profonde avant mutation : la méthode modifie des termes existants en place,
-            // la restauration en cas d'échec de persistance doit rendre l'état exact.
-            var snapshot = _glossary.Terms.Select(CloneTerm).ToList();
+            // la restauration en cas d'échec de persistance doit rendre l'état exact. Paresseuse :
+            // prise à la première mutation avérée seulement — une extraction qui ne propose que
+            // des doublons ne paie pas le clone du glossaire entier.
+            List<GlossaryTerm>? snapshot = null;
             int touched = 0;
 
             foreach (var entry in entries)
@@ -189,6 +191,16 @@ internal sealed class GlossaryService : IGlossaryService
                     continue;
 
                 var term = FindTermLocked(entry.Source);
+                if (term is not null
+                    && term.Translations.TryGetValue(languageCode, out var existing)
+                    && !string.IsNullOrWhiteSpace(existing))
+                {
+                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
+                    continue;
+                }
+
+                snapshot ??= _glossary.Terms.Select(CloneTerm).ToList();
+
                 if (term is null)
                 {
                     // Un candidat d'extraction naît Proposé : il n'entre dans les prompts qu'une
@@ -200,12 +212,6 @@ internal sealed class GlossaryService : IGlossaryService
                         Status = GlossaryTermStatus.Proposed,
                     };
                     _glossary.Terms.Add(term);
-                }
-                else if (term.Translations.TryGetValue(languageCode, out var existing)
-                    && !string.IsNullOrWhiteSpace(existing))
-                {
-                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
-                    continue;
                 }
 
                 term.Translations[languageCode] = NormalizeCell(entry.Destination);
@@ -220,7 +226,8 @@ internal sealed class GlossaryService : IGlossaryService
                 }
                 catch
                 {
-                    _glossary.Terms = snapshot;
+                    // touched > 0 implique que le snapshot a été pris (première mutation).
+                    _glossary.Terms = snapshot!;
                     throw;
                 }
             }
