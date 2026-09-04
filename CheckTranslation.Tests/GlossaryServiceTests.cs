@@ -93,12 +93,25 @@ public class GlossaryServiceTests
     [Fact]
     public void ParseExtractionResponse_SkipsNonObjectItemsAndMissingFields()
     {
-        var parse = GlossaryService.ParseExtractionResponse("[ 42, { \"term\": \"borne\" }, \"texte\" ]");
+        // Le tableau s'ouvre sur un objet (forme attendue) : les éléments parasites qui suivent
+        // sont ignorés, un champ manquant vaut chaîne vide.
+        var parse = GlossaryService.ParseExtractionResponse("[ { \"term\": \"borne\" }, 42, \"texte\" ]");
 
         Assert.True(parse.Success);
         var entry = Assert.Single(parse.Entries);
         Assert.Equal("borne", entry.Source);
         Assert.Equal(string.Empty, entry.Destination);
+    }
+
+    [Fact]
+    public void ParseExtractionResponse_ArrayNotOpeningOnObject_IsNotTheExpectedArray()
+    {
+        // « [ 42, ... » n'est pas la forme attendue (tableau d'objets ou vide) : ce crochet n'est
+        // pas candidat, comme un « [1] » de prose — c'est ce filtre qui évite les faux positifs.
+        var parse = GlossaryService.ParseExtractionResponse("[ 42, { \"term\": \"borne\" } ]");
+
+        Assert.False(parse.Success);
+        Assert.False(parse.Truncated);
     }
 
     [Fact]
