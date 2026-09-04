@@ -256,8 +256,11 @@ internal sealed class GlossaryService : IGlossaryService
                 sb.Append('\u001E');
             }
 
+            // Empreinte complète : la valeur sert précisément à détecter un glossaire modifié
+            // pendant le contrôle, et ne coûte qu'une cellule de la feuille Infos — la tronquer
+            // n'achèterait rien.
             var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
-            return Convert.ToHexString(bytes, 0, 8);
+            return Convert.ToHexString(bytes);
         }
     }
 
