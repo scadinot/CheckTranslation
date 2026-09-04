@@ -57,7 +57,14 @@ internal static class GlossaryExcel
         info.Cell(3, 1).Value = "Ne pas modifier cette feuille : elle permet de rapprocher le retour de son export.";
         info.Columns().AdjustToContents();
 
-        workbook.SaveAs(filePath);
+        // Écriture atomique comme toutes les écritures disque de l'application (règle du §10 de
+        // CLAUDE.md) : ré-exporter sur un classeur existant ne peut pas le tronquer en cas de
+        // crash. La surcharge flux évite que ClosedXML ne bute sur l'extension .tmp du temporaire.
+        AtomicFile.Write(filePath, tempPath =>
+        {
+            using var stream = File.Create(tempPath);
+            workbook.SaveAs(stream);
+        });
     }
 
     /// <summary>
@@ -106,6 +113,7 @@ internal static class GlossaryExcel
             throw new InvalidDataException("Colonne « Source (FR) » introuvable dans la première ligne du classeur.");
 
         var terms = new List<GlossaryTerm>();
+        var rowBySource = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
 
         for (int r = 2; r <= lastRow; r++)
@@ -113,6 +121,15 @@ internal static class GlossaryExcel
             var source = sheet.Cell(r, sourceColumn).GetString();
             if (string.IsNullOrWhiteSpace(source))
                 continue;
+
+            // Un doublon de terme dans le classeur serait départagé en silence par le diff
+            // (premier gagnant) : des corrections seraient perdues sans que personne ne le voie.
+            // Le fichier est refusé, avec de quoi le corriger.
+            var key = GlossaryService.NormalizeCell(source);
+            if (rowBySource.TryGetValue(key, out int firstRow))
+                throw new InvalidDataException(
+                    $"Le terme « {key} » apparaît plusieurs fois dans le classeur (lignes {firstRow} et {r}). Fusionnez les lignes puis réimportez.");
+            rowBySource[key] = r;
 
             var term = new GlossaryTerm
             {

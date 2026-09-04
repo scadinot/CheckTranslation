@@ -232,6 +232,10 @@ internal sealed partial class GlossaryForm : Form
     /// </summary>
     private void BtnExport_Click(object? sender, EventArgs e)
     {
+        // Committe une édition de cellule encore ouverte : sans quoi CellValueChanged n'a pas
+        // été levé et _dirty peut mentir.
+        grid.EndEdit();
+
         if (_dirty)
         {
             MessageBox.Show(this,
@@ -287,6 +291,9 @@ internal sealed partial class GlossaryForm : Form
     /// </summary>
     private void BtnImport_Click(object? sender, EventArgs e)
     {
+        // Même précaution que l'export : committer une édition de cellule encore ouverte.
+        grid.EndEdit();
+
         if (_dirty)
         {
             MessageBox.Show(this,

@@ -241,9 +241,12 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
-            var backupPath = Path.Combine(
-                AppConfig.ConfigDirectory,
-                $"glossary-{DateTime.Now:yyyyMMdd-HHmmss}.bak.json");
+            // Suffixe numérique si le nom horodaté existe déjà : deux imports dans la même
+            // seconde ne doivent pas écraser le même backup, ce qui annulerait son intérêt.
+            var baseName = $"glossary-{DateTime.Now:yyyyMMdd-HHmmss}";
+            var backupPath = Path.Combine(AppConfig.ConfigDirectory, baseName + ".bak.json");
+            for (int n = 1; File.Exists(backupPath); n++)
+                backupPath = Path.Combine(AppConfig.ConfigDirectory, $"{baseName}-{n}.bak.json");
 
             Directory.CreateDirectory(AppConfig.ConfigDirectory);
             var json = JsonSerializer.Serialize(_glossary, JsonOptions);
