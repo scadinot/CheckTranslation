@@ -72,9 +72,11 @@ internal static class GlossaryDiff
     /// termes. Un terme touché par un changement de fond accepté (traduction, contexte, ajout)
     /// passe <see cref="GlossaryTermStatus.Validated"/> : c'est le sens du retour de contrôle.
     /// Un commentaire réviseur seul n'est qu'une annotation, il ne valide rien. Enfin, un terme
-    /// En contrôle revenu inchangé dans le classeur repasse lui aussi Validé : les réviseurs
-    /// l'ont vu et laissé tel quel, le contrôle est terminé pour lui — sans cette règle il
-    /// resterait exclu des prompts indéfiniment.
+    /// En contrôle revenu STRICTEMENT inchangé — aucune différence, pas même de commentaire —
+    /// repasse Validé : les réviseurs l'ont vu et laissé tel quel, le contrôle est terminé pour
+    /// lui. Un terme dont des différences ont été refusées, ou seulement commentées, reste En
+    /// contrôle : le désaccord n'est pas résolu, l'arbitrage se fait dans l'éditeur (statut
+    /// modifiable).
     /// </summary>
     public static List<GlossaryTerm> Apply(
         IReadOnlyList<GlossaryTerm> current,
@@ -138,10 +140,19 @@ internal static class GlossaryDiff
             }
         }
 
+        var changedSources = new HashSet<string>(
+            changes.Select(change => Normalize(change.Source)),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var term in result)
         {
-            if (term.Status == GlossaryTermStatus.InReview && importedBySource.ContainsKey(Normalize(term.Source)))
+            var key = Normalize(term.Source);
+            if (term.Status == GlossaryTermStatus.InReview
+                && importedBySource.ContainsKey(key)
+                && !changedSources.Contains(key))
+            {
                 term.Status = GlossaryTermStatus.Validated;
+            }
         }
 
         return result;
