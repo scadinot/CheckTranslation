@@ -346,7 +346,12 @@ internal sealed partial class GlossaryForm : Form
                 int validated = promoted.Zip(current, (after, before) => after.Status != before.Status ? 1 : 0).Sum();
                 if (validated == 0)
                 {
-                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel." + stampWarning,
+                    // Un classeur partiel ne compare pas les colonnes absentes et ne clôt pas le
+                    // contrôle : sans cette mention, l'utilisateur n'a aucun indice du pourquoi.
+                    string missingNote = missingLanguages.Count > 0
+                        ? $"\n\nColonnes absentes du classeur, non comparées : {string.Join(", ", missingLanguages)}. Un classeur partiel ne clôt pas le contrôle des termes En contrôle."
+                        : string.Empty;
+                    MessageBox.Show(this, "Aucune différence entre le classeur et le glossaire actuel." + missingNote + stampWarning,
                         "Import du glossaire", MessageBoxButtons.OK, icon);
                     return;
                 }
