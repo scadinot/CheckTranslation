@@ -148,6 +148,28 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    public void ReplaceTermsAndSave(IReadOnlyList<GlossaryTerm> terms)
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            // Copie profonde : la restauration doit rendre l'état exact d'avant l'appel, sans
+            // repasser par la normalisation de ReplaceTerms.
+            var snapshot = _glossary.Terms.Select(CloneTerm).ToList();
+
+            ReplaceTerms(terms);
+            try
+            {
+                Save();
+            }
+            catch
+            {
+                _glossary.Terms = snapshot;
+                throw;
+            }
+        }
+    }
+
     public int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries)
     {
         if (string.IsNullOrWhiteSpace(languageCode))
@@ -156,6 +178,9 @@ internal sealed class GlossaryService : IGlossaryService
         EnsureLoaded();
         lock (_lock)
         {
+            // Copie profonde avant mutation : la méthode modifie des termes existants en place,
+            // la restauration en cas d'échec de persistance doit rendre l'état exact.
+            var snapshot = _glossary.Terms.Select(CloneTerm).ToList();
             int touched = 0;
 
             foreach (var entry in entries)
@@ -185,6 +210,19 @@ internal sealed class GlossaryService : IGlossaryService
 
                 term.Translations[languageCode] = NormalizeCell(entry.Destination);
                 touched++;
+            }
+
+            if (touched > 0)
+            {
+                try
+                {
+                    Save();
+                }
+                catch
+                {
+                    _glossary.Terms = snapshot;
+                    throw;
+                }
             }
 
             return touched;

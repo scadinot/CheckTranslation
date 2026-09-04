@@ -17,10 +17,18 @@ internal interface IGlossaryService
     void ReplaceTerms(IReadOnlyList<GlossaryTerm> terms);
 
     /// <summary>
-    /// Verse des candidats d'extraction dans le glossaire : un terme nouveau naît
+    /// <see cref="ReplaceTerms"/> puis <see cref="Save"/>, transactionnellement : si la
+    /// persistance échoue, l'état mémoire est restauré tel qu'avant l'appel — le service ne
+    /// reste jamais muté en mémoire pendant que l'UI signale un échec.
+    /// </summary>
+    void ReplaceTermsAndSave(IReadOnlyList<GlossaryTerm> terms);
+
+    /// <summary>
+    /// Verse des candidats d'extraction dans le glossaire ET persiste : un terme nouveau naît
     /// <see cref="GlossaryTermStatus.Proposed"/> (le contrôle le validera — voir GLOSSAIRE.md) ;
     /// un terme existant reçoit la traduction proposée seulement si sa case pour cette langue est
-    /// vide, et garde son statut. Retourne le nombre de termes créés ou complétés.
+    /// vide, et garde son statut. Si la persistance échoue, l'état mémoire est restauré et
+    /// l'exception remonte. Retourne le nombre de termes créés ou complétés.
     /// </summary>
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 

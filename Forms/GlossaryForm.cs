@@ -206,8 +206,7 @@ internal sealed partial class GlossaryForm : Form
 
         try
         {
-            _glossaryService.ReplaceTerms(terms);
-            _glossaryService.Save();
+            _glossaryService.ReplaceTermsAndSave(terms);
             _dirty = false;
             DialogResult = DialogResult.OK;
             Close();
@@ -350,8 +349,10 @@ internal sealed partial class GlossaryForm : Form
 
             var backupPath = _glossaryService.CreateBackup();
             var merged = GlossaryDiff.Apply(current, file.Terms, changes);
-            _glossaryService.ReplaceTerms(merged);
-            _glossaryService.Save();
+            // Transactionnel : si la persistance échoue, le service restaure son état mémoire —
+            // l'UI et le service racontent la même histoire, l'export suivant ne partirait pas
+            // d'un état non enregistré.
+            _glossaryService.ReplaceTermsAndSave(merged);
 
             ReloadGrid();
             MessageBox.Show(this,
