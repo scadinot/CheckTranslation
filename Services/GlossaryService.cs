@@ -191,6 +191,67 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
+    public string GetExportStamp()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            var sb = new StringBuilder();
+
+            foreach (var term in _glossary.Terms.OrderBy(t => t.Source, StringComparer.Ordinal))
+            {
+                sb.Append(term.Source).Append('\u001F')
+                  .Append(term.Context).Append('\u001F')
+                  .Append(term.Status).Append('\u001F')
+                  .Append(term.ReviewerComment).Append('\u001F');
+
+                foreach (var (code, destination) in term.Translations.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                    sb.Append(code).Append('=').Append(destination).Append('\u001D');
+
+                sb.Append('\u001E');
+            }
+
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
+            return Convert.ToHexString(bytes, 0, 8);
+        }
+    }
+
+    public int MarkProposedAsInReview()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            int moved = 0;
+
+            foreach (var term in _glossary.Terms)
+            {
+                if (term.Status == GlossaryTermStatus.Proposed)
+                {
+                    term.Status = GlossaryTermStatus.InReview;
+                    moved++;
+                }
+            }
+
+            return moved;
+        }
+    }
+
+    public string CreateBackup()
+    {
+        EnsureLoaded();
+        lock (_lock)
+        {
+            var backupPath = Path.Combine(
+                AppConfig.ConfigDirectory,
+                $"glossary-{DateTime.Now:yyyyMMdd-HHmmss}.bak.json");
+
+            Directory.CreateDirectory(AppConfig.ConfigDirectory);
+            var json = JsonSerializer.Serialize(_glossary, JsonOptions);
+            AtomicFile.WriteAllText(backupPath, json);
+            return backupPath;
+        }
+    }
+
     public void Save()
     {
         EnsureLoaded();

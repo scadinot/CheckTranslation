@@ -77,6 +77,8 @@ CheckTranslation/
 │   ├── GlossaryForm.Designer.cs
 │   ├── GlossaryForm.resx
 │   ├── GlossaryExtractionDialog.cs           # Extraction IA assistée (validation terme par terme)
+│   ├── GlossaryImportDiffForm.cs             # Résolution des différences d'un import de glossaire
+│   ├── GlossaryImportDiffForm.Designer.cs   # (pas de .resx : formulaire sans ressources)
 │   ├── GlossaryExtractionDialog.Designer.cs
 │   ├── GlossaryExtractionDialog.resx
 │   ├── DashboardForm.cs                      # Tableau de bord de l'état des traductions

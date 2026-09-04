@@ -26,6 +26,8 @@ partial class GlossaryForm
         bottomPanel = new Panel();
         btnAdd = new Button();
         btnRemove = new Button();
+        btnExport = new Button();
+        btnImport = new Button();
         btnCancel = new Button();
         btnOk = new Button();
         topPanel.SuspendLayout();
@@ -80,6 +82,8 @@ partial class GlossaryForm
         //
         bottomPanel.Controls.Add(btnAdd);
         bottomPanel.Controls.Add(btnRemove);
+        bottomPanel.Controls.Add(btnExport);
+        bottomPanel.Controls.Add(btnImport);
         bottomPanel.Controls.Add(btnCancel);
         bottomPanel.Controls.Add(btnOk);
         bottomPanel.Dock = DockStyle.Bottom;
@@ -102,6 +106,22 @@ partial class GlossaryForm
         btnRemove.Size = new Size(100, 28);
         btnRemove.Text = "Supprimer";
         btnRemove.UseVisualStyleBackColor = true;
+        //
+        // btnExport
+        //
+        btnExport.Location = new Point(240, 10);
+        btnExport.Name = "btnExport";
+        btnExport.Size = new Size(110, 28);
+        btnExport.Text = "Exporter…";
+        btnExport.UseVisualStyleBackColor = true;
+        //
+        // btnImport
+        //
+        btnImport.Location = new Point(360, 10);
+        btnImport.Name = "btnImport";
+        btnImport.Size = new Size(110, 28);
+        btnImport.Text = "Importer…";
+        btnImport.UseVisualStyleBackColor = true;
         //
         // btnCancel
         //
@@ -157,6 +177,8 @@ partial class GlossaryForm
     private Panel bottomPanel;
     private Button btnAdd;
     private Button btnRemove;
+    private Button btnExport;
+    private Button btnImport;
     private Button btnCancel;
     private Button btnOk;
 }

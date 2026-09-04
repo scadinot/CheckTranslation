@@ -24,6 +24,26 @@ internal interface IGlossaryService
     /// </summary>
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 
+    /// <summary>
+    /// Empreinte de la totalité du glossaire (tous champs, toutes langues), écrite dans le
+    /// classeur d'export et comparée à l'import pour détecter que le glossaire a changé côté
+    /// application pendant le contrôle externe.
+    /// </summary>
+    string GetExportStamp();
+
+    /// <summary>
+    /// Passe les termes Proposé en <see cref="GlossaryTermStatus.InReview"/> au moment de
+    /// l'export. Les termes Validé ne bougent pas : ils restent injectés dans les prompts
+    /// pendant toute la durée du contrôle. Retourne le nombre de termes basculés.
+    /// </summary>
+    int MarkProposedAsInReview();
+
+    /// <summary>
+    /// Écrit une copie datée du glossaire courant à côté de glossary.json, avant qu'un import
+    /// n'applique ses changements. Retourne le chemin du fichier créé.
+    /// </summary>
+    string CreateBackup();
+
     void Save();
 
     /// <summary>

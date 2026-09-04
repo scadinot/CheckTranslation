@@ -30,8 +30,9 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
 1. **Constitution** — l'extraction IA (« Extraire les termes métier… ») verse des termes Proposé,
    l'éditeur consolide. Les termes naissent Proposé.
 2. **Export pour contrôle externe** — classeur Excel au format du tableau ci-dessus (une ligne
-   par terme), daté et portant l'empreinte du glossaire à l'export. Les termes exportés passent
-   En contrôle.
+   par terme), daté et portant l'empreinte du glossaire à l'export. Seuls les termes Proposé
+   passent En contrôle : les Validé restent injectés dans les prompts pendant toute la durée du
+   contrôle, et repassent Validé au retour s'ils reviennent inchangés.
 3. **Retour et import** — lecture du classeur corrigé, différences présentées terme par terme
    (patron du dialog de fusion), backup daté de l'ancien glossaire avant remplacement, compte
    rendu des changements. Les termes acceptés passent Validé.
@@ -50,7 +51,7 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
 |---|---|---|
 | 1. Schéma v2 + migration | `GlossaryTerm` transversal, statuts, projection par langue, empreinte compatible | ✅ Fait |
 | 2. Éditeur multi-langues | `GlossaryForm` en grille terme × langue, colonne statut | ✅ Fait |
-| 3. Export / import Excel | ClosedXML, diff à l'import, backup daté | À faire |
+| 3. Export / import Excel | ClosedXML, diff à l'import, backup daté | ✅ Fait |
 | 4. Retraduction ciblée | Détection des lignes impactées, batchs enchaînés par langue, compte rendu | À faire |
 
 Décisions ouvertes avant le chantier 4 : sort des lignes dont un terme a été supprimé du
