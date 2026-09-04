@@ -263,14 +263,9 @@ internal sealed partial class GlossaryForm : Form
 
         try
         {
-            // La bascule des statuts précède l'export : l'empreinte écrite dans le classeur doit
-            // décrire l'état qui restera dans l'application, sinon l'import signalerait toujours
-            // à tort un glossaire modifié entre-temps.
-            int moved = _glossaryService.MarkProposedAsInReview();
-            if (moved > 0)
-                _glossaryService.Save();
-
-            GlossaryExcel.Export(dialog.FileName, _glossaryService.GetTerms(), _glossaryService.GetExportStamp(), MainForm.Languages);
+            // Transactionnel côté service : bascule des Proposé, export, persistance — et
+            // restauration des statuts si une étape échoue.
+            int moved = _glossaryService.ExportForReview(dialog.FileName, MainForm.Languages);
 
             ReloadGrid();
             MessageBox.Show(this,

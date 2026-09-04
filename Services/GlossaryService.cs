@@ -216,23 +216,43 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
-    public int MarkProposedAsInReview()
+    public int ExportForReview(string filePath, IReadOnlyList<LanguageInfo> languages)
     {
         EnsureLoaded();
         lock (_lock)
         {
-            int moved = 0;
-
+            // La bascule Proposé -> En contrôle précède l'écriture pour que l'empreinte du
+            // classeur décrive l'état qui restera dans l'application — mais elle n'est
+            // persistée qu'après un export réussi, et restaurée si quoi que ce soit échoue :
+            // le glossaire ne doit jamais rester « En contrôle » sans classeur produit.
+            var flipped = new List<GlossaryTerm>();
             foreach (var term in _glossary.Terms)
             {
                 if (term.Status == GlossaryTermStatus.Proposed)
                 {
                     term.Status = GlossaryTermStatus.InReview;
-                    moved++;
+                    flipped.Add(term);
                 }
             }
 
-            return moved;
+            try
+            {
+                // Les verrous étant réentrants, GetTerms / GetExportStamp / Save s'appellent
+                // tels quels depuis la section verrouillée.
+                GlossaryExcel.Export(filePath, GetTerms(), GetExportStamp(), languages);
+                Save();
+                return flipped.Count;
+            }
+            catch
+            {
+                foreach (var term in flipped)
+                    term.Status = GlossaryTermStatus.Proposed;
+
+                // Si l'export a réussi mais pas la persistance, le classeur existe avec une
+                // empreinte décrivant un état restauré : on ne le supprime pas (il a pu écraser
+                // un export précédent), l'import signalera simplement l'écart d'empreinte.
+                throw;
+            }
         }
     }
 

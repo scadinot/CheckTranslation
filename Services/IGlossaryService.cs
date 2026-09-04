@@ -32,11 +32,13 @@ internal interface IGlossaryService
     string GetExportStamp();
 
     /// <summary>
-    /// Passe les termes Proposé en <see cref="GlossaryTermStatus.InReview"/> au moment de
-    /// l'export. Les termes Validé ne bougent pas : ils restent injectés dans les prompts
-    /// pendant toute la durée du contrôle. Retourne le nombre de termes basculés.
+    /// Exporte le glossaire vers un classeur de contrôle, transactionnellement : les termes
+    /// Proposé passent En contrôle (les Validé restent injectés pendant le contrôle), le
+    /// classeur est écrit avec l'empreinte de cet état, puis la bascule est persistée. Si une
+    /// étape échoue, les statuts sont restaurés : le glossaire ne reste jamais « En contrôle »
+    /// sans classeur produit. Retourne le nombre de termes basculés.
     /// </summary>
-    int MarkProposedAsInReview();
+    int ExportForReview(string filePath, IReadOnlyList<LanguageInfo> languages);
 
     /// <summary>
     /// Écrit une copie datée du glossaire courant à côté de glossary.json, avant qu'un import
