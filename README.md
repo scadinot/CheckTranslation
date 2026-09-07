@@ -132,7 +132,7 @@ Le fichier `CheckTranslation.config.json` est enregistré dans :
 - Largeur des colonnes
 - Visibilité et largeur du panneau d'arborescence
 
-Le glossaire est persisté séparément dans le même dossier, dans un unique fichier `glossary.json` contenant les entrées par langue.
+Le glossaire est persisté séparément dans le même dossier, dans un unique fichier `glossary.json` (un terme français, ses traductions par langue, un statut). Quand la solution ouverte possède un répertoire `.claude`, c'est `.claude/glossary.json` à côté du `.sln` / `.slnx` qui est utilisé à la place : le glossaire vit alors avec les sources, partagé avec les outils et skills du dépôt, et la status bar l'indique.
 
 ---
 

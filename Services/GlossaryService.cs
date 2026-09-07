@@ -7,7 +7,13 @@ namespace CheckTranslation;
 
 internal sealed class GlossaryService : IGlossaryService
 {
-    private static readonly string FilePath = Path.Combine(AppConfig.ConfigDirectory, "glossary.json");
+    /// <summary>Magasin global, dans le profil utilisateur : celui d'avant le partage avec les sources.</summary>
+    private static readonly string DefaultFilePath = Path.Combine(AppConfig.ConfigDirectory, "glossary.json");
+
+    // Chemin du magasin courant : global par défaut, ou le glossary.json d'une solution ouverte
+    // (voir SwitchStore). Toute écriture persiste immédiatement, il n'y a donc jamais d'état
+    // non enregistré à perdre en changeant de magasin.
+    private string _filePath;
     // Plus petit que les lots de traduction : la réponse est un JSON verbeux (terme, traduction,
     // contexte par entrée), dix textes tiennent largement sous le plafond de sortie du modèle et
     // la progression est plus fine.
@@ -20,6 +26,10 @@ internal sealed class GlossaryService : IGlossaryService
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter() },
+        // Accents et idéogrammes écrits tels quels, pas en â : le fichier d'une solution est
+        // lu par des humains et des skills, et son diff git doit rester lisible. « Unsafe » ne vise
+        // que l'inclusion dans du HTML, sans objet pour un fichier UTF-8.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     private readonly object _lock = new();
@@ -29,9 +39,60 @@ internal sealed class GlossaryService : IGlossaryService
     // un glossaire vide de repli écraserait des données existantes.
     private bool _loadFailed;
 
-    public GlossaryService()
+    public GlossaryService() : this(DefaultFilePath)
     {
+    }
+
+    /// <summary>Magasin explicite : les tests s'en servent pour ne jamais toucher au glossaire réel.</summary>
+    internal GlossaryService(string filePath)
+    {
+        _filePath = Path.GetFullPath(filePath);
         _glossary = new Glossary();
+    }
+
+    public string StorePath
+    {
+        get { lock (_lock) return _filePath; }
+    }
+
+    public bool IsSolutionStore
+    {
+        get { lock (_lock) return !string.Equals(_filePath, DefaultFilePath, StringComparison.OrdinalIgnoreCase); }
+    }
+
+    public void SwitchStore(string? solutionGlossaryPath)
+    {
+        var target = string.IsNullOrWhiteSpace(solutionGlossaryPath)
+            ? DefaultFilePath
+            : Path.GetFullPath(solutionGlossaryPath);
+
+        lock (_lock)
+        {
+            if (string.Equals(target, _filePath, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Rechargement paresseux au prochain accès : le fichier peut ne pas exister encore
+            // (solution équipée d'un .claude sans glossaire), il naîtra à la première sauvegarde.
+            _filePath = target;
+            _glossary = new Glossary();
+            _loaded = false;
+            _loadFailed = false;
+        }
+    }
+
+    /// <summary>
+    /// Forme à écrire d'une cellule de traduction. Une cellule peut porter plusieurs formes
+    /// acceptées séparées par « / » (« kabel / kabl ») : la première est celle que les prompts
+    /// imposent, les suivantes ne servent qu'au contrôle des formes fléchies — convention
+    /// partagée avec l'outillage resx-tools du dépôt elec calc (glossary.py, variants()).
+    /// </summary>
+    internal static string CanonicalForm(string? cell)
+    {
+        if (string.IsNullOrWhiteSpace(cell))
+            return string.Empty;
+
+        var first = cell.Split('/', 2)[0].Trim();
+        return first.Length > 0 ? first : cell.Trim();
     }
 
     /// <summary>
@@ -373,9 +434,18 @@ internal sealed class GlossaryService : IGlossaryService
 
             try
             {
-                Directory.CreateDirectory(AppConfig.ConfigDirectory);
+                // Ordre déterministe (termes par source, langues par code) : le magasin d'une
+                // solution est versionné avec ses sources, son diff doit ne montrer que ce qui
+                // a changé. L'ordre n'est pas porteur de sens, le réécrire est sans effet.
+                _glossary.Terms.Sort((a, b) => string.Compare(a.Source, b.Source, StringComparison.OrdinalIgnoreCase));
+                foreach (var term in _glossary.Terms)
+                    term.Translations = new Dictionary<string, string>(
+                        term.Translations.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase),
+                        StringComparer.OrdinalIgnoreCase);
+
+                Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
                 var json = JsonSerializer.Serialize(_glossary, JsonOptions);
-                AtomicFile.WriteAllText(FilePath, json);
+                AtomicFile.WriteAllText(_filePath, json);
             }
             catch (IOException ex)
             {
@@ -418,7 +488,7 @@ internal sealed class GlossaryService : IGlossaryService
         {
             sb.Append("| ")
               .Append(EscapeMarkdownCell(entry.Source)).Append(" | ")
-              .Append(EscapeMarkdownCell(entry.Destination)).Append(" | ")
+              .Append(EscapeMarkdownCell(CanonicalForm(entry.Destination))).Append(" | ")
               .Append(EscapeMarkdownCell(entry.Context)).AppendLine(" |");
         }
 
@@ -718,7 +788,7 @@ internal sealed class GlossaryService : IGlossaryService
                 return;
             _loaded = true;
 
-            if (!File.Exists(FilePath))
+            if (!File.Exists(_filePath))
             {
                 _glossary = new Glossary();
                 return;
@@ -726,7 +796,7 @@ internal sealed class GlossaryService : IGlossaryService
 
             try
             {
-                var json = File.ReadAllText(FilePath);
+                var json = File.ReadAllText(_filePath);
                 _glossary = JsonSerializer.Deserialize<Glossary>(json, JsonOptions) ?? new Glossary();
 
                 // Un fichier édité à la main peut porter des null explicites : les neutraliser

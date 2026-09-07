@@ -67,6 +67,27 @@ Les deux décisions ouvertes ont été tranchées avec le chantier 4 (voir phase
 terme supprimé ne déclenche pas de retraduction, et la correspondance reste une inclusion
 insensible à la casse, sans détection des formes fléchies.
 
+## 4. Où vit le glossaire : partagé avec les sources
+
+Le glossaire d'un logiciel appartient à ses sources, pas au poste de celui qui traduit. Quand la
+solution ouverte possède un répertoire `.claude`, CheckTranslation lit et écrit
+**`.claude/glossary.json` à côté du `.sln` / `.slnx`** ; c'est le même fichier que lisent les
+skills et l'outillage `resx-tools` du dépôt (elec calc : `glossary.py check` contrôle les
+traductions, `glossary.py extract` impose les termes dans les prompts des agents). Une seule
+terminologie, versionnée avec le code, relue en revue de code comme lui. Sans `.claude`, ou pour
+un export Excel, l'application retombe sur le magasin global du profil utilisateur.
+
+Le format est celui de l'application (schéma v2, statuts en toutes lettres), sauvegardé dans un
+ordre stable pour que le diff git ne montre que ce qui change. Les deux consommateurs appliquent la
+même règle : **seuls les termes Validé font autorité** — un Proposé ou un En contrôle n'existe ni
+pour les prompts de l'application ni pour ceux des skills.
+
+Une cellule de traduction peut porter plusieurs formes acceptées séparées par « / »
+(`kabel / kabl`, `surge protective device / SPD`) : la première est celle à écrire, que
+l'application injecte dans ses prompts ; les suivantes ne servent qu'au contrôle des formes
+fléchies par `glossary.py check`. Convention héritée du `glossary.md` d'elec calc, dont le tableau
+a été migré tel quel en termes Validé.
+
 ---
 
 *Document vivant — chaque chantier met ce process et son état à jour.*
