@@ -2,6 +2,20 @@ namespace CheckTranslation;
 
 internal interface IGlossaryService
 {
+    /// <summary>Chemin du fichier glossary.json en cours d'utilisation.</summary>
+    string StorePath { get; }
+
+    /// <summary>Vrai quand le glossaire est celui d'une solution (partagé avec ses sources), faux pour le magasin global.</summary>
+    bool IsSolutionStore { get; }
+
+    /// <summary>
+    /// Bascule vers le glossaire d'une solution (chemin de son <c>.claude/glossary.json</c>, qui
+    /// peut ne pas exister encore) ou, avec <c>null</c>, vers le magasin global. Le contenu est
+    /// rechargé depuis le nouveau fichier ; les empreintes changent avec lui, donc les caches
+    /// ne peuvent pas resservir des traductions faites sous l'autre glossaire.
+    /// </summary>
+    void SwitchStore(string? solutionGlossaryPath);
+
     IReadOnlyList<GlossaryEntry> GetEntries(string languageCode);
     void ReplaceEntries(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 

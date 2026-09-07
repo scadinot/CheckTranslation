@@ -898,6 +898,12 @@ public partial class MainForm : Form
             _currentSource = source;
             _currentFilePath = filePath;
             _allRows = rows;
+
+            // Le glossaire suit la solution : si elle est équipée d'un répertoire .claude, son
+            // glossary.json (partagé avec les skills et l'outillage du dépôt) remplace le magasin
+            // global. Un Excel n'a pas de solution : retour au global. Les empreintes changent
+            // avec le magasin, les caches ne resservent donc rien de l'autre glossaire.
+            _glossaryService.SwitchStore(SolutionGlossaryLocator.Locate(filePath));
             // Nouvelle source : l'arbre repart tout coché, comme les autres filtres repartent vides.
             PopulateSolutionTree(preserveChecks: false);
             foreach (var textBox in _filterTextBoxes.Values)
@@ -908,7 +914,8 @@ public partial class MainForm : Form
             dataGridView.DataSource = new SortableBindingList<TranslationRow>(rows);
             SetViewRefreshPending(false);
             statusRowCount.Text = $"Lignes : {rows.Count}";
-            statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})";
+            statusFileName.Text = $"Fichier : {Path.GetFileName(filePath)} ({source.Kind})"
+                + (_glossaryService.IsSolutionStore ? $" · glossaire : {SolutionGlossaryLocator.RelativePath}" : string.Empty);
 
             // Une grille vide ne dit pas si la source est vide ou si la chaîne s'est arrêtée en
             // route (aucun projet reconnu, aucun .resx, toutes les entrées exclues). Le compte
