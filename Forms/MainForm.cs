@@ -52,6 +52,7 @@ public partial class MainForm : Form
     private int _contextMenuRowIndex = -1;
     private ToolStripButton? btnGlossary;
     private ToolStripButton? btnDashboard;
+    private ToolStripButton? btnGlossaryDeviations;
     // Empêche deux analyses simultanées : la seconde écraserait les verdicts de la première.
     private bool _isCheckingLayout;
     // Dernier message affiché par FlashStatus : sert à ne restaurer le texte que s'il est
@@ -108,6 +109,7 @@ public partial class MainForm : Form
         InitCommentColumn();
         InitLayoutColumn();
         InitGlossaryButton();
+        InitGlossaryDeviationsButton();
         InitDashboardButton();
         InitRefreshButton();
         InitLanguageButtons();
@@ -622,6 +624,95 @@ public partial class MainForm : Form
         btnDashboard.Click += BtnDashboard_Click;
     }
 
+    // --- Retraduire les écarts au glossaire ---
+
+    private void InitGlossaryDeviationsButton()
+    {
+        btnGlossaryDeviations = new ToolStripButton
+        {
+            Image = LoadGlossaryDeviationsIcon(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            ToolTipText = "Retraduire les écarts au glossaire (toutes les langues)",
+        };
+        btnGlossaryDeviations.Click += BtnGlossaryDeviations_Click;
+    }
+
+    private static Bitmap LoadGlossaryDeviationsIcon()
+    {
+        var customPath = Path.Combine(ResourceDir, "glossary-deviations.png");
+        if (File.Exists(customPath))
+            return LoadIcon("glossary-deviations.png", 24);
+
+        // Repli dessiné : trois lignes de texte dont une en orange — une traduction qui ne dit
+        // pas ce que le glossaire impose.
+        var bitmap = new Bitmap(24, 24);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        using var text = new SolidBrush(Color.FromArgb(96, 96, 96));
+        using var alert = new SolidBrush(Color.FromArgb(230, 126, 34));
+        graphics.FillRectangle(text, 4, 5, 16, 3);
+        graphics.FillRectangle(alert, 4, 11, 16, 3);
+        graphics.FillRectangle(text, 4, 17, 11, 3);
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Retraduit puis re-vérifie les lignes dont la traduction n'emploie pas le terme imposé par le
+    /// glossaire, toutes langues confondues. Complète la détection automatique de
+    /// <see cref="BtnGlossary_Click"/>, qui ne voit que les changements faits dans l'éditeur : un
+    /// glossaire modifié hors de l'application (à la main, par un collègue via git) ne déclenche
+    /// rien — cette commande rattrape l'écart. Même définition de l'écart que
+    /// <c>glossary.py check</c> côté elec calc (<see cref="GlossaryDeviation"/>).
+    /// </summary>
+    private async void BtnGlossaryDeviations_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (_allRows is null || _allRows.Count == 0)
+            {
+                FlashStatus("Ouvrez d'abord une source pour chercher les écarts au glossaire.");
+                return;
+            }
+
+            // La langue affichée ne vit que dans la vue active tant qu'elle n'est pas poussée.
+            foreach (var row in _allRows)
+                row.CommitActiveLanguage(_currentLanguage.Code);
+
+            // Tous les termes Validé, cellule vide comprise : un terme long sans traduction dans
+            // une langue doit quand même masquer le terme court qu'il contient (règle du plus long
+            // terme de glossary.py) — la projection prompts ne le permettrait pas.
+            var validatedTerms = _glossaryService.GetTerms();
+            var work = new List<(LanguageInfo Language, IReadOnlyList<TranslationRow> Rows)>();
+            foreach (var language in Languages)
+            {
+                var deviations = GlossaryDeviation.SelectDeviations(
+                    _allRows, language.Code, GlossaryDeviation.ControlledEntries(validatedTerms, language.Code));
+                if (deviations.Count > 0)
+                    work.Add((language, deviations));
+            }
+
+            if (work.Count == 0)
+            {
+                FlashStatus("Aucun écart au glossaire : toutes les traductions emploient les termes imposés.");
+                return;
+            }
+
+            var summary = string.Join("\n", work.Select(w => $"  {w.Language.Name} ({w.Language.Code}) : {w.Rows.Count} ligne(s)"));
+            var answer = MessageBox.Show(this,
+                "Traductions qui n'emploient pas le terme imposé par le glossaire :\n\n" + summary
+                + "\n\nRetraduire puis re-vérifier ces lignes maintenant ?\nLes traductions actuelles des lignes concernées seront remplacées.",
+                "Écarts au glossaire", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (answer == DialogResult.Yes)
+                await RetranslateImpactedAsync(work);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant la recherche des écarts au glossaire :\n\n{ex.Message}",
+                "Écarts au glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     /// <summary>
     /// Icône du tableau de bord. Aucun visuel n'est fourni avec le projet : plutôt que d'échouer
     /// sur un fichier absent, on dessine trois barres — c'est le même repli que le glossaire.
@@ -729,7 +820,7 @@ public partial class MainForm : Form
 
     private void ArrangeToolStripItems()
     {
-        if (btnRefresh is null || btnGlossary is null || btnDashboard is null || btnSolutionTree is null)
+        if (btnRefresh is null || btnGlossary is null || btnGlossaryDeviations is null || btnDashboard is null || btnSolutionTree is null)
             return;
 
         toolStrip.Items.Clear();
@@ -741,6 +832,7 @@ public partial class MainForm : Form
         toolStrip.Items.Add(btnSolutionTree);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnGlossary);
+        toolStrip.Items.Add(btnGlossaryDeviations);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnDashboard);
         toolStrip.Items.Add(new ToolStripSeparator());
