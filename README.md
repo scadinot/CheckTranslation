@@ -2,12 +2,7 @@
 
 ![CI](https://github.com/scadinot/CheckTranslation/actions/workflows/ci.yml/badge.svg)
 
-Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la traduction et à la vérification des ressources d'un logiciel. Elle travaille sur **deux sources au choix** :
-
-- un fichier Excel exporté par **ResX Resource Manager** (extension Visual Studio) ;
-- les **fichiers `.resx` du code source directement**, en ouvrant la solution (`.sln` ou `.slnx`).
-
-Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traductions dans un tableau pour vérification et édition.
+Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la traduction et à la vérification des ressources d'un logiciel. Elle travaille **directement sur les fichiers `.resx` du code source**, en ouvrant la solution (`.sln` ou `.slnx`) : les projets sont parcourus, chaque `.resx` neutre fournit le texte français et ses variantes de culture les traductions. Elle filtre les entrées `@Invariant` et affiche les traductions dans un tableau pour vérification et édition.
 
 > **Documentation technique (architecture, conventions, avertissements) :** voir [CLAUDE.md](CLAUDE.md).
 > **Feuille de route et historique des changements :** voir [ROADMAP.md](ROADMAP.md).
@@ -16,10 +11,9 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 
 ## Fonctionnalités
 
-### Sources
-- **Export Excel** : ouverture d'un `.xlsx` ResX Resource Manager, progress bar en lignes lues
-- **Fichiers .resx** : ouverture d'une solution `.sln` / `.slnx` — les projets sont parcourus, chaque `.resx` neutre fournit le texte français et ses variantes de culture (`Msg.de-DE.resx`) les traductions
-- Les deux sources produisent la même identité de ligne `Projet | Fichier | Clé`
+### Source
+- **Fichiers .resx** : ouverture d'une solution `.sln` / `.slnx` — les projets sont parcourus, chaque `.resx` neutre fournit le texte français et ses variantes de culture (`Msg.de-DE.resx`) les traductions, progress bar en fichiers traités
+- Identité de ligne `Projet | Fichier | Clé`, la même que l'export ResX Resource Manager
 - Sont ignorés : les entrées `@Invariant`, les ressources non textuelles (images, icônes), les métadonnées du designer (`>>…`) et les répertoires `bin` / `obj`
 
 ### Affichage et édition
@@ -45,13 +39,13 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Vidage des caches** : deux boutons dédiés dans la configuration
 
 ### Glossaire métier
-- **Éditeur par langue** : bouton toolbar dédié — entrées `Source` / `Destination` / `Context`, persistées en JSON dans `%LocalAppData%\CheckTranslation`
+- **Éditeur multi-langues** : bouton toolbar dédié, grisé sans solution ouverte — grille terme × langue avec statuts (Proposé / En contrôle / Validé), persistée dans `.claude/glossary.json` de la solution quand ce répertoire existe, sinon dans `%LocalAppData%\CheckTranslation`
 - **Extraction IA assistée** : menu contextuel « Extraire les termes métier… » sur une sélection — l'IA propose des termes candidats, l'utilisateur valide un par un avant ajout
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 - **Retraduire les écarts au glossaire** : bouton de la toolbar, à côté du glossaire. Sélectionne dans toutes les langues les traductions qui n'emploient pas le terme imposé (français contenant le terme, traduction sans la forme attendue ni ses variantes), affiche le compte par langue, puis retraduit et re-vérifie après confirmation. À utiliser après une modification du glossaire faite hors de l'application, ou pour mettre un corpus existant en conformité
 
-### Vérification de mise en page *(source `.resx` uniquement)*
+### Vérification de mise en page
 - **Automatique, au chargement de la solution** : confronte chaque libellé de contrôle à la place réellement disponible dans son formulaire — troncatures des contrôles à largeur fixe, collisions des contrôles `AutoSize` avec leurs voisins
 - **Toutes les langues en une seule passe** : le coût dominant — découvrir les `.resx`, lire la géométrie de chaque formulaire, en déduire l'échelle — ne dépend pas de la langue. Sur une solution synthétique de 474 formulaires, passer d'une langue à sept coûte ×1,8, contre ×4,1 en relançant une passe par langue
 - **Changer de langue n'analyse rien** : les verdicts sont stockés par code de langue, comme les traductions. La colonne bascule simplement sur ceux de la langue affichée
@@ -62,14 +56,13 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Bouton toolbar dédié** : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
 - **Par langue** : traduites, non traduites, **identiques au français**, vérifiées, score moyen et distribution des scores par tranche (0–59, 60–69, 70–79, 80–89, 90–100), avec barres d'avancement
 - **Par projet / par fichier** : mêmes indicateurs pour la langue choisie, **triés du moins avancé au plus avancé** — ce qui reste à faire arrive en tête
-- **Mise en page** : troncatures, collisions, non vérifiables et conformes **pour chaque langue effectivement analysée**, triées de la plus défectueuse à la moins — c'est là qu'on voit laquelle déborde le plus. Une langue dont aucun libellé de contrôle n'est encore traduit n'y figure pas : elle n'a rien à montrer *(source `.resx` uniquement)*
+- **Mise en page** : troncatures, collisions, non vérifiables et conformes **pour chaque langue effectivement analysée**, triées de la plus défectueuse à la moins — c'est là qu'on voit laquelle déborde le plus. Une langue dont aucun libellé de contrôle n'est encore traduit n'y figure pas : elle n'a rien à montrer
 - **Chiffres cliquables** : un clic sur un nombre souligné bascule sur la langue concernée et filtre la grille sur ces lignes exactement — le tableau de bord est un point de départ de travail, pas une image. Double-clic sur une ligne de projet ou de fichier pour le même effet
 - **Copier** : le tableau affiché part dans le presse-papiers au format tabulé, collable dans un tableur
 
-### Fichier : sauvegarde, rafraîchissement, fusion
-- **Sauvegarde** : réécriture des traductions et des commentaires de vérification dans la source d'origine. En mode `.resx`, seules les variantes de culture réellement modifiées sont réécrites — le fichier neutre (français) n'est jamais touché, la mise en forme et le BOM d'origine sont préservés
-- **Rafraîchir (F5)** : recharge le fichier du disque en conservant les traductions en mémoire, détecte les changements du français/commentaire source et demande confirmation avant d'écraser
-- **Fusion** *(source Excel uniquement)* : report des traductions d'un fichier source vers un fichier destination via la clé `Projet | Fichier | Clé` ; dialogue de résolution des conflits ligne par ligne. Le bouton est désactivé en mode `.resx`
+### Fichier : sauvegarde, rafraîchissement
+- **Sauvegarde** : réécriture des traductions et des commentaires de vérification dans les seules variantes de culture réellement modifiées — le fichier neutre (français) n'est jamais touché, la mise en forme et le BOM d'origine sont préservés
+- **Rafraîchir (F5)** : recharge la solution depuis le disque en conservant les traductions en mémoire, détecte les changements du français/commentaire source et demande confirmation avant d'écraser
 
 ### Configuration
 - **Prompts** : traduction + vérification avec aperçu Markdown. Placeholders supportés : `{language}` (langue cible) et `{glossary}` (section glossaire injectée automatiquement)
@@ -139,7 +132,7 @@ Le glossaire est persisté séparément dans le même dossier, dans un unique fi
 
 ## Dépendances
 
-- [ClosedXML](https://github.com/ClosedXML/ClosedXML) 0.104.2 — lecture/écriture Excel
+- [ClosedXML](https://github.com/ClosedXML/ClosedXML) 0.104.2 — export / import Excel du glossaire
 - [OpenAI](https://www.nuget.org/packages/OpenAI) 2.8.0 — client OpenAI
 - [Anthropic](https://www.nuget.org/packages/Anthropic) 12.8.0 — client Anthropic
 - [Markdig](https://github.com/xoofx/markdig) 0.38.0 — aperçu Markdown

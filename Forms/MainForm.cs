@@ -4,7 +4,6 @@ namespace CheckTranslation;
 
 public partial class MainForm : Form
 {
-    private readonly IExcelService _excelService;
     private readonly ITranslationSourceFactory _sourceFactory;
     private readonly ILayoutCheckService _layoutCheckService;
     private readonly ITranslationService _translationService;
@@ -15,18 +14,18 @@ public partial class MainForm : Form
 
     internal static readonly LanguageInfo[] Languages =
     [
-        new("en-US", "Anglais",     9),
-        new("de-DE", "Allemand",    7),
-        new("es-ES", "Espagnol",   11),
-        new("it-IT", "Italien",    13),
-        new("nl-NL", "Néerlandais",15),
-        new("pl-PL", "Polonais",   17),
-        new("zh-CN", "Chinois",    19),
+        new("en-US", "Anglais"),
+        new("de-DE", "Allemand"),
+        new("es-ES", "Espagnol"),
+        new("it-IT", "Italien"),
+        new("nl-NL", "Néerlandais"),
+        new("pl-PL", "Polonais"),
+        new("zh-CN", "Chinois"),
     ];
 
     private string? _currentFilePath;
-    // Source chargée (Excel ou .resx). Porte le chargement, la sauvegarde et la disponibilité
-    // de la fusion ; null tant qu'aucun fichier n'a été ouvert.
+    // Source chargée (.resx désignés par la solution). Porte le chargement et la sauvegarde ;
+    // null tant qu'aucune solution n'a été ouverte.
     private ITranslationSource? _currentSource;
     private LanguageInfo _currentLanguage = Languages[0];
     private List<TranslationRow>? _allRows;
@@ -63,7 +62,6 @@ public partial class MainForm : Form
     private DataGridViewTextBoxColumn colLayout = null!;
 
     public MainForm() : this(
-        new ExcelService(),
         new TranslationSourceFactory(),
         new LayoutCheckService(),
         new TranslationService(),
@@ -75,7 +73,6 @@ public partial class MainForm : Form
     }
 
     internal MainForm(
-        IExcelService excelService,
         ITranslationSourceFactory sourceFactory,
         ILayoutCheckService layoutCheckService,
         ITranslationService translationService,
@@ -84,7 +81,6 @@ public partial class MainForm : Form
         Func<GlossaryForm> glossaryFormFactory,
         Func<GlossaryExtractionDialog> extractionDialogFactory)
     {
-        _excelService = excelService;
         _sourceFactory = sourceFactory;
         _layoutCheckService = layoutCheckService;
         _translationService = translationService;
@@ -97,13 +93,11 @@ public partial class MainForm : Form
         var icoPath = Path.Combine(AppContext.BaseDirectory, "Resources", "CheckTranslation.ico");
         if (File.Exists(icoPath))
             Icon = new Icon(icoPath);
-        btnOpen.Image = LoadIcon("open.png", 24);
+        btnOpen.Image = LoadIcon("solution.png", 24);
         btnSave.Image = LoadIcon("save.png", 24);
-        btnMerge.Image = LoadIcon("merge.png", 24);
         btnConfig.Image = LoadIcon("config.png", 24);
         btnOpen.Click += BtnOpen_Click;
         btnSave.Click += BtnSave_Click;
-        btnMerge.Click += BtnMerge_Click;
         btnConfig.Click += BtnConfig_Click;
         InitKeyColumn();
         InitCommentColumn();
@@ -482,7 +476,7 @@ public partial class MainForm : Form
         }
 
         // Même gel que TranslateRowsAsync : les résultats s'écrivent dans les dictionnaires des
-        // lignes, changer de langue, fusionner ou rafraîchir pendant l'attente les corromprait.
+        // lignes, changer de langue ou rafraîchir pendant l'attente les corromprait.
         dataGridView.EndEdit();
         toolStrip.Enabled = false;
         dataGridView.Enabled = false;
@@ -856,6 +850,20 @@ public partial class MainForm : Form
         UpdateFilterPanelLayout();
     }
 
+    /// <summary>
+    /// Le glossaire suit la solution : sans source chargée il n'y a rien à éditer ni à
+    /// retraduire, les deux boutons sont grisés — même logique que Sauver. Appelé à la
+    /// construction (état initial) et après chaque chargement, réussi ou non.
+    /// </summary>
+    private void UpdateGlossaryButtonsState()
+    {
+        bool hasSource = _allRows is not null;
+        if (btnGlossary is not null)
+            btnGlossary.Enabled = hasSource;
+        if (btnGlossaryDeviations is not null)
+            btnGlossaryDeviations.Enabled = hasSource;
+    }
+
     private void ArrangeToolStripItems()
     {
         if (btnRefresh is null || btnGlossary is null || btnGlossaryDeviations is null || btnDashboard is null || btnSolutionTree is null)
@@ -864,8 +872,6 @@ public partial class MainForm : Form
         toolStrip.Items.Clear();
         toolStrip.Items.Add(btnOpen);
         toolStrip.Items.Add(btnSave);
-        toolStrip.Items.Add(new ToolStripSeparator());
-        toolStrip.Items.Add(btnMerge);
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnSolutionTree);
         toolStrip.Items.Add(new ToolStripSeparator());
@@ -882,6 +888,8 @@ public partial class MainForm : Form
 
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnRefresh);
+
+        UpdateGlossaryButtonsState();
     }
 
     private void InitLanguageButtons()
@@ -960,7 +968,7 @@ public partial class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Sélectionner un export Excel ou une solution (.resx)",
+            Title = "Sélectionner une solution (.sln / .slnx)",
             Filter = _sourceFactory.OpenFileFilter,
             RestoreDirectory = true,
         };
@@ -991,15 +999,14 @@ public partial class MainForm : Form
         dataGridView.AutoGenerateColumns = false;
 
         // Même gel que le rafraîchissement : pendant le chargement, la toolbar proposait encore
-        // les drapeaux, la fusion et F5 sur les données de la source précédente. Les états
-        // individuels de Sauver / Fusionner restent gérés en dessous : ils décrivent la nouvelle
+        // les drapeaux et F5 sur les données de la source précédente. Les états individuels de
+        // Sauver et des boutons du glossaire restent gérés en dessous : ils décrivent la nouvelle
         // source et doivent survivre au dégel.
         dataGridView.EndEdit();
         toolStrip.Enabled = false;
         dataGridView.Enabled = false;
 
         btnSave.Enabled = false;
-        btnMerge.Enabled = false;
 
         try
         {
@@ -1031,7 +1038,7 @@ public partial class MainForm : Form
 
             // Le glossaire suit la solution : si elle est équipée d'un répertoire .claude, son
             // glossary.json (partagé avec les skills et l'outillage du dépôt) remplace le magasin
-            // global. Un Excel n'a pas de solution : retour au global. Les empreintes changent
+            // global. Une solution sans .claude ramène au global. Les empreintes changent
             // avec le magasin, les caches ne resservent donc rien de l'autre glossaire.
             _glossaryService.SwitchStore(SolutionGlossaryLocator.Locate(filePath));
             // Nouvelle source : l'arbre repart tout coché, comme les autres filtres repartent vides.
@@ -1067,7 +1074,7 @@ public partial class MainForm : Form
         {
             // Retour à la source précédente : la grille l'affiche toujours (_allRows et
             // _currentSource n'ont pas bougé), la status bar doit la décrire — pas le fichier en
-            // échec. btnSave / btnMerge sont restaurés par le finally.
+            // échec. btnSave et les boutons du glossaire sont restaurés par le finally.
             statusFileName.Text = previousFileLabel;
             statusRowCount.Text = previousRowCountLabel;
             MessageBox.Show(
@@ -1090,7 +1097,7 @@ public partial class MainForm : Form
             // Succès comme échec : ces états décrivent la source réellement en mémoire — la
             // nouvelle si le chargement a abouti, l'ancienne (toujours affichée et éditable) sinon.
             btnSave.Enabled = _allRows is not null;
-            btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
+            UpdateGlossaryButtonsState();
         }
     }
 
@@ -1145,115 +1152,10 @@ public partial class MainForm : Form
         }
     }
 
-    private async void BtnMerge_Click(object? sender, EventArgs e)
-    {
-        if (_allRows is null || _allRows.Count == 0)
-            return;
-
-        // La fusion n'existe que pour la source Excel : le bouton est déjà désactivé dans les
-        // autres cas, la garde protège les appels par programme (raccourci, automatisation).
-        if (_currentSource?.SupportsMerge != true)
-            return;
-
-        dataGridView.EndEdit();
-
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Sélectionner le fichier Excel destination",
-            Filter = "Fichiers Excel (*.xlsx)|*.xlsx",
-            RestoreDirectory = true,
-            CheckFileExists = true,
-        };
-
-        if (!string.IsNullOrWhiteSpace(_currentFilePath))
-            dialog.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
-
-        if (dialog.ShowDialog() != DialogResult.OK)
-            return;
-
-        // Un seul mecanisme de protection pour toute la fusion : SetWritingState bloque la
-        // fermeture et desactive toolStrip + dataGridView pendant la duree complete de
-        // l'operation (lecture des differences + dialogs de resolution + ecriture disque).
-        // Rationale : eviter la re-entrance (clic Merge / Open / Save) pendant la phase
-        // lecture, et eviter la corruption pendant la phase ecriture. Les dialogs modaux
-        // MergeDifferenceForm fonctionnent normalement meme avec la toolbar parent desactivee.
-        SetWritingState(true);
-        statusProgressBar.Visible = true;
-        statusProgressBar.Style = ProgressBarStyle.Marquee;
-        statusRowCount.Text = "Analyse des différences...";
-
-        try
-        {
-            // Même raison que pour la sauvegarde : la vue active doit être poussée dans les
-            // dictionnaires avant que la fusion ne lise Translations[langue].
-            foreach (var row in _allRows)
-                row.CommitActiveLanguage(_currentLanguage.Code);
-
-            var sourceDifferences = await Task.Run(() => _excelService.GetMergeSourceDifferences(dialog.FileName, _currentLanguage, _allRows));
-            var mergeDecision = ConfirmMergeDifferences(sourceDifferences);
-            if (mergeDecision.Cancelled)
-            {
-                statusRowCount.Text = "Fusion annulée";
-                return;
-            }
-
-            statusRowCount.Text = "Fusion en cours...";
-            var mergedCount = await Task.Run(() => _excelService.Merge(dialog.FileName, _currentLanguage, _allRows, mergeDecision.Resolutions));
-            int ignoredCount = sourceDifferences.Count - mergeDecision.Resolutions.Count(r => r.Value.HasAnyChange);
-
-            statusRowCount.Text = sourceDifferences.Count > 0
-                ? $"Fusion : {mergedCount} ligne(s) reportée(s), {ignoredCount} ignorée(s)"
-                : $"Fusion : {mergedCount} ligne(s) reportée(s)";
-            MessageBox.Show(
-                sourceDifferences.Count > 0
-                    ? $"Fusion terminée.\n\n{mergedCount} ligne(s) mise(s) à jour dans le fichier destination.\n{ignoredCount} ligne(s) ont été ignorée(s) car le français ou le commentaire source diffère."
-                    : $"Fusion terminée.\n\n{mergedCount} ligne(s) mise(s) à jour dans le fichier destination.",
-                "Fusion réussie",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                $"Impossible de fusionner vers le fichier Excel :\n\n{ex.Message}",
-                "Erreur",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-        }
-        finally
-        {
-            statusProgressBar.Style = ProgressBarStyle.Blocks;
-            statusProgressBar.Visible = false;
-            SetWritingState(false);
-        }
-    }
-
-    private MergeDecision ConfirmMergeDifferences(IReadOnlyList<MergeDifference> differences)
-    {
-        var resolutions = new Dictionary<string, MergeDifferenceResolution>(StringComparer.OrdinalIgnoreCase);
-        if (differences.Count == 0)
-            return new MergeDecision(resolutions, false);
-
-        statusProgressBar.Visible = false;
-
-        foreach (var difference in differences)
-        {
-            var result = MergeDifferenceForm.ShowDialog(this, difference);
-            if (result is null)
-                return new MergeDecision(resolutions, true);
-
-            resolutions[difference.SyncKey] = result;
-        }
-
-        return new MergeDecision(resolutions, false);
-    }
-
-    private sealed record MergeDecision(IReadOnlyDictionary<string, MergeDifferenceResolution> Resolutions, bool Cancelled);
-
     // --- Arborescence de la solution (style ResX Resource Manager) ---
     // Panneau gauche : projets et fichiers de la source, avec cases à cocher. Décocher un
     // fichier le retire de l'AFFICHAGE seulement : c'est un filtre, pas une exclusion — la
-    // sauvegarde, la fusion et le tableau de bord portent toujours sur toutes les lignes.
+    // sauvegarde et le tableau de bord portent toujours sur toutes les lignes.
 
     private SplitContainer? splitContainer;
     private TreeView? solutionTree;
@@ -1535,7 +1437,7 @@ public partial class MainForm : Form
         AppConfig.Current.Save();
     }
 
-    // Trim : les identités viennent de cellules Excel ou de chemins, des espaces parasites ne
+    // Trim : les identités viennent de chemins de fichiers, des espaces parasites ne
     // doivent pas dédoubler un fichier. Sur une valeur déjà nette, Trim rend la même instance.
     private static (string Project, string File) BuildFileKey(string project, string file)
         => (project.Trim(), file.Trim());
@@ -2602,9 +2504,8 @@ public partial class MainForm : Form
         // Les résultats du batch atterrissent dans la vue active (Translation / Comment) des
         // lignes sélectionnées : tout ce que la toolbar propose pendant l'attente les corromprait.
         // Changer de langue committerait le placeholder dans la langue quittée et ferait écrire
-        // les résultats dans la nouvelle ; fusionner reporterait les placeholders dans l'Excel
-        // destination ; rafraîchir remplacerait les lignes et les résultats iraient dans des
-        // objets orphelins. Même gel que RunLayoutCheckAsync : toolbar ET grille.
+        // les résultats dans la nouvelle ; rafraîchir remplacerait les lignes et les résultats
+        // iraient dans des objets orphelins. Même gel que RunLayoutCheckAsync : toolbar ET grille.
         dataGridView.EndEdit();
         toolStrip.Enabled = false;
         dataGridView.Enabled = false;
@@ -2653,7 +2554,7 @@ public partial class MainForm : Form
                     {
                         // Entrée inexploitable dans la réponse : laisser le placeholder ferait
                         // croire à une traduction — et il pouvait être sauvegardé tel quel dans
-                        // le .resx ou l'Excel. La ligne retrouve sa valeur d'avant le batch,
+                        // le .resx. La ligne retrouve sa valeur d'avant le batch,
                         // comme dans le catch d'échec complet.
                         rows[rowIndex].Translation = previousTranslations[rowIndex];
                         rows[rowIndex].Comment = previousComments[rowIndex];
@@ -2721,7 +2622,7 @@ public partial class MainForm : Form
         }
 
         // Même gel que TranslateRowsAsync : les scores atterrissent dans la vue active des lignes,
-        // changer de langue, fusionner ou rafraîchir pendant l'attente les corromprait.
+        // changer de langue ou rafraîchir pendant l'attente les corromprait.
         dataGridView.EndEdit();
         toolStrip.Enabled = false;
         dataGridView.Enabled = false;
@@ -3129,7 +3030,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
         _closeBlockedFlashTimer?.Stop();
 
         // Ne restaurer le texte memorise que si la status bar affiche encore notre message de flash.
-        // Si la sauvegarde / fusion s'est terminee entre temps, son code de finalisation a deja pose
+        // Si la sauvegarde s'est terminee entre temps, son code de finalisation a deja pose
         // un texte definitif (ex. "Lignes : N (sauvegarde)") - on ne l'ecrase pas.
         if (statusRowCount.Text == _flashedMessage && _statusTextBeforeCloseBlocked is not null)
             statusRowCount.Text = _statusTextBeforeCloseBlocked;
@@ -3317,7 +3218,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
-            btnMerge.Enabled = _allRows is not null && _currentSource?.SupportsMerge == true;
+            UpdateGlossaryButtonsState();
             UpdateRefreshButtonState();
         }
     }
@@ -3606,4 +3507,4 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
     }
 }
 
-internal sealed record LanguageInfo(string Code, string Name, int Column);
+internal sealed record LanguageInfo(string Code, string Name);

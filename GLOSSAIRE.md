@@ -33,8 +33,8 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    par terme), daté et portant l'empreinte du glossaire à l'export. Seuls les termes Proposé
    passent En contrôle : les Validé restent injectés dans les prompts pendant toute la durée du
    contrôle, et repassent Validé au retour s'ils reviennent inchangés.
-3. **Retour et import** — lecture du classeur corrigé, différences présentées terme par terme
-   (patron du dialog de fusion), backup daté de l'ancien glossaire avant remplacement, compte
+3. **Retour et import** — lecture du classeur corrigé, différences présentées terme par terme,
+   backup daté de l'ancien glossaire avant remplacement, compte
    rendu des changements. Les termes acceptés passent Validé. Un terme En contrôle revenu
    strictement inchangé repasse Validé **seulement si le classeur couvre toutes les langues** :
    un classeur restreint à une équipe de langue ne dit rien des autres colonnes, son silence ne
@@ -80,8 +80,8 @@ solution ouverte possède un répertoire `.claude`, CheckTranslation lit et écr
 **`.claude/glossary.json` à côté du `.sln` / `.slnx`** ; c'est le même fichier que lisent les
 skills et l'outillage `resx-tools` du dépôt (elec calc : `glossary.py check` contrôle les
 traductions, `glossary.py extract` impose les termes dans les prompts des agents). Une seule
-terminologie, versionnée avec le code, relue en revue de code comme lui. Sans `.claude`, ou pour
-un export Excel, l'application retombe sur le magasin global du profil utilisateur.
+terminologie, versionnée avec le code, relue en revue de code comme lui. Sans `.claude`,
+l'application retombe sur le magasin global du profil utilisateur.
 
 Le format est celui de l'application (schéma v2, statuts en toutes lettres), sauvegardé dans un
 ordre stable pour que le diff git ne montre que ce qui change. Les deux consommateurs appliquent la

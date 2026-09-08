@@ -13,7 +13,7 @@ Guide technique du projet **CheckTranslation**, destiné aux humains comme aux a
 1. [Aperçu](#1-aperçu)
 2. [Stack technique](#2-stack-technique)
 3. [Structure du projet](#3-structure-du-projet)
-4. [Format Excel (ResX Resource Manager)](#4-format-excel-resx-resource-manager)
+4. [Format .resx (lecture directe)](#4-format-resx-lecture-directe)
 5. [Build & exécution](#5-build--exécution)
 6. [Architecture](#6-architecture)
 7. [Flux fonctionnels](#7-flux-fonctionnels)
@@ -27,14 +27,11 @@ Guide technique du projet **CheckTranslation**, destiné aux humains comme aux a
 
 ## 1. Aperçu
 
-CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources `.resx`. Elle sait travailler sur **deux sources** :
+CheckTranslation est une application de bureau **Windows Forms** en **C# / .NET 8** (`net8.0-windows`) destinée à **contrôler, traduire et vérifier** des chaînes de ressources `.resx`. Elle travaille **directement sur les fichiers `.resx`** d'une solution (`.sln` / `.slnx`) : les projets sont parcourus, chaque `.resx` neutre fournit le français, ses variantes de culture les traductions.
 
-- un **export Excel** généré par ResX Resource Manager (`.xlsx`) ;
-- les **fichiers `.resx` directement**, désignés par une solution (`.sln` / `.slnx`).
+L'application affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis réécrit les seules variantes de culture modifiées. (La lecture d'un export Excel ResX Resource Manager et la fusion Excel ont existé jusqu'en septembre 2026 ; elles ont été retirées, la solution étant la seule source.)
 
-Dans les deux cas, l'application affiche les entrées dans un `DataGridView`, permet l'édition de la traduction dans une langue cible, puis réécrit la source d'origine.
-
-Elle peut appeler les API **OpenAI** et **Anthropic**, en direct ou au travers de la passerelle **Bifrost**, pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts. Elle peut aussi fusionner des traductions d'un fichier source vers un fichier destination avec résolution des conflits ligne-par-ligne.
+Elle peut appeler les API **OpenAI** et **Anthropic**, en direct ou au travers de la passerelle **Bifrost**, pour traduire et vérifier des traductions en lot, avec cache mémoire et glossaire métier injecté dans les prompts.
 
 ---
 
@@ -47,7 +44,7 @@ Elle peut appeler les API **OpenAI** et **Anthropic**, en direct ou au travers d
 - **IDE :** Visual Studio (fichier solution : `CheckTranslation.slnx`)
 
 ### Dépendances NuGet
-- `ClosedXML` `0.104.2` — lecture/écriture `.xlsx`
+- `ClosedXML` `0.104.2` — export / import Excel du glossaire (contrôle externe)
 - `OpenAI` `2.8.0` — client chat completions + listing modèles
 - `Anthropic` `12.8.0` — client messages + listing modèles
 - `Markdig` `0.38.0` — rendu Markdown (aperçu des prompts)
@@ -70,9 +67,6 @@ CheckTranslation/
 │   ├── ConfigForm.cs                         # Config (prompts, IA, vidage cache)
 │   ├── ConfigForm.Designer.cs
 │   ├── ConfigForm.resx
-│   ├── MergeDifferenceForm.cs                # Dialog résolution conflits de fusion
-│   ├── MergeDifferenceForm.Designer.cs
-│   ├── MergeDifferenceForm.resx
 │   ├── GlossaryForm.cs                       # Éditeur du glossaire transversal (terme × langue, statuts)
 │   ├── GlossaryForm.Designer.cs
 │   ├── GlossaryForm.resx
@@ -88,20 +82,14 @@ CheckTranslation/
 │   ├── TranslationRow.cs                # Ligne de traduction + dictionnaires par colonne
 │   ├── AiProvider.cs                    # Enum OpenAI / Anthropic
 │   ├── AppConfig.cs                     # Config persistante (JSON + DPAPI)
-│   ├── MergeDifference.cs               # Différence source vs destination
-│   ├── MergeDifferenceResolution.cs     # Décision utilisateur par ligne (fusion)
-│   ├── MergeRowSnapshot.cs              # Snapshot lecture seule pour l'UI de fusion
 │   ├── Glossary.cs                      # Glossaire transversal (GlossaryTerm, statuts) + legacy v1
 │   ├── GlossaryEntry.cs                 # Projection d'un terme sur une langue (Source / Destination / Context)
 │   ├── GlossaryExtractionResult.cs      # Bilan d'extraction (candidats + lots en échec / illisibles / tronqués) et lecture d'une réponse
 │   └── LayoutStatus.cs                  # Enum verdict de mise en page (NotChecked / Ok / Truncated / Collision / Unverifiable)
 ├── Services/
-│   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save / SupportsMerge)
-│   ├── ITranslationSourceFactory.cs / TranslationSourceFactory.cs  # .xlsx → Excel, .sln/.slnx → resx
-│   ├── ExcelTranslationSource.cs             # Source Excel (seule à supporter la fusion)
+│   ├── ITranslationSource.cs                 # Abstraction de source (Load / Save)
+│   ├── ITranslationSourceFactory.cs / TranslationSourceFactory.cs  # .sln/.slnx → resx
 │   ├── ResxTranslationSource.cs              # Source .resx
-│   ├── IExcelService.cs / ExcelService.cs    # Façade DI pour la fusion Excel
-│   ├── ExcelReader.cs                        # Lecture / écriture / fusion via ClosedXML
 │   ├── ResxReader.cs                         # Lecture / écriture directe des .resx (XDocument)
 │   ├── AtomicFile.cs                         # Écriture en deux temps : temporaire + File.Replace
 │   ├── FormGeometryReader.cs                 # Géométrie des contrôles WinForms (socle anti-débordement)
@@ -128,31 +116,13 @@ CheckTranslation/
 ├── .github/workflows/ci.yml                  # CI GitHub Actions : build + tests sur windows-latest
 ├── FormTest/                                 # Fixture : formulaire localisé en 7 langues, banc d'essai manuel de la vérification de mise en page (§11)
 ├── Resources/                                # Icônes PNG (drapeaux, toolbar, tabs)
-├── Input.xlsx                                # Fichier Excel exemple (~3 Mo)
 ├── README.md                                 # Documentation utilisateur
 └── CLAUDE.md                                 # Ce fichier (guide technique + suivi)
 ```
 
 ---
 
-## 4. Format Excel (ResX Resource Manager)
-
-Export d'une feuille `ResXResourceManager` (~22 000 lignes). Les colonnes sont 1-indexées :
-
-| Colonne | Contenu |
-|---------|---------|
-| A (1) | Project |
-| B (2) | File |
-| C (3) | Key |
-| D (4) | Comment source (contient `@Invariant` pour ignorer la ligne) |
-| E (5) | Texte français (langue par défaut, pas de colonne de commentaire) |
-| F | Comment.de-DE |
-| G | .de-DE (allemand) |
-| H…S | Autres langues : en-US, es-ES, it-IT, nl-NL, pl-PL, zh-CN (chaque langue = une colonne de commentaire précédée d'une colonne de traduction) |
-
-Convention : pour une langue dont la colonne de traduction est `col`, la colonne de commentaire associée est `col - 1`. Cette correspondance code de langue → colonne est portée par `LanguageInfo.Column` et **ne sort pas de `ExcelReader`** : partout ailleurs, une langue est identifiée par son code.
-
-### 4.bis Format .resx (lecture directe)
+## 4. Format .resx (lecture directe)
 
 L'utilisateur ouvre une solution (`.sln` ou `.slnx`) ; `SolutionReader` en extrait les projets, puis `ResxReader` scanne chaque répertoire de projet à la recherche des `.resx`.
 
@@ -164,7 +134,7 @@ L'utilisateur ouvre une solution (`.sln` ou `.slnx`) ; `SolutionReader` en extra
 | Français + commentaire source | `<value>` et `<comment>` du fichier neutre (`Msg.resx`) |
 | Traduction + commentaire par langue | `<value>` et `<comment>` de la variante (`Msg.de-DE.resx`) |
 
-Ces conventions reproduisent **exactement** les colonnes `Project` / `File` / `Key` de l'export Excel : les deux sources produisent donc la même clé de corrélation `Project\|File\|Key`.
+Ces conventions reproduisent les colonnes `Project` / `File` / `Key` de l'export ResX Resource Manager : l'identité `Project\|File\|Key` reste compatible avec l'outillage qui raisonne en ces termes (dont `resx-tools` d'elec calc).
 
 Entrées exclues au chargement (mêmes règles que ResX Resource Manager) :
 - commentaire neutre contenant `@Invariant` (~30 % des lignes sur le corpus de référence) ;
@@ -267,7 +237,6 @@ pas Windows (`NETSDK1082`, pas de runtime pack WindowsForms pour `linux-x64`). V
 1. `AppConfig.Load()` → alimente `AppConfig.Current`.
 2. `ApplicationConfiguration.Initialize()` (DPI, police).
 3. Configure un `ServiceCollection` :
-   - `IExcelService → ExcelService` (singleton)
    - `ITranslationService → TranslationService` (singleton)
    - `IGlossaryService → GlossaryService` (singleton)
    - `ConfigForm`, `GlossaryForm`, `GlossaryExtractionDialog` (transient + factory `Func<T>`)
@@ -292,23 +261,13 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`Forms/ConfigForm.cs`** — dialog modal pour `AppConfig`. Tous les contrôles (prompts, fournisseur IA, clés, URLs, modèles, boutons "Vider cache trad./vérif.") sont dans le Designer. `ConfigForm.cs` contient uniquement les handlers et la logique métier.
 
-**`Forms/MergeDifferenceForm.cs`** — dialog affichant côte à côte ligne source et ligne destination ; deux checkboxes ("reporter français+commentaire", "reporter traduction+commentaire") + bouton Continuer/Annuler. Colonnes DataGridView générées dynamiquement selon le contexte.
-
 **`Forms/GlossaryForm.cs`** — éditeur du glossaire transversal : une ligne par terme, une colonne par langue (créées par code depuis `MainForm.Languages`), plus Statut (Proposé / En contrôle / Validé) et Commentaire réviseur (lecture seule, rempli par l'import). Grille non liée : les dictionnaires de `GlossaryTerm` ne se prêtent pas au binding. Doublons de Source refusés à l'enregistrement, terme saisi à la main Validé par défaut, confirmation si modifications non enregistrées.
 
 **`Forms/GlossaryExtractionDialog.cs`** — dialog d'extraction assistée : l'IA propose une liste de termes candidats (source + destination + contexte), l'utilisateur coche ceux à ajouter (édition possible inline) puis valide. Retourne `AcceptedEntries` (liste filtrée).
 
 ### 6.3 Services
 
-**`ExcelReader` (static)** — cœur Excel :
-- `Load(filePath, languages, progress)` : parse la feuille, ignore les `@Invariant`, renseigne `TranslationRow.RowNumber/Project/File/Key/FrenchComment/French` + dictionnaires `Translations[code]` et `Comments[code]` (la colonne de chaque langue vient de `LanguageInfo.Column`). Rapporte la progression via `IProgress<SourceLoadProgress>` (toutes les 10 lignes + bornes). Ne positionne pas la vue active : c'est `MainForm` qui appelle `SelectLanguage`.
-- `Save(filePath, rows, languages)` : réécrit cellule par cellule les langues connues, la correspondance code → colonne étant reconstruite localement. `WriteCellValue` double une apostrophe de tête pour la préserver. La synchronisation de la vue active est faite en amont par `MainForm` (`CommitActiveLanguage`).
-- `Merge(...)` / `GetMergeSourceDifferences(...)` prennent la `LanguageInfo` active : la colonne sert à écrire dans le classeur destination, le code à lire la traduction dans la ligne source.
-- Corrélation des lignes via `SyncKey = Project|File|Key` (séparateur `\u001F`), détection des divergences français/commentaire, écriture sélective selon `MergeDifferenceResolution`.
-
-**`ExcelService`** (implémente `IExcelService`) : façade DI **réduite à la fusion** (`Merge`, `GetMergeSourceDifferences`). Le chargement et la sauvegarde passent désormais par `ITranslationSource`.
-
-**`ITranslationSource`** — abstraction des sources. Une instance est liée à un chemin et expose `Path`, `Kind` (« Excel » / « resx », affiché dans la status bar), `SupportsMerge`, `Load(languages, progress)` et `Save(rows, languages)`. Deux implémentations : `ExcelTranslationSource` (`SupportsMerge = true`) et `ResxTranslationSource` (`SupportsMerge = false`). `TranslationSourceFactory.Create(path)` choisit selon l'extension et expose `OpenFileFilter` pour l'`OpenFileDialog`.
+**`ITranslationSource`** — abstraction de la source. Une instance est liée à un chemin et expose `Path`, `Kind` (« resx », affiché dans la status bar), `SupportsLayoutCheck`, `Load(languages, progress)` et `Save(rows, languages)`. Une seule implémentation aujourd'hui, `ResxTranslationSource` ; l'abstraction et `TranslationSourceFactory` (qui expose aussi `OpenFileFilter`, limité aux `.sln` / `.slnx`) survivent au retrait de la source Excel : elles isolent l'interface de la lecture disque et restent le point d'accroche d'une source future.
 
 **`SolutionReader` (static)** — projets d'une solution, aux deux formats : `.slnx` (XML, `<Project Path>` à tous les niveaux, y compris dans les `<Folder>`) et `.sln` (texte, regex sur les lignes `Project(...)`, les dossiers de solution étant écartés par le filtre d'extension). Les projets absents du disque sont ignorés ; deux projets d'un même répertoire ne sont scannés qu'une fois.
 
@@ -322,7 +281,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`FormGeometryReader` (static)** — lit la géométrie des contrôles d'un formulaire WinForms depuis son `.resx` neutre (`X.Size`, `X.Location`, `X.Font`, `X.AutoSize`, `$this.ClientSize`), pour pouvoir confronter une traduction à la place réellement disponible. Socle de la vérification de débordement ; **aucune mesure ni UI à ce stade**.
 - Ces entrées portent un attribut `type` : elles sont donc déjà exclues des lignes traduisibles par `ResxReader`. Les deux lectures sont complémentaires.
-- **Elles n'existent que dans les `.resx`** : l'export Excel n'expose aucune clé de géométrie (vérifié sur le corpus de référence : 0 sur 22 374 lignes). La vérification de débordement est donc réservée au mode `.resx`.
+- **Elles n'existent que dans les `.resx`** des formulaires : un dictionnaire de messages n'a pas de géométrie, ses lignes restent `NotChecked`.
 - **Et seulement si le formulaire est en `Localizable = true`** — c'est ce mode qui fait sérialiser la géométrie par contrôle. Sinon `Read` renvoie une géométrie vide. *Sur le corpus de référence, tous les formulaires le sont* (confirmé par l'auteur) : la signature s'observe déjà dans l'export, où chaque contrôle porte `.AccessibleDescription`, `.AccessibleName` et `.ImageKey`.
 - `FormGeometry.TryGetForKey("btnOk.Text")` retrouve le contrôle porteur d'une clé ; `GetEffectiveFont` applique l'héritage de la police du formulaire.
 - Lit aussi la **filiation** via les métadonnées `>>X.Parent` : les coordonnées étant relatives au conteneur, `EnumerateSiblingGroups()` ne regroupe que des contrôles comparables.
@@ -348,7 +307,7 @@ Chaque formulaire principal a un **ctor par défaut** qui instancie manuellement
 
 **`GlossaryService`** (implémente `IGlossaryService`) :
 - Stockage **transversal** (`GlossaryTerm` : un terme français, ses traductions par langue, un statut Proposé / En contrôle / Validé, un commentaire réviseur — voir [GLOSSAIRE.md](GLOSSAIRE.md)) dans un fichier `glossary.json`. L'ancien schéma par langue (v1) est migré au chargement (idempotent, fichier réécrit en v2 à la première sauvegarde) ; les termes migrés naissent Validé pour ne pas changer le comportement des prompts.
-- **Deux magasins, un seul à la fois** : le magasin **global** du profil (`%LocalAppData%\CheckTranslation\glossary.json`), et le glossaire **d'une solution** — `<dossier du .sln/.slnx>/.claude/glossary.json`, partagé avec les skills et l'outillage `resx-tools` du dépôt (elec calc). `SolutionGlossaryLocator.Locate(path)` désigne ce dernier dès que la solution possède un répertoire `.claude` (le fichier naît à la première sauvegarde) ; `MainForm` appelle `SwitchStore` après chaque chargement de source, un Excel ramenant au global. Le chemin est injectable par constructeur (`internal GlossaryService(string filePath)`) : c'est ce qui rend le service testable sans toucher au glossaire réel.
+- **Deux magasins, un seul à la fois** : le magasin **global** du profil (`%LocalAppData%\CheckTranslation\glossary.json`), et le glossaire **d'une solution** — `<dossier du .sln/.slnx>/.claude/glossary.json`, partagé avec les skills et l'outillage `resx-tools` du dépôt (elec calc). `SolutionGlossaryLocator.Locate(path)` désigne ce dernier dès que la solution possède un répertoire `.claude` (le fichier naît à la première sauvegarde) ; `MainForm` appelle `SwitchStore` après chaque chargement de source, une solution sans `.claude` ramenant au global. Le chemin est injectable par constructeur (`internal GlossaryService(string filePath)`) : c'est ce qui rend le service testable sans toucher au glossaire réel.
 - **Sauvegarde déterministe** : termes triés par source, langues par code, statuts en toutes lettres — le fichier d'une solution est versionné avec ses sources, son diff ne doit montrer que ce qui a changé.
 - **Cellules à formes multiples** : une traduction peut porter plusieurs formes séparées par « / » (`kabel / kabl`), convention héritée de `glossary.md` d'elec calc. `CanonicalForm` n'injecte dans les prompts que la première ; les suivantes ne servent qu'au contrôle des formes fléchies par `glossary.py check`. L'empreinte et l'export Excel portent la cellule entière.
 - `GetTerms()` / `ReplaceTerms(terms)` : la surface de l'éditeur multi-langues, terme entier (copies isolées, normalisation à l'écriture). `AddProposedTerms(code, entries)` : versement des candidats d'extraction — terme nouveau Proposé, case déjà tranchée jamais écrasée.
@@ -423,17 +382,12 @@ Le repère de mesure n'a pas à correspondre à celui du fichier : l'analyse ne 
 ### 6.5 Modèles
 
 **`TranslationRow`** (POCO) :
-- Identité : `RowNumber` (ligne Excel), `Project`, `File`, `Key`.
+- Identité : `Project`, `File`, `Key`.
 - Source : `French`, `FrenchComment`.
 - Vue langue active : `Translation`, `Comment` (modifiées directement par l'UI).
 - Multi-langues : `Translations`, `Comments` et les **verdicts de mise en page**, tous indexés par code de langue. Un verdict décrit une traduction précise, donc une langue précise : le stocker par langue est ce qui permet d'analyser les sept en une passe et de basculer sans rien recalculer. `SelectLayoutVerdict(code)` charge la vue active (`LayoutStatus` / `LayoutIssue`), `GetLayoutStatus(code)` lit celle d'une autre langue, `InvalidateLayoutVerdict(code)` périme la seule langue éditée.
-- `SwitchLanguage(oldCol, newCol)` : pousse la vue active dans le dictionnaire sous `oldCol`, recharge depuis `newCol`. Évite le rechargement Excel à chaque switch de langue.
+- `SwitchLanguage(oldCol, newCol)` : pousse la vue active dans le dictionnaire sous `oldCol`, recharge depuis `newCol`. Évite toute relecture disque au changement de langue.
 - `GetSyncKey()` : `Project|File|Key` avec séparateur `\u001F`.
-
-**Fusion** :
-- `MergeRowSnapshot` : record immuable `(Project, File, Key, French, FrenchComment, Translation, TranslationComment)`.
-- `MergeDifference(SyncKey, Source, Destination)` : paire affichée dans le dialog.
-- `MergeDifferenceResolution(UpdateFrenchAndComment, UpdateTranslationAndComment)` : décision utilisateur (bool + bool). Propriété dérivée `HasAnyChange`.
 
 **Glossaire** :
 - `Glossary` : conteneur v2 — liste de `GlossaryTerm` + champ legacy `EntriesByLanguage` relu pour migration, jamais réécrit.
@@ -479,12 +433,12 @@ Deux prédicats portent cette classification et évitent d'éparpiller les `swit
 3. `MainForm` restaure la taille de la fenêtre et les largeurs de colonnes depuis `AppConfig`.
 
 ### 7.2 Ouverture d'une source
-1. Dialog `OpenFileDialog` (filtre fourni par `TranslationSourceFactory.OpenFileFilter` : `.xlsx`, `.sln`, `.slnx`) → `_currentFilePath`.
-2. `TranslationSourceFactory.Create(path)` construit `_currentSource` selon l'extension.
-3. `source.Load(Languages, progress)` charge les lignes (progress bar alimentée par `SourceLoadProgress(Done, Total)` — en lignes lues pour l'Excel, en fichiers neutres traités pour le .resx).
-4. Les entrées `@Invariant` sont ignorées (les deux sources).
-5. `row.SelectLanguage(code)` positionne la vue active : les sources remplissent les dictionnaires par code de langue mais ignorent la langue affichée.
-6. Les filtres de l'UI sont réinitialisés, `DataSource` assigné, et `btnMerge` activé **seulement si** `source.SupportsMerge`.
+1. Dialog `OpenFileDialog` (filtre fourni par `TranslationSourceFactory.OpenFileFilter` : `.sln`, `.slnx`) → `_currentFilePath`.
+2. `TranslationSourceFactory.Create(path)` construit `_currentSource` (`ResxTranslationSource`).
+3. `source.Load(Languages, progress)` charge les lignes (progress bar alimentée par `SourceLoadProgress(Done, Total)` — en fichiers neutres traités).
+4. Les entrées `@Invariant` sont ignorées.
+5. `row.SelectLanguage(code)` positionne la vue active : la source remplit les dictionnaires par code de langue mais ignore la langue affichée.
+6. Les filtres de l'UI sont réinitialisés, `DataSource` assigné, Sauver et les deux boutons du glossaire activés (`UpdateGlossaryButtonsState` : sans source, le glossaire n'a rien à éditer ni à retraduire).
 7. Le glossaire suit la solution : `_glossaryService.SwitchStore(SolutionGlossaryLocator.Locate(path))` bascule sur `.claude/glossary.json` si la solution possède un répertoire `.claude`, sinon sur le magasin global. La status bar l'indique (« glossaire : .claude\glossary.json »). Les empreintes changent avec le magasin : les caches ne resservent rien de l'autre glossaire.
 
 ### 7.3 Affichage / édition
@@ -523,28 +477,20 @@ Menu contextuel sur `colTranslation` :
 
 En multi-sélection : mêmes actions sur toute la sélection. Progress bar alimentée via `IProgress<int>`; `UseWaitCursor` pendant l'appel. Avertissement si des réponses IA n'ont pas pu être extraites.
 
-Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l'analyse de mise en page) : les résultats du batch s'écrivent dans la vue active des lignes sélectionnées, et changer de langue, fusionner ou rafraîchir pendant l'attente corromprait les données (voir §10). F5 est bloqué par `CanRefreshView`, qui vérifie `toolStrip.Enabled`.
+Pendant tout l'appel, **toolbar et grille sont gelées** (même mécanisme que l'analyse de mise en page) : les résultats du batch s'écrivent dans la vue active des lignes sélectionnées, et changer de langue ou rafraîchir pendant l'attente corromprait les données (voir §10). F5 est bloqué par `CanRefreshView`, qui vérifie `toolStrip.Enabled`.
 
 ### 7.8 Rafraîchir (bouton ou F5)
-- **Fichier chargé** : `ExcelService.LoadWithRowProgress(...)` recharge depuis le disque. Détection des lignes dont le français/commentaire source a changé → confirmation utilisateur avant d'écraser les valeurs en mémoire. Les traductions des lignes inchangées sont conservées.
+- **Solution chargée** : `_currentSource.Load(...)` recharge depuis le disque. Détection des lignes dont le français/commentaire source a changé → confirmation utilisateur avant d'écraser les valeurs en mémoire. Les traductions des lignes inchangées sont conservées.
 - **Pas de fichier / après édition** : `ApplyFiltersPreservingSelection()` réapplique filtres + tri.
 - L'indicateur `Rafraîchir *` (étoile) s'affiche après une édition/traduction/vérification pour signaler qu'une ré-application filtres/tri est utile.
 
 ### 7.9 Sauvegarde
 - `MainForm` pousse d'abord la vue active dans les dictionnaires (`row.CommitActiveLanguage(code)`), puis appelle `_currentSource.Save(rows, Languages)`. Sans ce commit, la langue affichée ne serait pas sauvegardée : elle ne vit que dans `Translation` / `Comment`.
-- Source Excel : réécriture des cellules de toutes les langues connues. Les commentaires de vérification (format score) sont aussi persistés dans les colonnes Excel correspondantes.
-- Source .resx : réécriture des seules variantes de culture réellement modifiées ; le fichier neutre n'est jamais touché.
+- Réécriture des seules variantes de culture réellement modifiées, commentaires de vérification compris ; le fichier neutre n'est jamais touché.
 - Toute la durée de l'opération est encadrée par `SetWritingState(true/false)` (bloc `finally`) : toolbar et grille désactivées, fermeture de la fenêtre refusée, status bar « Sauvegarde en cours… ».
 
-### 7.10 Fusion (source Excel uniquement)
-0. `SupportsMerge` vaut `false` pour la source .resx : le bouton est désactivé et `BtnMerge_Click` sort immédiatement.
-1. Dialog → `_destinationFilePath`, puis `SetWritingState(true)` — le verrou couvre **toute** la fusion (analyse des différences, dialogs de résolution, écriture disque) et est levé dans le `finally`. Les `MergeDifferenceForm` restent utilisables : ce sont des dialogs modaux, la désactivation du parent ne les affecte pas.
-2. `ExcelService.GetMergeSourceDifferences(...)` détecte toutes les lignes où le français ou le commentaire source diffère entre source et destination.
-3. Pour chaque différence, `MergeDifferenceForm` s'ouvre. L'utilisateur choisit les champs à reporter (ou annule la fusion globalement).
-4. `ExcelService.Merge(...)` applique les résolutions. Les lignes sans divergence source → report systématique de la traduction. Retour : nombre de lignes mises à jour.
-
-### 7.10.bis Vérification de mise en page (source .resx uniquement)
-1. `ITranslationSource.SupportsLayoutCheck` vaut `false` pour l'Excel : l'export ne contient aucune géométrie, l'analyse est simplement sautée.
+### 7.10 Vérification de mise en page
+1. `ITranslationSource.SupportsLayoutCheck` vaut `true` pour la source `.resx` ; l'abstraction garde le drapeau pour une source future sans géométrie, où l'analyse serait simplement sautée.
 2. **L'analyse est lancée au chargement de la solution, pour toutes les langues à la fois.** `MainForm.RunLayoutCheckAsync()` pousse d'abord la vue active dans les dictionnaires, puis instancie un `GdiTextWidthMeasurer` (dans un `using`) et appelle `LayoutCheckService.Analyze(source.Path, rows, tous les codes, …)` dans un `Task.Run`. Les verdicts retournés ne sont appliqués qu'au retour, sur le thread d'interface, et seulement si la source n'a pas changé entre-temps.
 3. Chaque ligne reçoit un `LayoutStatus` **par langue** et un libellé ; la colonne « Mise en page » affiche celui de la langue courante : rouge pour une troncature, orange pour une collision, gris pour un cas non vérifiable.
 4. Le ComboBox de l'en-tête filtre sur ces états (`layout:issues`, `layout:truncation`, `layout:collision`, `layout:unverifiable`, `layout:ok`).
@@ -609,8 +555,8 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Nullable enable** + annotations `?` explicites.
 - **Implicit usings** enable.
 - **File-scoped namespaces** (`namespace CheckTranslation;`).
-- **Modificateurs d'accès** : `internal` pour les classes d'assembly (`TranslationRow`, `AppConfig`, services, modèles de fusion…). `public` uniquement pour les classes héritant de `Form`.
-- **Records** pour les modèles immuables : `MergeDifference`, `MergeRowSnapshot`, `MergeDifferenceResolution`, `LanguageInfo`, `ExcelLoadProgress`.
+- **Modificateurs d'accès** : `internal` pour les classes d'assembly (`TranslationRow`, `AppConfig`, services, modèles…). `public` uniquement pour les classes héritant de `Form`.
+- **Records** pour les modèles immuables : `LanguageInfo`, `SourceLoadProgress`, `GlossaryChange`, `GlossaryExtractionResult`.
 - **Sections commentées** : `// --- Nom de section ---` pour structurer les gros fichiers (ex. `MainForm.cs`).
 - **Nommage** :
   - UI (champs de contrôles) : **sans** underscore, ex. `btnOk`, `grid`, `languageCombo`.
@@ -627,11 +573,10 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Les colonnes Clé, Commentaire et Mise en page sont créées programmatiquement** dans `MainForm` (`InitKeyColumn`, `InitCommentColumn`, `InitLayoutColumn`) et insérées autour des colonnes du Designer. Ne pas les ajouter dans `MainForm.Designer.cs`. Projet et Fichier n'ont plus de colonne : leur filtrage passe par l'arborescence.
 - **Le bouton `Rafraîchir` est ajouté programmatiquement** (`InitRefreshButton` dans la section « Bouton Rafraîchir + F5 ») puis disposé par `ArrangeToolStripItems`.
 - **Les ComboBox de filtre par score sont créés par code** (`TryCreateSpecialFilterControl` dans la section « Filtre par score de vérification ») et superposés aux en-têtes du DataGridView.
-- **Fusion Excel** : résolution ligne-par-ligne via `MergeDifferenceForm` pour CHAQUE ligne divergente. L'utilisateur peut annuler la fusion globalement.
-- **Écritures disque protégées par `SetWritingState`** — ne PAS revenir à un `btnXxx.Enabled = false` ponctuel dans `BtnSave_Click` / `BtnMerge_Click` : le verrou global est ce qui bloque aussi la fermeture (`_isWriting` lu par `MainForm_FormClosing`). Toujours appeler `SetWritingState(false)` dans un `finally`.
-- **Les batchs IA gèlent toolbar + grille** — `TranslateRowsAsync` / `VerifyRowsAsync` / `ExtractTermsRowsAsync` désactivent `toolStrip` et `dataGridView`, pas seulement Ouvrir/Sauver. Les résultats du batch atterrissent dans la vue active des lignes : changer de langue committerait le placeholder « Traduction en cours... » dans la langue quittée et ferait écrire les résultats dans la nouvelle ; fusionner reporterait les placeholders dans l'Excel destination ; rafraîchir remplacerait `_allRows` et les résultats iraient dans des objets orphelins. Le `finally` ne rouvre pas l'UI si `_isWriting` est posé (même précaution que `RunLayoutCheckAsync`).
+- **Écritures disque protégées par `SetWritingState`** — ne PAS revenir à un `btnXxx.Enabled = false` ponctuel dans `BtnSave_Click` : le verrou global est ce qui bloque aussi la fermeture (`_isWriting` lu par `MainForm_FormClosing`). Toujours appeler `SetWritingState(false)` dans un `finally`.
+- **Les batchs IA gèlent toolbar + grille** — `TranslateRowsAsync` / `VerifyRowsAsync` / `ExtractTermsRowsAsync` désactivent `toolStrip` et `dataGridView`, pas seulement Ouvrir/Sauver. Les résultats du batch atterrissent dans la vue active des lignes : changer de langue committerait le placeholder « Traduction en cours... » dans la langue quittée et ferait écrire les résultats dans la nouvelle ; rafraîchir remplacerait `_allRows` et les résultats iraient dans des objets orphelins. Le `finally` ne rouvre pas l'UI si `_isWriting` est posé (même précaution que `RunLayoutCheckAsync`).
 - **F5 se bloque dans `CanRefreshView`, pas dans la toolbar** — le raccourci passe par `ProcessCmdKey`, au niveau de la fenêtre : désactiver `toolStrip` ne l'arrête pas. `CanRefreshView` vérifie `toolStrip.Enabled` et couvre ainsi tous les gels (batch IA, écriture disque, analyse de mise en page, chargement, rafraîchissement). Ne pas retirer cette condition : le bouton Rafraîchir grisé ne protégerait plus rien au clavier, et F5 ré-entrerait dans `BtnRefresh_Click` pendant un rechargement.
-- **Le chargement et le rafraîchissement gèlent aussi toolbar + grille** — `LoadFileAsync` et `BtnRefresh_Click` désactivent `toolStrip` et `dataGridView` comme les batchs IA : pendant un rechargement, changer de langue mélangerait les vues actives entre anciennes et nouvelles lignes, et fusionner lirait des données en cours de remplacement. Les états individuels de Sauver / Fusionner restent gérés séparément : ils décrivent la source et survivent au dégel du container.
+- **Le chargement et le rafraîchissement gèlent aussi toolbar + grille** — `LoadFileAsync` et `BtnRefresh_Click` désactivent `toolStrip` et `dataGridView` comme les batchs IA : pendant un rechargement, changer de langue mélangerait les vues actives entre anciennes et nouvelles lignes. Les états individuels de Sauver et des boutons du glossaire restent gérés séparément (`UpdateGlossaryButtonsState`) : ils décrivent la source et survivent au dégel du container.
 - **Métriques des filtres calculées au runtime** — pas de constantes en pixels : `InitFilterPanel` mesure police et `TextBox.PreferredHeight`, `UpdateFilterPanelLayout` / `DataGridView_CellPainting` / `TryLayoutSpecialFilterControl` doivent rester synchronisés sur ces champs, sinon les filtres se désalignent en DPI 125/150/200 %.
 - **L'aperçu Markdown des prompts retire l'extension *generic attributes* de Markdig** — `UseAdvancedExtensions()` l'embarque, et elle lit `{...}` comme un bloc d'attributs HTML : `{language}` et `{glossary}` disparaissaient de l'aperçu sans erreur, à l'endroit précis où l'utilisateur vérifie qu'ils sont posés. Ne pas revenir à un `UseAdvancedExtensions()` nu.
 - **Les champs de fournisseur sont réétirés au chargement** (`StretchProviderFields`) — ancrés gauche+droite dans un `SplitContainer`, ils figent leur distance d'ancrage avant que `EndInit` n'applique le `SplitterDistance`, et s'affichent bien plus étroits que ce que le Designer indique. Élargir les champs dans le Designer ne corrigerait rien.
@@ -644,8 +589,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Écriture .resx : ne jamais toucher le fichier neutre** — le français est en lecture seule dans l'UI ; `ResxReader.Save` n'écrit que les variantes `<stem>.<code>.resx`.
 - **Écriture .resx chirurgicale** — chargement en `PreserveWhitespace` et réécriture seulement si le contenu a changé : c'est ce qui garantit un diff minimal dans le gestionnaire de sources et une sauvegarde idempotente. Ne pas remplacer par une regénération complète du document.
 - **Toute écriture disque passe par `AtomicFile`** — `ResxReader.Save`, `AppConfig.Save` et `GlossaryService.Save` écrivent dans un temporaire du même répertoire puis basculent (`File.Replace` / `File.Move`). Ne pas revenir à une écriture directe dans la cible : un crash en pleine écriture la tronquerait — et pour les `.resx`, c'est le code source de l'utilisateur. Le temporaire doit rester dans le même répertoire que la cible (même volume), sans quoi le basculement cesse d'être atomique.
-- **Une langue est identifiée par son code, pas par une colonne** — `TranslationRow.Translations` / `Comments` sont indexés par code (`« de-DE »`). Le numéro de colonne Excel (`LanguageInfo.Column`) ne doit rester connu que de `ExcelReader`.
-- **`Input.xlsx` est binaire** — ne pas tenter de le lire en texte. La lecture se fait via ClosedXML.
+- **Une langue est identifiée par son code, nulle part par un numéro** — `TranslationRow.Translations` / `Comments` sont indexés par code (`« de-DE »`), `LanguageInfo` ne porte que `Code` et `Name` (la colonne Excel a disparu avec la source Excel).
 - **Le projet cible `net8.0-windows`** — Windows uniquement, SDK .NET 8 requis.
 - **Le premier chargement plus lent n'est pas un défaut à corriger** — c'est la compilation étagée
   de .NET (§5.1). Les trois contre-mesures ont été mises en œuvre et mesurées (§5.2) : ReadyToRun
@@ -672,7 +616,7 @@ La clé de cache inclut `GlossaryFingerprint` = SHA256 hex des entrées triées 
 - **Les tranches de score ont une seule définition** — `TranslationStatistics.ScoreBuckets()`. Le tableau de bord en fait ses colonnes et `MainForm` en fait les entrées du filtre Commentaire : les faire diverger ferait qu'un clic sur « 42 » ne ramènerait pas 42 lignes.
 - **Un filtre texte préfixé de `=` est une égalité exacte** — la saisie manuelle reste un « contient ». Depuis que Projet et Fichier n'ont plus de colonne, le drill-down du tableau de bord ne pose plus ces filtres en texte : il passe par l'arborescence (`SelectTreeExactly`), qui porte la même exigence — un fichier n'est identifié que par son projet *et* son chemin, et `Properties\Msg` ne doit pas ramener `Properties\Msg2`. Le support du `=` reste dans `TranslationRowFiltering` pour les autres colonnes.
 - **`ApplyDrillDown` remet tous les filtres à zéro avant de poser le sien** — un filtre resté en place afficherait moins de lignes que le chiffre cliqué, et le tableau de bord passerait pour faux. L'arborescence de la solution en fait partie : le drill-down recoche tout (`ResetSolutionTreeChecks`).
-- **L'arborescence de la solution est un filtre d'affichage, pas une exclusion** — décocher un fichier le retire de la grille, mais la sauvegarde, la fusion, le tableau de bord et l'analyse de mise en page portent toujours sur toutes les lignes (`_allRows`). Ne pas brancher ces opérations sur `GetTreeVisibleRows` sans repenser les invariants du tableau de bord.
+- **L'arborescence de la solution est un filtre d'affichage, pas une exclusion** — décocher un fichier le retire de la grille, mais la sauvegarde, le tableau de bord et l'analyse de mise en page portent toujours sur toutes les lignes (`_allRows`). Ne pas brancher ces opérations sur `GetTreeVisibleRows` sans repenser les invariants du tableau de bord.
 - **Le panneau d'arborescence suit `dataGridView.Enabled`** — un seul hook (`EnabledChanged`) gèle `Panel1` entier (arbre, case maîtresse, filtre du bandeau) avec la grille pour tous les gels de l'application (batch IA, écriture disque, analyse de mise en page, chargement, rafraîchissement) : ne pas ajouter de désactivation site par site. Le double-clic sur une case est neutralisé (`CheckBoxTreeView`) : WinForms bascule sinon l'état visuel sans lever `AfterCheck`, et l'affichage se désynchronise du filtre.
 - **Les états cochés de l'arbre vivent dans `_uncheckedFiles`, jamais dans les nœuds** — le filtre du bandeau reconstruit les nœuds visibles, et la synchronisation (`SyncUncheckedFromVisibleNodes`) ne reporte que l'état des nœuds affichés. Repartir de zéro à chaque coche perdrait les décochages des éléments masqués par le filtre.
 - **`RunLayoutCheckAsync` commence par `CommitActiveLanguage`** — la vue active ne vit que dans `Translation` tant qu'elle n'est pas poussée. Sans ce commit, l'analyse porterait sur la valeur d'avant l'édition et afficherait un verdict en désaccord avec la grille.
@@ -703,7 +647,7 @@ Deux points de câblage à connaître :
 
 **Couverture actuelle** (logique pure uniquement, aucun test d'UI) : `QualityScore` (parsing + palette), `TranslationRowFiltering` (contient / `=` exact / pseudo-filtres score, traduction, layout), `TranslationStatistics` (comptages dans les lignes traduites, moyennes nulles, cohérence tranche comptée / tranche filtrée), `GlossaryDiff` (types de changements, statuts, promotion sous couverture complète, doublon refusé), `GlossaryImpact` (projection avant/après, suppressions ignorées, sélection insensible à la casse), `GlossaryExcel` (aller-retour sur fichiers temporaires, refus des classeurs ambigus), `Translator.ParseNumberedList` (comportements caractérisés, dont : un numéro hors bornes est rattaché à l'entrée courante), caches de `TranslationService` (clés par langue + fingerprint, purge par modèle), `GlossaryService.NormalizeCell` et `GlossaryService.ParseExtractionResponse` (JSON dans de la prose ou des fences, tableau vide = succès, troncature détectée avec ou sans `]` intérieur survivant), magasin du glossaire sur chemin injecté (`GlossaryStoreTests` : tri et statuts en texte à la sauvegarde, création au premier enregistrement, lecture d'un JSON migré à la main, forme canonique dans les prompts, `SwitchStore` et empreintes, `SolutionGlossaryLocator`), `GlossaryDeviation` (comportements portés de `glossary.py` : mots entiers, variantes, tolérance de finale, CJK et sigles latins, plus long terme, lignes non traduites ignorées).
 
-**Prochaines extensions naturelles** : `LayoutAnalyzer` (la mesure injectée `TextWidthMeasurer` existe pour ça), `ExcelReader.Merge` (fusion + conflits), `AppConfig` (round-trip DPAPI + compat legacy — attention : ne jamais écrire dans le vrai `%LocalAppData%`). `GlossaryService` se teste avec son constructeur à chemin explicite (fichier temporaire) ; ne jamais y appeler `CreateBackup` ni `SwitchStore(null)` suivi d'une lecture : les deux toucheraient le profil réel de l'utilisateur.
+**Prochaines extensions naturelles** : `LayoutAnalyzer` (la mesure injectée `TextWidthMeasurer` existe pour ça), `AppConfig` (round-trip DPAPI + compat legacy — attention : ne jamais écrire dans le vrai `%LocalAppData%`). `GlossaryService` se teste avec son constructeur à chemin explicite (fichier temporaire) ; ne jamais y appeler `CreateBackup` ni `SwitchStore(null)` suivi d'une lecture : les deux toucheraient le profil réel de l'utilisateur.
 
 **Banc d'essai manuel** : le dossier `FormTest/` contient un formulaire localisé en 7 langues, jamais instancié par l'application — c'est une fixture, pas une fonctionnalité. Ouvrir `CheckTranslation.slnx` dans l'application elle-même le fait apparaître comme n'importe quel formulaire du corpus : ses contrôles calibrés (labels `AutoSize`, label à largeur fixe, bouton, case à cocher) et ses variantes de culture, dont les commentaires portent des scores connus, permettent de vérifier à la main la chaîne de mise en page (troncatures, collisions) et la colorisation par score. Faute de projet séparé, il est compilé dans l'exécutable ; l'en exclure est un choix ouvert.
 

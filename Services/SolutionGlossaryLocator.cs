@@ -5,8 +5,8 @@ namespace CheckTranslation;
 /// <c>.slnx</c>. C'est le fichier que lisent aussi les skills et l'outillage <c>resx-tools</c> du
 /// dépôt (elec calc) : une seule terminologie pour l'application et pour les agents qui
 /// traduisent dans les sources. La présence du répertoire <c>.claude</c> suffit — le fichier
-/// naît à la première sauvegarde s'il n'existe pas encore. Un export Excel n'a pas de solution :
-/// il reste sur le glossaire global du profil utilisateur.
+/// naît à la première sauvegarde s'il n'existe pas encore. Une solution sans <c>.claude</c>
+/// reste sur le glossaire global du profil utilisateur.
 /// </summary>
 internal static class SolutionGlossaryLocator
 {

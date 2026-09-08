@@ -15,8 +15,8 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 
 | Prio | Axe | État | Amélioration suggérée |
 |:--:|---|---|---|
-| 🔴 | **Tests** | ✅ `CheckTranslation.Tests` (xUnit, 79 tests : QualityScore, filtres, statistiques, GlossaryDiff / Impact / Excel, ParseNumberedList, caches) | Étendre : `LayoutAnalyzer` (mesure injectée), `ExcelReader.Merge`, `AppConfig` (DPAPI + legacy) |
-| 🟡 | **Séparation UI/Logic** | Partielle (`Logic/` extrait, `MainForm` désormais en sections commentées) | Extraire un `MainFormViewModel`/présenteur pour chargement/sauvegarde/traduction/fusion |
+| 🔴 | **Tests** | ✅ `CheckTranslation.Tests` (xUnit, 79 tests : QualityScore, filtres, statistiques, GlossaryDiff / Impact / Excel, ParseNumberedList, caches) | Étendre : `LayoutAnalyzer` (mesure injectée), `AppConfig` (DPAPI + legacy) |
+| 🟡 | **Séparation UI/Logic** | Partielle (`Logic/` extrait, `MainForm` désormais en sections commentées) | Extraire un `MainFormViewModel`/présenteur pour chargement/sauvegarde/traduction |
 | 🟢 | **Prompts externalisés** | En dur dans `AppConfig.cs` | Déplacer dans des fichiers `.md` séparés (édition facile) |
 
 ## 2. Performance
@@ -24,7 +24,6 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | Prio | Axe | État | Amélioration suggérée |
 |:--:|---|---|---|
 | 🟢 | **Appels API parallèles** | ✅ `Task.WhenAll` + `SemaphoreSlim(4)` | Ajuster selon quotas réels des providers |
-| 🟢 | **Chargement Excel** | ✅ Progress en lignes lues | Streaming / `VirtualMode` pour >50k lignes |
 | 🟢 | **Cache traductions** | ✅ Mémoire + dédup + fingerprint glossaire | Persistance disque entre sessions |
 | 🟢 | **DataGridView** | Double-buffering activé | `VirtualMode` pour très gros fichiers |
 
@@ -37,10 +36,8 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Recherche globale** | Filtres par colonne uniquement | Recherche toutes colonnes |
 | 🟢 | **Export** | Sauvegarde in-place uniquement | « Enregistrer sous » |
 | 🟢 | **Thème sombre** | Non | Détecter le thème Windows |
-| 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier), Ctrl+M (fusion) |
+| 🟡 | **Raccourcis clavier** | F5 seulement | Ctrl+S, Ctrl+O, Ctrl+T (traduire), Ctrl+V (vérifier) |
 | 🟡 | **Vérification de débordement** | ✅ Chaîne complète, étalonnée sur le fichier lui-même (aucune constante), verticale comprise (lignes explicites) | Gérer la croissance vers la gauche (`Anchor`, `RightToLeft`) et le repli automatique (wrap) des contrôles fixes |
-| 🟡 | **Fusion en mode .resx** | Non (Excel uniquement) | Étendre `GetMergeSourceDifferences` / `Merge` à une seconde arborescence .resx |
-| 🟡 | **Fusion : résolution en masse** | 1 dialog par ligne divergente | « Tout appliquer » / « Tout ignorer » / « Appliquer aux similaires » |
 
 ## 4. Robustesse & sécurité
 
@@ -49,7 +46,6 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 🟢 | **Retry API** | ✅ Polly (408/429/5xx + exceptions transitoires) | Ajuster selon limites réelles |
 | 🟡 | **Timeout explicite** | Aucun | Timeout configurable sur les appels IA |
 | 🟢 | **Validation prompts** | Aucune | Vérifier la présence de `{language}` |
-| 🟡 | **Fichier Excel verrouillé** | Exception brute | Détecter + proposer copie temporaire |
 | 🟢 | **Backup auto** | Aucun — mais l'écriture est atomique (`AtomicFile`) : plus de corruption possible en pleine écriture | `.bak` avant chaque sauvegarde — `File.Replace` accepte un nom de backup, point d'insertion tout trouvé |
 | 🟡 | **Traduction partielle** | ✅ Entrée IA inexploitable → l'ancienne valeur est restaurée + message explicite | — |
 
@@ -167,6 +163,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 | 2026-09-02 | **Glossaire transversal (chantier 1 de GLOSSAIRE.md)** : `GlossaryTerm` (un terme FR, ses traductions par langue, statut Proposé / En contrôle / Validé, commentaire réviseur), migration v1 idempotente au chargement (termes migrés Validé, empreinte projetée inchangée, caches préservés), surface par langue conservée par projection — éditeur et extraction inchangés. Seuls les termes Validé sont injectés. Process complet consigné dans GLOSSAIRE.md |
 | 2026-09-04 | Glossaire : éditeur multi-langues (chantier 2) — `GlossaryForm` en grille transversale terme × langue (colonnes dynamiques depuis `MainForm.Languages`), statut éditable, commentaire réviseur en lecture seule, doublons refusés. L'extraction verse désormais des termes Proposé (`AddProposedTerms`), sans écraser une case déjà tranchée ; nouvelles API `GetTerms` / `ReplaceTerms` |
 | 2026-09-04 | Glossaire : export / import Excel (chantier 3) — export daté portant l'empreinte du glossaire (feuille Infos), colonnes de langue retrouvées par leur code à l'import (réordonnancement toléré), diff par terme et par champ (`GlossaryDiff`, logique pure) avec acceptation individuelle (`GlossaryImportDiffForm`, suppressions décochées par défaut), backup daté avant application. Les Proposé exportés passent En contrôle, les Validé restent injectés, un terme En contrôle revenu inchangé repasse Validé |
+| 2026-09-08 | Source unique : la lecture d'un export Excel ResX Resource Manager et la fusion Excel sont retirées, l'application n'ouvre plus qu'une solution `.sln` / `.slnx` (`ExcelReader`, `ExcelService`, `ExcelTranslationSource`, `MergeDifferenceForm`, trois modèles de fusion, `Input.xlsx` supprimés ; `LanguageInfo` perd sa colonne Excel ; `ClosedXML` reste pour le glossaire). Icône d'ouverture remplacée (dossier de solution au lieu de l'icône Excel), icône propre au glossaire (livre ouvert : le bouton retombait sur l'icône Configuration), boutons Glossaire et Écarts grisés sans solution chargée |
 | 2026-09-08 | Suite revue Copilot de la PR #50 : le balayage des écarts au glossaire (toutes lignes × toutes langues) tourne hors du thread d'interface, grille et toolbar gelées avec curseur d'attente pendant la recherche (patron de l'analyse de mise en page) ; doc du §7.11 réalignée sur `ControlledEntries` |
 | 2026-09-08 | Bouton « Retraduire les écarts au glossaire » — sélectionne, toutes langues confondues, les traductions qui n'emploient pas le terme imposé et enchaîne sur la retraduction ciblée. La définition de l'écart (`GlossaryDeviation`, logique pure testée) est le port fidèle de `glossary.py check` d'elec calc : mots entiers côté français, variantes « / » et tolérance de finale côté cible, CJK pour le chinois, plus long terme seul contrôlé. Couvre le cas que la détection automatique ne voit pas : un glossaire modifié hors de l'éditeur. Validé en conditions réelles sur elec calc avant d'être câblé (802 écarts → 122, les restants imputables aux cellules du glossaire) |
 | 2026-09-04 | Glossaire partagé avec les sources — quand la solution ouverte possède un répertoire `.claude`, le glossaire lu et écrit est `.claude/glossary.json` à côté du `.sln` / `.slnx` (`SolutionGlossaryLocator`, `IGlossaryService.SwitchStore`), le même fichier que les skills et l'outillage `resx-tools` d'elec calc ; un Excel ramène au magasin global. Sauvegarde déterministe (termes et langues triés), forme canonique d'une cellule à variantes (`kabel / kabl`) seule injectée dans les prompts (`CanonicalForm`). Chemin du magasin injectable : `GlossaryService` devient testable (`GlossaryStoreTests`). Côté elec calc : tableau de `glossary.md` migré en `glossary.json` (32 termes Validé), `glossary.py` lit le JSON (termes Validé) et gagne `show`, skills repointés |
