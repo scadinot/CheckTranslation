@@ -26,6 +26,7 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 
 ### Filtrage, tri et colorisation
 - **Filtres par colonne** : icône loupe dans chaque en-tête, saisie texte (debounce 300 ms)
+- **Pseudo-filtres de la colonne Traduction** : `translation:none`, `translation:done`, `translation:same` (identique au français), `translation:retranslated` (lignes retraduites par la dernière passe de retraduction ciblée, posé automatiquement à la fin de la passe pour les relire)
 - **Filtre par score de vérification** : ComboBox dans l'en-tête Commentaire — « Non vérifiés », « ≤ 50 … 100 », « ≥ 90 »
 - **Tri** : clic sur l'en-tête (asc/desc)
 - **Colorisation** : dégradé rouge → vert des cellules Traduction / Commentaire selon le score (format `XXX - commentaire`)

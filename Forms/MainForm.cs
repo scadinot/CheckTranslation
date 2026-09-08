@@ -460,6 +460,13 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// Empreinte de cache des vérifications faites sans glossaire (retraduction ciblée) : un
+    /// espace distinct de celui des vérifications qui ont vu le glossaire, pour qu'un score ne
+    /// soit jamais resservi d'un mode à l'autre.
+    /// </summary>
+    private const string IndependentVerificationFingerprint = "verification-sans-glossaire";
+
+    /// <summary>
     /// Retraduit puis re-vérifie les lignes impactées, langue par langue, en écrivant dans les
     /// dictionnaires par code — jamais dans la vue active, rechargée à la fin pour la seule
     /// langue affichée. L'empreinte du glossaire ayant changé, le cache ne peut pas resservir
@@ -475,6 +482,12 @@ public partial class MainForm : Form
             return;
         }
 
+        // Nouvelle passe : le marqueur « retraduite » de la précédente ne vaut plus, la relecture
+        // ne doit montrer que ce que celle-ci a changé.
+        if (_allRows is not null)
+            foreach (var row in _allRows)
+                row.ClearRetranslated();
+
         // Même gel que TranslateRowsAsync : les résultats s'écrivent dans les dictionnaires des
         // lignes, changer de langue ou rafraîchir pendant l'attente les corromprait.
         dataGridView.EndEdit();
@@ -485,6 +498,7 @@ public partial class MainForm : Form
         Application.UseWaitCursor = true;
 
         int errors = 0;
+        bool anyRetranslated = false;
         var report = new List<string>();
 
         try
@@ -532,12 +546,17 @@ public partial class MainForm : Form
                             row.InvalidateLayoutVerdict(language.Code);
                         row.Translations[language.Code] = batch[i];
                         row.Comments[language.Code] = string.Empty;
+                        row.MarkRetranslated(language.Code);
+                        anyRetranslated = true;
                         translatedRows.Add(row);
                     }
                 }
 
                 // Re-vérification de toutes les lignes retraduites, même celles revenues au même
-                // texte : le score juge la conformité au glossaire, qui vient de changer.
+                // texte — SANS le glossaire dans le prompt : un vérificateur qui le reçoit constate
+                // la conformité et note 100 sans juger la langue, alors qu'on attend de lui un
+                // second regard indépendant. Espace de cache dédié : ces scores ne doivent pas se
+                // confondre avec ceux d'une vérification qui a vu le glossaire.
                 if (translatedRows.Count > 0)
                 {
                     var pairs = translatedRows.Select(r => (r.French, r.Translations[language.Code])).ToList();
@@ -549,7 +568,7 @@ public partial class MainForm : Form
                         statusRowCount.Text = $"Re-vérification {language.Code} : {done} / {translatedRows.Count}";
                     });
 
-                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, glossarySection, glossaryFingerprint, verifyProgress);
+                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, string.Empty, IndependentVerificationFingerprint, verifyProgress);
 
                     rowIndex = 0;
                     foreach (var batch in verifyBatches)
@@ -598,10 +617,16 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
         }
 
+        // Relecture : la grille ne montre plus que ce que la passe a changé, dans la langue
+        // affichée ; changer de langue montre les lignes retraduites de celle-là.
+        if (anyRetranslated)
+            ShowRetranslatedRows();
+
         if (report.Count > 0)
         {
             MessageBox.Show(this,
                 "Retraduction ciblée :\n\n" + string.Join("\n", report)
+                + (anyRetranslated ? "\n\nLa grille est filtrée sur les lignes retraduites de la langue affichée (translation:retranslated), pour relecture." : string.Empty)
                 + (errors > 0 ? $"\n\n{errors} réponse(s) inexploitables : les lignes concernées ont conservé leur valeur précédente ou restent sans score." : string.Empty),
                 "Retraduction ciblée", MessageBoxButtons.OK, errors > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
@@ -846,6 +871,27 @@ public partial class MainForm : Form
         // second passage se voit.
         _filterDebounceTimer?.Stop();
 
+        ApplyFilters();
+        UpdateFilterPanelLayout();
+    }
+
+    /// <summary>
+    /// Restreint la grille aux lignes retraduites par la dernière passe (langue affichée), pour
+    /// les relire : tous les filtres remis à zéro, arborescence recochée, et le pseudo-filtre
+    /// <c>translation:retranslated</c> posé dans la zone de saisie de la colonne Traduction —
+    /// visible, donc effaçable comme n'importe quel filtre. Même mécanique que le drill-down.
+    /// </summary>
+    private void ShowRetranslatedRows()
+    {
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+        ResetSolutionTreeChecks();
+
+        if (_filterTextBoxes.TryGetValue("Translation", out var box))
+            box.Text = "translation:retranslated";
+
+        _filterDebounceTimer?.Stop();
         ApplyFilters();
         UpdateFilterPanelLayout();
     }

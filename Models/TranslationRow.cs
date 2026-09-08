@@ -21,6 +21,28 @@ internal sealed class TranslationRow
     /// <summary>Commentaires (score de vérification) par code de langue.</summary>
     public Dictionary<string, string> Comments { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Langues dans lesquelles la ligne a été retraduite par la dernière passe de retraduction
+    /// ciblée. Marqueur transitoire (jamais persisté) : il ne sert qu'à relire ce que la passe a
+    /// changé, via le pseudo-filtre <c>translation:retranslated</c>. Par langue, comme les
+    /// traductions : une ligne retraduite en allemand n'est pas « retraduite » en anglais.
+    /// </summary>
+    private readonly HashSet<string> _retranslatedLanguages = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Vrai si la ligne a été retraduite dans la langue affichée, par la dernière passe.</summary>
+    public bool Retranslated { get; private set; }
+
+    internal void MarkRetranslated(string languageCode) => _retranslatedLanguages.Add(languageCode);
+
+    internal bool WasRetranslated(string languageCode) => _retranslatedLanguages.Contains(languageCode);
+
+    /// <summary>Oublie la passe précédente : appelé au début de chaque nouvelle passe.</summary>
+    internal void ClearRetranslated()
+    {
+        _retranslatedLanguages.Clear();
+        Retranslated = false;
+    }
+
     public void SwitchLanguage(string oldLanguageCode, string newLanguageCode)
     {
         CommitActiveLanguage(oldLanguageCode);
@@ -35,6 +57,7 @@ internal sealed class TranslationRow
     {
         Translation = Translations.GetValueOrDefault(languageCode, string.Empty);
         Comment = Comments.GetValueOrDefault(languageCode, string.Empty);
+        Retranslated = _retranslatedLanguages.Contains(languageCode);
         SelectLayoutVerdict(languageCode);
     }
 

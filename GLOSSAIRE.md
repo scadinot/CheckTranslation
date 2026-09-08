@@ -45,7 +45,11 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    apparu ou modifié (destination, contexte) — qu'il vienne d'un import, d'une promotion Validé
    ou d'une édition manuelle — sélectionne les lignes dont le français le contient, qui sont
    retraduites puis re-vérifiées, langue par langue, après confirmation avec le compte par
-   langue. L'empreinte garantit que le cache ne ressert pas les anciennes traductions.
+   langue. L'empreinte garantit que le cache ne ressert pas les anciennes traductions. La
+   re-vérification se fait **sans le glossaire dans le prompt** : un vérificateur qui reçoit le
+   glossaire constate la conformité et note 100 sans juger la langue, alors qu'il doit porter un
+   second regard indépendant sur la traduction. À la fin, la grille est **filtrée sur les lignes
+   retraduites** (pseudo-filtre `translation:retranslated`, par langue) pour les relire.
    Deux décisions assumées : un terme **supprimé** ne déclenche rien (une suppression lève une
    contrainte, elle n'invalide pas l'existant — un terme erroné se corrige, il ne se supprime
    pas) ; la détection est une **inclusion insensible à la casse** — les formes fléchies

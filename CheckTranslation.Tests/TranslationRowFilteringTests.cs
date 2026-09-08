@@ -65,6 +65,27 @@ public class TranslationRowFilteringTests
     }
 
     [Fact]
+    public void TranslationRetranslated_FollowsTheActiveLanguage_AndIsClearedPerPass()
+    {
+        var row = Row(key: "hit", french: "Texte", translation: "Text");
+        row.MarkRetranslated("de-DE");
+        var other = Row(key: "miss", french: "Autre", translation: "Other");
+        var rows = new[] { row, other };
+
+        // La vue active porte le marqueur de la langue affichée : allemand oui, anglais non.
+        foreach (var r in rows) r.SelectLanguage("de-DE");
+        Assert.Equal("hit", Assert.Single(Filter(rows, "Translation", "translation:retranslated")).Key);
+
+        foreach (var r in rows) r.SelectLanguage("en-US");
+        Assert.Empty(Filter(rows, "Translation", "translation:retranslated"));
+
+        // Une nouvelle passe repart de zéro.
+        row.ClearRetranslated();
+        row.SelectLanguage("de-DE");
+        Assert.Empty(Filter(rows, "Translation", "translation:retranslated"));
+    }
+
+    [Fact]
     public void ScoreNone_MatchesUnparsableComments()
     {
         var rows = new[]
