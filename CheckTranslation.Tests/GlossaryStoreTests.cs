@@ -134,6 +134,23 @@ public sealed class GlossaryStoreTests : IDisposable
     }
 
     [Fact]
+    public void BuildGlossarySection_ForVerification_AddsTheScoreGuardrail_TranslationDoesNot()
+    {
+        var service = new GlossaryService(StorePath());
+        service.ReplaceTermsAndSave(new[] { Term("borne", translations: ("de-DE", "Klemme")) });
+
+        var translate = service.BuildGlossarySection("de-DE", "Allemand");
+        var verify = service.BuildGlossarySection("de-DE", "Allemand", forVerification: true);
+
+        // Le vérificateur qui a le glossaire sous les yeux constate la conformité et note 100 :
+        // la section de vérification lui rappelle que la conformité ne vaut pas une note. Le
+        // traducteur n'a pas besoin de ce rappel.
+        Assert.Contains("condition nécessaire, jamais suffisante", verify);
+        Assert.DoesNotContain("condition nécessaire", translate);
+        Assert.StartsWith(translate, verify);
+    }
+
+    [Fact]
     public void SwitchStore_ReloadsFromTheNewFile_AndBackAgain()
     {
         var pathA = StorePath("a.json");

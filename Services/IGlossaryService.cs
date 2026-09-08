@@ -81,9 +81,12 @@ internal interface IGlossaryService
 
     /// <summary>
     /// Construit le fragment markdown à injecter dans le placeholder <c>{glossary}</c> des prompts.
-    /// Retourne une chaîne vide si aucun terme n'est défini pour la langue.
+    /// Retourne une chaîne vide si aucun terme n'est défini pour la langue. Avec
+    /// <paramref name="forVerification"/>, la section rappelle au vérificateur que la conformité au
+    /// glossaire ne justifie à elle seule aucune note : la traduction reste à évaluer sur tous les
+    /// autres critères.
     /// </summary>
-    string BuildGlossarySection(string languageCode, string languageName);
+    string BuildGlossarySection(string languageCode, string languageName, bool forVerification = false);
 
     /// <summary>
     /// Empreinte stable du contenu glossaire pour une langue. Utilisée par <see cref="ITranslationService"/>

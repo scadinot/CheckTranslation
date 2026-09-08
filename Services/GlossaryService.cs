@@ -455,7 +455,7 @@ internal sealed class GlossaryService : IGlossaryService
         }
     }
 
-    public string BuildGlossarySection(string languageCode, string languageName)
+    public string BuildGlossarySection(string languageCode, string languageName, bool forVerification = false)
     {
         EnsureLoaded();
         IReadOnlyList<GlossaryEntry> entries;
@@ -490,6 +490,16 @@ internal sealed class GlossaryService : IGlossaryService
               .Append(EscapeMarkdownCell(entry.Source)).Append(" | ")
               .Append(EscapeMarkdownCell(CanonicalForm(entry.Destination))).Append(" | ")
               .Append(EscapeMarkdownCell(entry.Context)).AppendLine(" |");
+        }
+
+        if (forVerification)
+        {
+            // Garde-fou du vérificateur : avec le glossaire sous les yeux, il tend à constater la
+            // conformité et à noter 100 sans juger la langue. Placé dans la section injectée plutôt
+            // que dans le prompt par défaut, il s'applique aussi à un prompt personnalisé déjà
+            // enregistré dans la configuration de l'utilisateur.
+            sb.AppendLine();
+            sb.AppendLine("Le glossaire fixe la terminologie, pas la note. Employer les termes imposés est une condition nécessaire, jamais suffisante : une traduction conforme au glossaire reste à évaluer intégralement sur tous les autres critères (exactitude technique, qualité de la langue, abréviations, éléments non traduits, références normatives, ponctuation). La conformité au glossaire ne justifie à elle seule aucun point ; seul l'écart au glossaire est une faute.");
         }
 
         return sb.ToString();

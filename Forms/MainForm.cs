@@ -475,6 +475,12 @@ public partial class MainForm : Form
             return;
         }
 
+        // Nouvelle passe : le marqueur « retraduite » de la précédente ne vaut plus, la relecture
+        // ne doit montrer que ce que celle-ci a changé.
+        if (_allRows is not null)
+            foreach (var row in _allRows)
+                row.ClearRetranslated();
+
         // Même gel que TranslateRowsAsync : les résultats s'écrivent dans les dictionnaires des
         // lignes, changer de langue ou rafraîchir pendant l'attente les corromprait.
         dataGridView.EndEdit();
@@ -485,6 +491,7 @@ public partial class MainForm : Form
         Application.UseWaitCursor = true;
 
         int errors = 0;
+        bool anyRetranslated = false;
         var report = new List<string>();
 
         try
@@ -499,6 +506,7 @@ public partial class MainForm : Form
                         row.CommitActiveLanguage(_currentLanguage.Code);
 
                 var glossarySection = _glossaryService.BuildGlossarySection(language.Code, language.Name);
+                var verificationSection = _glossaryService.BuildGlossarySection(language.Code, language.Name, forVerification: true);
                 var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(language.Code);
                 var texts = rows.Select(r => r.French).ToList();
 
@@ -532,12 +540,16 @@ public partial class MainForm : Form
                             row.InvalidateLayoutVerdict(language.Code);
                         row.Translations[language.Code] = batch[i];
                         row.Comments[language.Code] = string.Empty;
+                        row.MarkRetranslated(language.Code);
+                        anyRetranslated = true;
                         translatedRows.Add(row);
                     }
                 }
 
                 // Re-vérification de toutes les lignes retraduites, même celles revenues au même
-                // texte : le score juge la conformité au glossaire, qui vient de changer.
+                // texte, exactement comme depuis l'interface : glossaire compris, avec le garde-fou
+                // de la section de vérification — la conformité au glossaire ne vaut pas une note
+                // à elle seule, la traduction reste jugée sur tous les autres critères.
                 if (translatedRows.Count > 0)
                 {
                     var pairs = translatedRows.Select(r => (r.French, r.Translations[language.Code])).ToList();
@@ -549,7 +561,7 @@ public partial class MainForm : Form
                         statusRowCount.Text = $"Re-vérification {language.Code} : {done} / {translatedRows.Count}";
                     });
 
-                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, glossarySection, glossaryFingerprint, verifyProgress);
+                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, verificationSection, glossaryFingerprint, verifyProgress);
 
                     rowIndex = 0;
                     foreach (var batch in verifyBatches)
@@ -598,10 +610,16 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
         }
 
+        // Relecture : la grille ne montre plus que ce que la passe a changé, dans la première
+        // langue qui a des lignes retraduites (celle affichée si elle en a) ; changer de langue
+        // montre les lignes retraduites de celle-là.
+        bool filtered = anyRetranslated && ShowRetranslatedRows();
+
         if (report.Count > 0)
         {
             MessageBox.Show(this,
                 "Retraduction ciblée :\n\n" + string.Join("\n", report)
+                + (filtered ? $"\n\nLa grille est filtrée sur les lignes retraduites en {_currentLanguage.Name} (translation:retranslated), pour relecture ; changer de langue montre celles des autres langues." : string.Empty)
                 + (errors > 0 ? $"\n\n{errors} réponse(s) inexploitables : les lignes concernées ont conservé leur valeur précédente ou restent sans score." : string.Empty),
                 "Retraduction ciblée", MessageBoxButtons.OK, errors > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
@@ -848,6 +866,43 @@ public partial class MainForm : Form
 
         ApplyFilters();
         UpdateFilterPanelLayout();
+    }
+
+    /// <summary>
+    /// Restreint la grille aux lignes retraduites par la dernière passe, pour les relire : reste
+    /// sur la langue affichée si elle en a, sinon bascule sur la première langue qui en a — un
+    /// filtre posé sur une langue sans ligne retraduite viderait la grille sans rien dire. Tous
+    /// les filtres remis à zéro, arborescence recochée, et le pseudo-filtre
+    /// <c>translation:retranslated</c> posé dans la zone de saisie de la colonne Traduction —
+    /// visible, donc effaçable comme n'importe quel filtre. Même mécanique que le drill-down.
+    /// Retourne faux si aucune ligne n'a été retraduite dans aucune langue.
+    /// </summary>
+    private bool ShowRetranslatedRows()
+    {
+        if (_allRows is null)
+            return false;
+
+        var target = _allRows.Any(row => row.WasRetranslated(_currentLanguage.Code))
+            ? _currentLanguage
+            : Array.Find(Languages, language => _allRows.Any(row => row.WasRetranslated(language.Code)));
+        if (target is null)
+            return false;
+
+        if (target != _currentLanguage)
+            SwitchToLanguage(target);
+
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+        ResetSolutionTreeChecks();
+
+        if (_filterTextBoxes.TryGetValue("Translation", out var box))
+            box.Text = "translation:retranslated";
+
+        _filterDebounceTimer?.Stop();
+        ApplyFilters();
+        UpdateFilterPanelLayout();
+        return true;
     }
 
     /// <summary>
@@ -2650,7 +2705,7 @@ public partial class MainForm : Form
             statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
         });
 
-        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name);
+        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name, forVerification: true);
         var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
 
         try
