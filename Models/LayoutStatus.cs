@@ -3,7 +3,7 @@ namespace CheckTranslation;
 /// <summary>État de la vérification de mise en page pour une ligne, dans la langue affichée.</summary>
 internal enum LayoutStatus
 {
-    /// <summary>Non analysée : source Excel, formulaire non localisable, ou ligne qui n'est pas un libellé de contrôle.</summary>
+    /// <summary>Non analysée : formulaire non localisable, ou ligne qui n'est pas un libellé de contrôle.</summary>
     NotChecked,
 
     /// <summary>Analysée : la traduction n'introduit aucun défaut.</summary>

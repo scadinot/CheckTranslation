@@ -16,7 +16,6 @@ internal static class Program
         ApplicationConfiguration.Initialize();
 
         var services = new ServiceCollection();
-        services.AddSingleton<IExcelService, ExcelService>();
         services.AddSingleton<ITranslationSourceFactory, TranslationSourceFactory>();
         services.AddSingleton<ILayoutCheckService, LayoutCheckService>();
         services.AddSingleton<ITranslationService, TranslationService>();
@@ -32,7 +31,6 @@ internal static class Program
         services.AddTransient<Func<GlossaryExtractionDialog>>(sp => () => sp.GetRequiredService<GlossaryExtractionDialog>());
 
         services.AddTransient<MainForm>(sp => new MainForm(
-            sp.GetRequiredService<IExcelService>(),
             sp.GetRequiredService<ITranslationSourceFactory>(),
             sp.GetRequiredService<ILayoutCheckService>(),
             sp.GetRequiredService<ITranslationService>(),

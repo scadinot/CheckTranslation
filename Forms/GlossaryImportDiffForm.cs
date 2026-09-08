@@ -2,7 +2,7 @@ namespace CheckTranslation;
 
 /// <summary>
 /// Résolution des différences d'un import de glossaire : une ligne par changement, à accepter ou
-/// refuser individuellement (patron du dialog de fusion, en une seule fenêtre). Les suppressions
+/// refuser individuellement (en une seule fenêtre). Les suppressions
 /// de terme arrivent décochées et sur fond rosé : une ligne perdue dans Excel ne doit pas effacer
 /// un terme sans un choix explicite. À la validation, les décisions sont reportées dans les
 /// <see cref="GlossaryChange.Accepted"/> de la liste fournie.

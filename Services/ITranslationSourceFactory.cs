@@ -3,8 +3,8 @@ namespace CheckTranslation;
 internal interface ITranslationSourceFactory
 {
     /// <summary>
-    /// Construit la source correspondant à l'extension du chemin : .xlsx → Excel,
-    /// .sln / .slnx → arborescence .resx.
+    /// Construit la source correspondant au chemin : .sln / .slnx → arborescence .resx. La
+    /// fabrique survit à la source unique : elle garde l'interface à l'écart du choix concret.
     /// </summary>
     /// <exception cref="NotSupportedException">Extension non reconnue.</exception>
     ITranslationSource Create(string path);

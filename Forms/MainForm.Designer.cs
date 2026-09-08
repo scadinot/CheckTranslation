@@ -43,7 +43,6 @@ partial class MainForm
         statusLanguage = new ToolStripStatusLabel();
         statusProvider = new ToolStripStatusLabel();
         btnConfig = new ToolStripButton();
-        btnMerge = new ToolStripButton();
         btnSave = new ToolStripButton();
         btnOpen = new ToolStripButton();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
@@ -169,14 +168,6 @@ partial class MainForm
         btnConfig.Size = new Size(23, 22);
         btnConfig.ToolTipText = "Configuration";
         // 
-        // btnMerge
-        // 
-        btnMerge.DisplayStyle = ToolStripItemDisplayStyle.Image;
-        btnMerge.Enabled = false;
-        btnMerge.Name = "btnMerge";
-        btnMerge.Size = new Size(23, 22);
-        btnMerge.ToolTipText = "Fusionner vers un fichier Excel";
-        // 
         // btnSave
         // 
         btnSave.DisplayStyle = ToolStripItemDisplayStyle.Image;
@@ -231,6 +222,5 @@ partial class MainForm
     private ToolStripStatusLabel statusProvider;
     private ToolStripButton btnOpen;
     private ToolStripButton btnSave;
-    private ToolStripButton btnMerge;
     private ToolStripButton btnConfig;
 }

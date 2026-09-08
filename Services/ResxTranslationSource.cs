@@ -2,15 +2,13 @@ namespace CheckTranslation;
 
 /// <summary>
 /// Source « fichiers .resx » : la solution (.sln / .slnx) désigne les projets, dont les .resx
-/// sont lus et réécrits directement. La fusion n'est pas encore disponible pour cette source.
+/// sont lus et réécrits directement.
 /// </summary>
 internal sealed class ResxTranslationSource(string solutionPath) : ITranslationSource
 {
     public string Path { get; } = solutionPath;
 
     public string Kind => "resx";
-
-    public bool SupportsMerge => false;
 
     public bool SupportsLayoutCheck => true;
 

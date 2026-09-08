@@ -6,8 +6,8 @@ public sealed class GlossaryExcelTests : IDisposable
 {
     private static readonly LanguageInfo[] Languages =
     [
-        new("de-DE", "Allemand", 7),
-        new("en-US", "Anglais", 9),
+        new("de-DE", "Allemand"),
+        new("en-US", "Anglais"),
     ];
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "CheckTranslation.Tests", Guid.NewGuid().ToString("N"));

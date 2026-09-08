@@ -2,8 +2,8 @@ namespace CheckTranslation.Tests;
 
 public class TranslationStatisticsTests
 {
-    private static readonly LanguageInfo German = new("de-DE", "Allemand", 7);
-    private static readonly LanguageInfo English = new("en-US", "Anglais", 9);
+    private static readonly LanguageInfo German = new("de-DE", "Allemand");
+    private static readonly LanguageInfo English = new("en-US", "Anglais");
 
     private static TranslationRow Row(string project, string file, string key, string french,
         string? deTranslation = null, string? deComment = null)

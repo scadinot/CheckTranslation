@@ -1,17 +1,12 @@
 namespace CheckTranslation;
 
 /// <summary>
-/// Représente une ligne de traduction, indépendamment de la source (export Excel ResX Manager
-/// ou fichiers .resx lus directement). L'identité fonctionnelle d'une ligne est
+/// Représente une ligne de traduction, indépendamment de la source qui l'a produite.
+/// L'identité fonctionnelle d'une ligne est
 /// <see cref="Project"/> | <see cref="File"/> | <see cref="Key"/>.
 /// </summary>
 internal sealed class TranslationRow
 {
-    /// <summary>
-    /// Numéro de ligne dans la feuille Excel. Uniquement renseigné par la source Excel
-    /// (localisation d'écriture) ; vaut 0 pour la source .resx, qui se repère par Project/File/Key.
-    /// </summary>
-    public int RowNumber { get; set; }
     public string Project { get; set; } = string.Empty;
     public string File { get; set; } = string.Empty;
     public string Key { get; set; } = string.Empty;

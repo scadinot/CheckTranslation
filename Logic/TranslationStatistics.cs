@@ -132,7 +132,7 @@ internal static class TranslationStatistics
     /// verdict étant stocké sous son code de langue : le tableau de bord peut donc les comparer,
     /// et c'est précisément là qu'on veut voir laquelle déborde le plus.
     ///
-    /// Retourne <c>null</c> si aucune ligne de cette langue n'a été analysée — source Excel,
+    /// Retourne <c>null</c> si aucune ligne de cette langue n'a été analysée —
     /// langue pas encore traduite — plutôt que des zéros qui se liraient comme « aucun défaut ».
     /// </summary>
     private static LayoutStatistics? ComputeLayout(IReadOnlyList<TranslationRow> rows, LanguageInfo language)

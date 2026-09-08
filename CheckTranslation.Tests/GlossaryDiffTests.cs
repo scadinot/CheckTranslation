@@ -2,8 +2,8 @@ namespace CheckTranslation.Tests;
 
 public class GlossaryDiffTests
 {
-    private static readonly LanguageInfo German = new("de-DE", "Allemand", 7);
-    private static readonly LanguageInfo English = new("en-US", "Anglais", 9);
+    private static readonly LanguageInfo German = new("de-DE", "Allemand");
+    private static readonly LanguageInfo English = new("en-US", "Anglais");
 
     private static GlossaryTerm Term(string source, GlossaryTermStatus status = GlossaryTermStatus.Validated,
         string context = "", string reviewerComment = "", params (string Code, string Value)[] translations)
