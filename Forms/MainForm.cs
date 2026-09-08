@@ -617,16 +617,16 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
         }
 
-        // Relecture : la grille ne montre plus que ce que la passe a changé, dans la langue
-        // affichée ; changer de langue montre les lignes retraduites de celle-là.
-        if (anyRetranslated)
-            ShowRetranslatedRows();
+        // Relecture : la grille ne montre plus que ce que la passe a changé, dans la première
+        // langue qui a des lignes retraduites (celle affichée si elle en a) ; changer de langue
+        // montre les lignes retraduites de celle-là.
+        bool filtered = anyRetranslated && ShowRetranslatedRows();
 
         if (report.Count > 0)
         {
             MessageBox.Show(this,
                 "Retraduction ciblée :\n\n" + string.Join("\n", report)
-                + (anyRetranslated ? "\n\nLa grille est filtrée sur les lignes retraduites de la langue affichée (translation:retranslated), pour relecture." : string.Empty)
+                + (filtered ? $"\n\nLa grille est filtrée sur les lignes retraduites en {_currentLanguage.Name} (translation:retranslated), pour relecture ; changer de langue montre celles des autres langues." : string.Empty)
                 + (errors > 0 ? $"\n\n{errors} réponse(s) inexploitables : les lignes concernées ont conservé leur valeur précédente ou restent sans score." : string.Empty),
                 "Retraduction ciblée", MessageBoxButtons.OK, errors > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
@@ -876,13 +876,28 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Restreint la grille aux lignes retraduites par la dernière passe (langue affichée), pour
-    /// les relire : tous les filtres remis à zéro, arborescence recochée, et le pseudo-filtre
+    /// Restreint la grille aux lignes retraduites par la dernière passe, pour les relire : reste
+    /// sur la langue affichée si elle en a, sinon bascule sur la première langue qui en a — un
+    /// filtre posé sur une langue sans ligne retraduite viderait la grille sans rien dire. Tous
+    /// les filtres remis à zéro, arborescence recochée, et le pseudo-filtre
     /// <c>translation:retranslated</c> posé dans la zone de saisie de la colonne Traduction —
     /// visible, donc effaçable comme n'importe quel filtre. Même mécanique que le drill-down.
+    /// Retourne faux si aucune ligne n'a été retraduite dans aucune langue.
     /// </summary>
-    private void ShowRetranslatedRows()
+    private bool ShowRetranslatedRows()
     {
+        if (_allRows is null)
+            return false;
+
+        var target = _allRows.Any(row => row.WasRetranslated(_currentLanguage.Code))
+            ? _currentLanguage
+            : Array.Find(Languages, language => _allRows.Any(row => row.WasRetranslated(language.Code)));
+        if (target is null)
+            return false;
+
+        if (target != _currentLanguage)
+            SwitchToLanguage(target);
+
         foreach (var textBox in _filterTextBoxes.Values)
             textBox.Text = string.Empty;
         ResetSpecialFilters();
@@ -894,6 +909,7 @@ public partial class MainForm : Form
         _filterDebounceTimer?.Stop();
         ApplyFilters();
         UpdateFilterPanelLayout();
+        return true;
     }
 
     /// <summary>
