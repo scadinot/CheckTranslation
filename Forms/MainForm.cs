@@ -674,6 +674,10 @@ public partial class MainForm : Form
                 return;
             }
 
+            // Terminer une édition de cellule encore ouverte AVANT de pousser la vue active : sinon
+            // le commit copierait dans les dictionnaires la valeur d'avant la saisie en cours.
+            dataGridView.EndEdit();
+
             // La langue affichée ne vit que dans la vue active tant qu'elle n'est pas poussée.
             foreach (var row in _allRows)
                 row.CommitActiveLanguage(_currentLanguage.Code);
@@ -688,7 +692,6 @@ public partial class MainForm : Form
             // français : plusieurs secondes sur un gros corpus. Hors du thread d'interface, grille
             // et toolbar gelées pendant ce temps — rien ne doit écrire dans les lignes qu'on lit.
             // Même patron que RunLayoutCheckAsync.
-            dataGridView.EndEdit();
             toolStrip.Enabled = false;
             dataGridView.Enabled = false;
             UseWaitCursor = true;
