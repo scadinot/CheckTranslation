@@ -51,6 +51,12 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    pas) ; la détection est une **inclusion insensible à la casse** — les formes fléchies
    éloignées du terme canonique peuvent lui échapper, et l'approximation retraduira parfois une
    ligne de trop plutôt qu'une de moins.
+   La détection automatique ne voit que l'éditeur : un glossaire modifié hors de l'application
+   (à la main, par un collègue via git, par un versement de contextes) ne déclenche rien. Le
+   bouton **Retraduire les écarts au glossaire** rattrape ce cas : il sélectionne, toutes langues
+   confondues, les traductions qui n'emploient pas le terme imposé — même définition que
+   `glossary.py check` — et enchaîne sur la même retraduction. C'est aussi la commande à utiliser
+   pour rattraper un corpus traduit avant l'existence du glossaire.
 5. **Boucle** — le glossaire vit ; chaque campagne rejoue les phases 2 à 4. Le tableau de bord
    mesure l'effet (scores avant / après par langue).
 

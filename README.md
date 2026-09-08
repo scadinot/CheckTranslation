@@ -49,6 +49,7 @@ Dans les deux cas, elle filtre les entrées `@Invariant` et affiche les traducti
 - **Extraction IA assistée** : menu contextuel « Extraire les termes métier… » sur une sélection — l'IA propose des termes candidats, l'utilisateur valide un par un avant ajout
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
+- **Retraduire les écarts au glossaire** : bouton de la toolbar, à côté du glossaire. Sélectionne dans toutes les langues les traductions qui n'emploient pas le terme imposé (français contenant le terme, traduction sans la forme attendue ni ses variantes), affiche le compte par langue, puis retraduit et re-vérifie après confirmation. À utiliser après une modification du glossaire faite hors de l'application, ou pour mettre un corpus existant en conformité
 
 ### Vérification de mise en page *(source `.resx` uniquement)*
 - **Automatique, au chargement de la solution** : confronte chaque libellé de contrôle à la place réellement disponible dans son formulaire — troncatures des contrôles à largeur fixe, collisions des contrôles `AutoSize` avec leurs voisins
