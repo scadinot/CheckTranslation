@@ -851,17 +851,20 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Le glossaire suit la solution : sans source chargée il n'y a rien à éditer ni à
-    /// retraduire, les deux boutons sont grisés — même logique que Sauver. Appelé à la
-    /// construction (état initial) et après chaque chargement, réussi ou non.
+    /// Boutons qui n'ont de sens qu'avec une source chargée : le glossaire suit la solution
+    /// (rien à éditer ni à retraduire sans elle), le tableau de bord n'a rien à compter. Tous
+    /// grisés sans source — même logique que Sauver. Appelé à la construction (état initial) et
+    /// après chaque chargement, réussi ou non.
     /// </summary>
-    private void UpdateGlossaryButtonsState()
+    private void UpdateSourceDependentButtonsState()
     {
         bool hasSource = _allRows is not null;
         if (btnGlossary is not null)
             btnGlossary.Enabled = hasSource;
         if (btnGlossaryDeviations is not null)
             btnGlossaryDeviations.Enabled = hasSource;
+        if (btnDashboard is not null)
+            btnDashboard.Enabled = hasSource;
     }
 
     private void ArrangeToolStripItems()
@@ -889,7 +892,7 @@ public partial class MainForm : Form
         toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(btnRefresh);
 
-        UpdateGlossaryButtonsState();
+        UpdateSourceDependentButtonsState();
     }
 
     private void InitLanguageButtons()
@@ -1097,7 +1100,7 @@ public partial class MainForm : Form
             // Succès comme échec : ces états décrivent la source réellement en mémoire — la
             // nouvelle si le chargement a abouti, l'ancienne (toujours affichée et éditable) sinon.
             btnSave.Enabled = _allRows is not null;
-            UpdateGlossaryButtonsState();
+            UpdateSourceDependentButtonsState();
         }
     }
 
@@ -3218,7 +3221,7 @@ private static readonly string ResourceDir = Path.Combine(AppContext.BaseDirecto
 
             btnOpen.Enabled = true;
             btnSave.Enabled = _allRows is not null;
-            UpdateGlossaryButtonsState();
+            UpdateSourceDependentButtonsState();
             UpdateRefreshButtonState();
         }
     }
