@@ -2262,8 +2262,16 @@ public partial class MainForm : Form
 
     private void UpdateVerificationCacheCountStatus()
     {
+        // Deux espaces de cache : les vérifications faites avec le glossaire courant (celles que
+        // « Vérifier la traduction » peut resservir) et celles faites sans glossaire par la
+        // retraduction ciblée. Ne compter que le premier rendrait le compteur trompeur après une
+        // passe de retraduction ; le second n'est affiché que s'il n'est pas vide.
         var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
-        statusVerificationCacheCount.Text = $"Cache Vérif. : {_translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint)}";
+        int withGlossary = _translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint);
+        int withoutGlossary = _translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, IndependentVerificationFingerprint);
+        statusVerificationCacheCount.Text = withoutGlossary > 0
+            ? $"Cache Vérif. : {withGlossary} (+{withoutGlossary} sans glossaire)"
+            : $"Cache Vérif. : {withGlossary}";
     }
 
     private void UpdateProviderStatus()
