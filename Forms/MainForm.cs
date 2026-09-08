@@ -681,15 +681,50 @@ public partial class MainForm : Form
             // Tous les termes Validé, cellule vide comprise : un terme long sans traduction dans
             // une langue doit quand même masquer le terme court qu'il contient (règle du plus long
             // terme de glossary.py) — la projection prompts ne le permettrait pas.
+            var rows = _allRows;
             var validatedTerms = _glossaryService.GetTerms();
-            var work = new List<(LanguageInfo Language, IReadOnlyList<TranslationRow> Rows)>();
-            foreach (var language in Languages)
+
+            // Le balayage lit toutes les lignes dans toutes les langues, en mots entiers côté
+            // français : plusieurs secondes sur un gros corpus. Hors du thread d'interface, grille
+            // et toolbar gelées pendant ce temps — rien ne doit écrire dans les lignes qu'on lit.
+            // Même patron que RunLayoutCheckAsync.
+            dataGridView.EndEdit();
+            toolStrip.Enabled = false;
+            dataGridView.Enabled = false;
+            UseWaitCursor = true;
+            Application.UseWaitCursor = true;
+            statusRowCount.Text = "Recherche des écarts au glossaire…";
+
+            List<(LanguageInfo Language, IReadOnlyList<TranslationRow> Rows)> work;
+            try
             {
-                var deviations = GlossaryDeviation.SelectDeviations(
-                    _allRows, language.Code, GlossaryDeviation.ControlledEntries(validatedTerms, language.Code));
-                if (deviations.Count > 0)
-                    work.Add((language, deviations));
+                work = await Task.Run(() => Languages
+                    .Select(language => (
+                        Language: language,
+                        Rows: (IReadOnlyList<TranslationRow>)GlossaryDeviation.SelectDeviations(
+                            rows, language.Code, GlossaryDeviation.ControlledEntries(validatedTerms, language.Code))))
+                    .Where(pair => pair.Rows.Count > 0)
+                    .ToList());
             }
+            finally
+            {
+                // Même précaution que le finally de RunLayoutCheckAsync : ne pas rouvrir l'UI si
+                // une écriture disque a pris le relais.
+                if (!_isWriting)
+                {
+                    toolStrip.Enabled = true;
+                    dataGridView.Enabled = true;
+                }
+
+                RestoreStatusBar();
+                UseWaitCursor = false;
+                Application.UseWaitCursor = false;
+            }
+
+            // La source a pu être remplacée pendant le balayage : les lignes trouvées seraient
+            // orphelines, on ne propose rien dessus.
+            if (!ReferenceEquals(_allRows, rows))
+                return;
 
             if (work.Count == 0)
             {
