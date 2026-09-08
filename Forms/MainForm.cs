@@ -460,13 +460,6 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Empreinte de cache des vérifications faites sans glossaire (retraduction ciblée) : un
-    /// espace distinct de celui des vérifications qui ont vu le glossaire, pour qu'un score ne
-    /// soit jamais resservi d'un mode à l'autre.
-    /// </summary>
-    private const string IndependentVerificationFingerprint = "verification-sans-glossaire";
-
-    /// <summary>
     /// Retraduit puis re-vérifie les lignes impactées, langue par langue, en écrivant dans les
     /// dictionnaires par code — jamais dans la vue active, rechargée à la fin pour la seule
     /// langue affichée. L'empreinte du glossaire ayant changé, le cache ne peut pas resservir
@@ -513,6 +506,7 @@ public partial class MainForm : Form
                         row.CommitActiveLanguage(_currentLanguage.Code);
 
                 var glossarySection = _glossaryService.BuildGlossarySection(language.Code, language.Name);
+                var verificationSection = _glossaryService.BuildGlossarySection(language.Code, language.Name, forVerification: true);
                 var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(language.Code);
                 var texts = rows.Select(r => r.French).ToList();
 
@@ -553,10 +547,9 @@ public partial class MainForm : Form
                 }
 
                 // Re-vérification de toutes les lignes retraduites, même celles revenues au même
-                // texte — SANS le glossaire dans le prompt : un vérificateur qui le reçoit constate
-                // la conformité et note 100 sans juger la langue, alors qu'on attend de lui un
-                // second regard indépendant. Espace de cache dédié : ces scores ne doivent pas se
-                // confondre avec ceux d'une vérification qui a vu le glossaire.
+                // texte, exactement comme depuis l'interface : glossaire compris, avec le garde-fou
+                // de la section de vérification — la conformité au glossaire ne vaut pas une note
+                // à elle seule, la traduction reste jugée sur tous les autres critères.
                 if (translatedRows.Count > 0)
                 {
                     var pairs = translatedRows.Select(r => (r.French, r.Translations[language.Code])).ToList();
@@ -568,7 +561,7 @@ public partial class MainForm : Form
                         statusRowCount.Text = $"Re-vérification {language.Code} : {done} / {translatedRows.Count}";
                     });
 
-                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, string.Empty, IndependentVerificationFingerprint, verifyProgress);
+                    var verifyBatches = await _translationService.VerifyInBatchesAsync(pairs, config, language.Name, verificationSection, glossaryFingerprint, verifyProgress);
 
                     rowIndex = 0;
                     foreach (var batch in verifyBatches)
@@ -2262,16 +2255,8 @@ public partial class MainForm : Form
 
     private void UpdateVerificationCacheCountStatus()
     {
-        // Deux espaces de cache : les vérifications faites avec le glossaire courant (celles que
-        // « Vérifier la traduction » peut resservir) et celles faites sans glossaire par la
-        // retraduction ciblée. Ne compter que le premier rendrait le compteur trompeur après une
-        // passe de retraduction ; le second n'est affiché que s'il n'est pas vide.
         var fingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
-        int withGlossary = _translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint);
-        int withoutGlossary = _translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, IndependentVerificationFingerprint);
-        statusVerificationCacheCount.Text = withoutGlossary > 0
-            ? $"Cache Vérif. : {withGlossary} (+{withoutGlossary} sans glossaire)"
-            : $"Cache Vérif. : {withGlossary}";
+        statusVerificationCacheCount.Text = $"Cache Vérif. : {_translationService.GetVerificationCacheCount(AppConfig.Current, _currentLanguage.Name, fingerprint)}";
     }
 
     private void UpdateProviderStatus()
@@ -2720,7 +2705,7 @@ public partial class MainForm : Form
             statusRowCount.Text = $"Vérification : {done} / {rows.Count}";
         });
 
-        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name);
+        var glossarySection = _glossaryService.BuildGlossarySection(_currentLanguage.Code, _currentLanguage.Name, forVerification: true);
         var glossaryFingerprint = _glossaryService.GetGlossaryFingerprint(_currentLanguage.Code);
 
         try
