@@ -15,7 +15,7 @@ Légende : 🔴 haute priorité · 🟡 moyenne · 🟢 basse / nice-to-have.
 
 | Prio | Axe | État | Amélioration suggérée |
 |:--:|---|---|---|
-| 🔴 | **Tests** | ✅ `CheckTranslation.Tests` (xUnit, 79 tests : QualityScore, filtres, statistiques, GlossaryDiff / Impact / Excel, ParseNumberedList, caches) | Étendre : `LayoutAnalyzer` (mesure injectée), `AppConfig` (DPAPI + legacy) |
+| 🔴 | **Tests** | ✅ `CheckTranslation.Tests` (xUnit, logique pure : QualityScore, filtres, statistiques, GlossaryDiff / GlossaryImpact / GlossaryDeviation / GlossaryExcel, magasin du glossaire, ParseNumberedList, caches — le compte exact est celui de `dotnet test`) | Étendre : `LayoutAnalyzer` (mesure injectée), `AppConfig` (DPAPI + legacy) |
 | 🟡 | **Séparation UI/Logic** | Partielle (`Logic/` extrait, `MainForm` désormais en sections commentées) | Extraire un `MainFormViewModel`/présenteur pour chargement/sauvegarde/traduction |
 | 🟢 | **Prompts externalisés** | En dur dans `AppConfig.cs` | Déplacer dans des fichiers `.md` séparés (édition facile) |
 
