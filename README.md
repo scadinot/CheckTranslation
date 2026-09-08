@@ -53,7 +53,7 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 - **Compte rendu** : nombre de débordements *sur le nombre de vérifications réellement faites* — « aucun débordement sur 0 ligne analysée » n'est pas un satisfecit
 
 ### Tableau de bord
-- **Bouton toolbar dédié** : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
+- **Bouton toolbar dédié**, grisé sans solution chargée : synthèse de l'état des traductions, toutes langues confondues — lignes, projets, fichiers, part traduite, part vérifiée, langue la moins avancée, défauts de mise en page
 - **Par langue** : traduites, non traduites, **identiques au français**, vérifiées, score moyen et distribution des scores par tranche (0–59, 60–69, 70–79, 80–89, 90–100), avec barres d'avancement
 - **Par projet / par fichier** : mêmes indicateurs pour la langue choisie, **triés du moins avancé au plus avancé** — ce qui reste à faire arrive en tête
 - **Mise en page** : troncatures, collisions, non vérifiables et conformes **pour chaque langue effectivement analysée**, triées de la plus défectueuse à la moins — c'est là qu'on voit laquelle déborde le plus. Une langue dont aucun libellé de contrôle n'est encore traduit n'y figure pas : elle n'a rien à montrer
