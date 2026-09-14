@@ -21,13 +21,16 @@ internal sealed partial class GlossaryForm : Form
     // CellValueChanged, qui ne doit pas marquer le formulaire modifié.
     private bool _suppressDirty;
 
-    // Menu contextuel d'un terme (contrôler / retraduire dans une langue) : ligne et langue du
-    // dernier clic droit, langue affichée par la grille principale en repli hors des colonnes
-    // de langue.
-    private ContextMenuStrip _termMenu = null!;
-    private readonly ToolStripMenuItem _menuVerifyTerm = new();
-    private readonly ToolStripMenuItem _menuRetranslateTerm = new();
-    private int _menuRowIndex = -1;
+    // Menu contextuel d'un terme (contrôler / retraduire dans une langue). Les contrôles suivent
+    // la convention UI (sans underscore) ; l'état non-UI qui suit — ligne et langue du dernier
+    // clic droit, langue affichée par la grille principale en repli hors des colonnes de
+    // langue — la convention des champs privés.
+    private ContextMenuStrip termMenu = null!;
+    private readonly ToolStripMenuItem menuVerifyTerm = new();
+    private readonly ToolStripMenuItem menuRetranslateTerm = new();
+    // La ligne elle-même, jamais son index : EndEdit peut re-trier la grille (colonnes en
+    // SortMode.Automatic) et déplacer la ligne entre le clic et l'action.
+    private DataGridViewRow? _menuRow;
     private string _menuLanguageCode = MainForm.Languages[0].Code;
     private string _preferredLanguageCode = MainForm.Languages[0].Code;
 
@@ -278,11 +281,11 @@ internal sealed partial class GlossaryForm : Form
     private void InitTermContextMenu()
     {
         // Rattaché au conteneur du formulaire : libéré avec lui, l'éditeur est transient.
-        _termMenu = new ContextMenuStrip(components);
-        _menuVerifyTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Verify);
-        _menuRetranslateTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Retranslate);
-        _termMenu.Items.Add(_menuVerifyTerm);
-        _termMenu.Items.Add(_menuRetranslateTerm);
+        termMenu = new ContextMenuStrip(components);
+        menuVerifyTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Verify);
+        menuRetranslateTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Retranslate);
+        termMenu.Items.Add(menuVerifyTerm);
+        termMenu.Items.Add(menuRetranslateTerm);
 
         grid.CellMouseClick += (_, e) =>
         {
@@ -290,44 +293,55 @@ internal sealed partial class GlossaryForm : Form
                 return;
 
             var row = grid.Rows[e.RowIndex];
-            if (row.IsNewRow)
+
+            // Committe une édition de cellule encore ouverte : une source tapée dans la ligne
+            // « nouvelle » n'est dans Value qu'après EndEdit, et c'est ce commit qui en fait une
+            // vraie ligne — le placeholder n'est donc rejeté qu'APRÈS, sinon le menu resterait
+            // inaccessible à une ligne qu'on vient de saisir. Le commit peut aussi re-trier la
+            // grille (colonnes en SortMode.Automatic) : e.RowIndex ne vaut plus rien après, seule
+            // la référence à la ligne compte — et le menu s'ouvre sous la souris, pas sur une
+            // cellule dont l'index a pu changer.
+            grid.EndEdit();
+            if (row.Index < 0 || row.IsNewRow)
                 return;
 
             // Les colonnes de langue portent leur code en Tag ; les autres (Source, Contexte,
             // Statut, Commentaire réviseur) n'en ont pas.
-            _menuRowIndex = e.RowIndex;
+            _menuRow = row;
             _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string ?? _preferredLanguageCode;
             var languageName = Array.Find(MainForm.Languages,
                 language => string.Equals(language.Code, _menuLanguageCode, StringComparison.OrdinalIgnoreCase))?.Name ?? _menuLanguageCode;
 
-            // La valeur affichée suffit au libellé : la source est relue à l'exécution, après
-            // EndEdit, avec la même normalisation que l'enregistrement.
+            // Même normalisation que l'enregistrement.
             var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
             bool hasSource = source.Length > 0;
             var label = hasSource ? $"« {source} »" : "ce terme";
-            _menuVerifyTerm.Text = $"Contrôler les traductions de {label} en {languageName}";
-            _menuRetranslateTerm.Text = $"Retraduire les traductions de {label} en {languageName}";
-            _menuVerifyTerm.Enabled = hasSource;
-            _menuRetranslateTerm.Enabled = hasSource;
+            menuVerifyTerm.Text = $"Contrôler les traductions de {label} en {languageName}";
+            menuRetranslateTerm.Text = $"Retraduire les traductions de {label} en {languageName}";
+            menuVerifyTerm.Enabled = hasSource;
+            menuRetranslateTerm.Enabled = hasSource;
 
             grid.ClearSelection();
             row.Selected = true;
 
-            var cellRect = grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
-            _termMenu.Show(grid, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
+            termMenu.Show(grid, grid.PointToClient(Cursor.Position));
         };
     }
 
     private void RequestTermAction(GlossaryTermActionKind kind)
     {
-        if (_menuRowIndex < 0 || _menuRowIndex >= grid.Rows.Count || grid.Rows[_menuRowIndex].IsNewRow)
+        var row = _menuRow;
+        if (row is null || row.Index < 0 || row.IsNewRow)
             return;
 
         // Committe une édition de cellule encore ouverte : la source relue doit être celle que
-        // l'enregistrement écrira, et _dirty ne doit pas mentir.
+        // l'enregistrement écrira, et _dirty ne doit pas mentir. La ligne est tenue par
+        // référence : un re-tri éventuel ne la perd pas.
         grid.EndEdit();
+        if (row.Index < 0)
+            return;
 
-        var source = GlossaryService.NormalizeCell(grid.Rows[_menuRowIndex].Cells[colSource.Index].Value as string);
+        var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
         if (source.Length == 0)
             return;
 
