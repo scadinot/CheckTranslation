@@ -81,6 +81,22 @@ internal static class GlossaryImpact
         return impacted;
     }
 
+    /// <summary>
+    /// Retire un terme des changements d'une langue — et la langue elle-même si elle n'en garde
+    /// aucun. Sert quand l'utilisateur a déjà demandé une action sur ce terme dans cette langue
+    /// depuis le menu contextuel de l'éditeur : le proposer une seconde fois automatiquement
+    /// ferait deux confirmations pour les mêmes lignes.
+    /// </summary>
+    public static void RemoveTerm(Dictionary<string, List<string>> changedTerms, string languageCode, string source)
+    {
+        if (!changedTerms.TryGetValue(languageCode, out var terms))
+            return;
+
+        terms.RemoveAll(term => string.Equals(term, source, StringComparison.OrdinalIgnoreCase));
+        if (terms.Count == 0)
+            changedTerms.Remove(languageCode);
+    }
+
     private static Dictionary<string, GlossaryEntry> IndexBySource(IReadOnlyList<GlossaryEntry> entries)
     {
         // Les projections viennent du service, dont le stockage garantit l'unicité des sources

@@ -161,6 +161,35 @@ internal static partial class GlossaryDeviation
         return rows.Where(row => IsDeviation(row, languageCode, entries)).ToList();
     }
 
+    /// <summary>
+    /// Lignes en écart pour un seul terme du glossaire : le français contient ce terme et c'est
+    /// bien lui qui est contrôlé (un terme plus long qui le contient le masque, comme dans
+    /// <see cref="MatchingTerms"/>), et la traduction n'emploie pas sa cellule. Même contrôle que
+    /// <see cref="SelectDeviations"/>, restreint à un terme — pas une règle de plus, la vue d'un
+    /// terme depuis l'éditeur de glossaire ; la réunion par terme redonne la liste globale. Sans
+    /// cellule pour la langue, aucun écart.
+    /// </summary>
+    public static List<TranslationRow> SelectDeviationsForTerm(
+        IReadOnlyList<TranslationRow> rows,
+        string languageCode,
+        IReadOnlyList<GlossaryEntry> entries,
+        string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return new List<TranslationRow>();
+
+        return rows.Where(row =>
+        {
+            var translation = row.Translations.GetValueOrDefault(languageCode);
+            if (string.IsNullOrWhiteSpace(translation))
+                return false;
+
+            return MatchingTerms(row.French, entries).Any(entry =>
+                string.Equals(entry.Source, source, StringComparison.OrdinalIgnoreCase)
+                && !TargetContains(translation, entry.Destination, languageCode));
+        }).ToList();
+    }
+
     private static List<string> Words(string? text)
         => WordRegex().Matches(text ?? string.Empty).Select(m => m.Value.ToLowerInvariant()).ToList();
 }

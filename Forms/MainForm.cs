@@ -394,18 +394,26 @@ public partial class MainForm : Form
             // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
             var projectionBefore = SnapshotPromptProjections();
 
+            GlossaryTermAction? action;
             using (var form = _glossaryFormFactory())
             {
                 form.SelectLanguage(_currentLanguage.Code);
                 form.ShowDialog(this);
+                action = form.RequestedAction;
             }
 
-            await ProposeTargetedRetranslationAsync(projectionBefore);
+            // La demande explicite sur un terme passe d'abord ; la détection automatique suit,
+            // sans ce terme dans cette langue — le proposer une seconde fois ferait deux
+            // confirmations pour les mêmes lignes.
+            if (action is not null)
+                await RunGlossaryTermActionAsync(action);
+
+            await ProposeTargetedRetranslationAsync(projectionBefore, action);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Erreur pendant la détection des lignes impactées :\n\n{ex.Message}",
-                "Retraduction ciblée", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, $"Erreur pendant le traitement qui suit l'éditeur de glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -423,14 +431,20 @@ public partial class MainForm : Form
     /// Confronte la projection prompts d'avant l'éditeur à celle d'après, sélectionne les lignes
     /// dont le français contient un terme dont la contrainte a changé, et propose de les
     /// retraduire. Sans source chargée ou sans impact, ne dit rien : le glossaire s'appliquera
-    /// de lui-même aux prochaines traductions.
+    /// de lui-même aux prochaines traductions. Le terme et la langue d'une action déjà demandée
+    /// depuis le menu contextuel de l'éditeur (<paramref name="alreadyRequested"/>) sont écartés :
+    /// l'utilisateur vient de trancher pour ces lignes.
     /// </summary>
-    private async Task ProposeTargetedRetranslationAsync(Dictionary<string, IReadOnlyList<GlossaryEntry>> projectionBefore)
+    private async Task ProposeTargetedRetranslationAsync(
+        Dictionary<string, IReadOnlyList<GlossaryEntry>> projectionBefore,
+        GlossaryTermAction? alreadyRequested)
     {
         if (_allRows is null || _allRows.Count == 0)
             return;
 
         var changedTerms = GlossaryImpact.ComputeChangedTerms(projectionBefore, SnapshotPromptProjections());
+        if (alreadyRequested is not null)
+            GlossaryImpact.RemoveTerm(changedTerms, alreadyRequested.LanguageCode, alreadyRequested.Source);
         if (changedTerms.Count == 0)
             return;
 
@@ -475,11 +489,11 @@ public partial class MainForm : Form
             return;
         }
 
-        // Nouvelle passe : le marqueur « retraduite » de la précédente ne vaut plus, la relecture
+        // Nouvelle passe : le marqueur « à relire » de la précédente ne vaut plus, la relecture
         // ne doit montrer que ce que celle-ci a changé.
         if (_allRows is not null)
             foreach (var row in _allRows)
-                row.ClearRetranslated();
+                row.ClearReviewMarks();
 
         // Même gel que TranslateRowsAsync : les résultats s'écrivent dans les dictionnaires des
         // lignes, changer de langue ou rafraîchir pendant l'attente les corromprait.
@@ -540,7 +554,7 @@ public partial class MainForm : Form
                             row.InvalidateLayoutVerdict(language.Code);
                         row.Translations[language.Code] = batch[i];
                         row.Comments[language.Code] = string.Empty;
-                        row.MarkRetranslated(language.Code);
+                        row.MarkForReview(language.Code);
                         anyRetranslated = true;
                         translatedRows.Add(row);
                     }
@@ -613,16 +627,183 @@ public partial class MainForm : Form
         // Relecture : la grille ne montre plus que ce que la passe a changé, dans la première
         // langue qui a des lignes retraduites (celle affichée si elle en a) ; changer de langue
         // montre les lignes retraduites de celle-là.
-        bool filtered = anyRetranslated && ShowRetranslatedRows();
+        bool filtered = anyRetranslated && ShowRowsToReview();
 
         if (report.Count > 0)
         {
             MessageBox.Show(this,
                 "Retraduction ciblée :\n\n" + string.Join("\n", report)
-                + (filtered ? $"\n\nLa grille est filtrée sur les lignes retraduites en {_currentLanguage.Name} (translation:retranslated), pour relecture ; changer de langue montre celles des autres langues." : string.Empty)
+                + (filtered ? $"\n\nLa grille est filtrée sur les lignes retraduites en {_currentLanguage.Name} (translation:review), pour relecture ; changer de langue montre celles des autres langues." : string.Empty)
                 + (errors > 0 ? $"\n\n{errors} réponse(s) inexploitables : les lignes concernées ont conservé leur valeur précédente ou restent sans score." : string.Empty),
                 "Retraduction ciblée", MessageBoxButtons.OK, errors > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
+    }
+
+    // --- Actions sur un terme depuis l'éditeur de glossaire ---
+
+    /// <summary>
+    /// Exécute la demande portée par l'éditeur de glossaire à sa fermeture : contrôler ou
+    /// retraduire, dans une langue, les lignes dont le français contient le terme. La sélection
+    /// est celle de la retraduction ciblée (<see cref="GlossaryImpact.SelectImpactedRows"/>,
+    /// inclusion insensible à la casse — « disjoncteurs » compte pour « disjoncteur ») ; le
+    /// compte des écarts au glossaire parmi ces lignes suit la définition de
+    /// <see cref="GlossaryDeviation"/>, restreinte au terme.
+    /// </summary>
+    private async Task RunGlossaryTermActionAsync(GlossaryTermAction action)
+    {
+        if (_allRows is null || _allRows.Count == 0)
+        {
+            FlashStatus("Ouvrez d'abord une source : rien à contrôler ni à retraduire.");
+            return;
+        }
+
+        var language = Array.Find(Languages, l => string.Equals(l.Code, action.LanguageCode, StringComparison.OrdinalIgnoreCase));
+        if (language is null)
+            return;
+
+        if (!HasApiConfig(AppConfig.Current))
+        {
+            MessageBox.Show("Veuillez configurer l'URL et la clé API dans la configuration.",
+                "Configuration manquante", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Terminer une édition de cellule encore ouverte AVANT de pousser la vue active, puis
+        // pousser : la sélection et le compte des écarts lisent les dictionnaires par code.
+        dataGridView.EndEdit();
+        foreach (var row in _allRows)
+            row.CommitActiveLanguage(_currentLanguage.Code);
+
+        var rows = GlossaryImpact.SelectImpactedRows(_allRows, new[] { action.Source });
+        if (rows.Count == 0)
+        {
+            FlashStatus($"Aucune ligne ne contient « {action.Source} » : rien à {(action.Kind == GlossaryTermActionKind.Verify ? "contrôler" : "retraduire")}.");
+            return;
+        }
+
+        var terms = _glossaryService.GetTerms();
+        var cell = GlossaryCandidates.FindExisting(terms, action.Source)?.Translations.GetValueOrDefault(language.Code) ?? string.Empty;
+        var deviations = GlossaryDeviation.SelectDeviationsForTerm(
+            rows, language.Code, GlossaryDeviation.ControlledEntries(terms, language.Code), action.Source);
+        bool injected = _glossaryService.GetPromptEntries(language.Code)
+            .Any(entry => string.Equals(entry.Source, action.Source, StringComparison.OrdinalIgnoreCase));
+        var constraint = DescribeTermConstraint(action.Source, language, cell, injected, deviations.Count);
+
+        if (action.Kind == GlossaryTermActionKind.Verify)
+            await VerifyTermRowsAsync(action.Source, language, rows, constraint);
+        else
+            await RetranslateTermRowsAsync(action.Source, language, rows, deviations, constraint);
+    }
+
+    /// <summary>
+    /// Ce que le glossaire impose pour ce terme dans cette langue, tel que l'utilisateur doit
+    /// l'entendre avant de confirmer : la cellule attendue et le compte des écarts, ou la raison
+    /// pour laquelle aucune contrainte ne s'appliquera (cellule vide, terme non Validé).
+    /// </summary>
+    private static string DescribeTermConstraint(string source, LanguageInfo language, string cell, bool injected, int deviations)
+    {
+        if (!injected)
+        {
+            return cell.Length == 0
+                ? $"Le glossaire n'impose aucune traduction de « {source} » en {language.Name} (cellule vide) : aucune contrainte ne s'appliquera."
+                : $"« {source} » n'est pas Validé : il n'est pas injecté dans les prompts, aucune contrainte ne s'appliquera.";
+        }
+
+        return deviations == 0
+            ? $"Toutes emploient déjà « {cell} », la traduction imposée par le glossaire : aucun écart."
+            : $"Écarts au glossaire : {deviations} n'emploie(nt) pas « {cell} », la traduction imposée.";
+    }
+
+    /// <summary>
+    /// Contrôle depuis un terme : vérifie par l'IA les traductions existantes, dans la langue
+    /// demandée, des lignes dont le français contient le terme — comme « Vérifier la traduction »
+    /// depuis la grille, glossaire compris avec son garde-fou. La grille bascule d'abord sur la
+    /// langue : la vérification travaille sur la vue active, et c'est là que la relecture se
+    /// fait. À la fin, les lignes vérifiées sont marquées et la grille filtrée dessus.
+    /// </summary>
+    private async Task VerifyTermRowsAsync(string source, LanguageInfo language, IReadOnlyList<TranslationRow> rows, string constraint)
+    {
+        // Une ligne non traduite n'a rien à vérifier.
+        var translated = rows.Where(row => !string.IsNullOrWhiteSpace(row.Translations.GetValueOrDefault(language.Code))).ToList();
+        if (translated.Count == 0)
+        {
+            FlashStatus($"Aucune des {rows.Count} ligne(s) contenant « {source} » n'est traduite en {language.Name} : rien à contrôler.");
+            return;
+        }
+
+        var answer = MessageBox.Show(this,
+            $"{translated.Count} ligne(s) traduite(s) en {language.Name} contiennent « {source} »"
+            + (translated.Count < rows.Count ? $" ({rows.Count - translated.Count} non traduite(s), ignorée(s))" : string.Empty)
+            + ".\n" + constraint
+            + "\n\nVérifier ces traductions par l'IA maintenant ?\nLeur score actuel sera remplacé.",
+            "Contrôle depuis le glossaire", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes)
+            return;
+
+        // Nouvelle passe : le marqueur « à relire » de la précédente ne vaut plus.
+        if (_allRows is not null)
+            foreach (var row in _allRows)
+                row.ClearReviewMarks();
+
+        if (language != _currentLanguage)
+            SwitchToLanguage(language);
+
+        await VerifyRowsAsync(translated);
+
+        // La vérification a écrit dans la vue active : la pousser dans le dictionnaire de la
+        // langue, marquer, et recharger la vue pour que le marqueur affiché suive.
+        foreach (var row in translated)
+        {
+            row.CommitActiveLanguage(language.Code);
+            row.MarkForReview(language.Code);
+            row.SelectLanguage(language.Code);
+        }
+
+        if (ShowRowsToReview())
+            FlashStatus($"{translated.Count} traduction(s) de « {source} » contrôlée(s) en {language.Name} ; la grille est filtrée dessus (translation:review).");
+    }
+
+    /// <summary>
+    /// Retraduction depuis un terme : les lignes dont le français contient le terme sont
+    /// retraduites puis re-vérifiées dans la langue demandée — même passe que la retraduction
+    /// ciblée (<see cref="RetranslateImpactedAsync"/>). Quand seule une partie est en écart au
+    /// glossaire, l'utilisateur choisit : les écarts seuls — le geste économe, une traduction
+    /// conforme n'a pas de raison de bouger — ou toutes les lignes.
+    /// </summary>
+    private async Task RetranslateTermRowsAsync(
+        string source,
+        LanguageInfo language,
+        IReadOnlyList<TranslationRow> rows,
+        IReadOnlyList<TranslationRow> deviations,
+        string constraint)
+    {
+        var deviationsButton = new TaskDialogButton($"Retraduire les {deviations.Count} écart(s)");
+        var allButton = new TaskDialogButton($"Retraduire les {rows.Count} ligne(s)");
+        bool offerDeviations = deviations.Count > 0 && deviations.Count < rows.Count;
+
+        var page = new TaskDialogPage
+        {
+            Caption = "Retraduction depuis le glossaire",
+            Heading = $"Retraduire en {language.Name} les lignes contenant « {source} »",
+            Text = $"{rows.Count} ligne(s) contiennent « {source} ».\n" + constraint
+                + "\n\nLes traductions actuelles des lignes retraduites seront remplacées, puis re-vérifiées.",
+            Icon = TaskDialogIcon.Information,
+            AllowCancel = true,
+        };
+        if (offerDeviations)
+            page.Buttons.Add(deviationsButton);
+        page.Buttons.Add(allButton);
+        page.Buttons.Add(TaskDialogButton.Cancel);
+        page.DefaultButton = offerDeviations ? deviationsButton : allButton;
+
+        var clicked = TaskDialog.ShowDialog(this, page);
+        IReadOnlyList<TranslationRow>? chosen = clicked == deviationsButton ? deviations
+            : clicked == allButton ? rows
+            : null;
+        if (chosen is null)
+            return;
+
+        await RetranslateImpactedAsync(new[] { (language, chosen) });
     }
 
     private void InitDashboardButton()
@@ -869,22 +1050,23 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Restreint la grille aux lignes retraduites par la dernière passe, pour les relire : reste
-    /// sur la langue affichée si elle en a, sinon bascule sur la première langue qui en a — un
-    /// filtre posé sur une langue sans ligne retraduite viderait la grille sans rien dire. Tous
-    /// les filtres remis à zéro, arborescence recochée, et le pseudo-filtre
-    /// <c>translation:retranslated</c> posé dans la zone de saisie de la colonne Traduction —
-    /// visible, donc effaçable comme n'importe quel filtre. Même mécanique que le drill-down.
-    /// Retourne faux si aucune ligne n'a été retraduite dans aucune langue.
+    /// Restreint la grille aux lignes touchées par la dernière passe ciblée (retraduites, ou
+    /// contrôlées depuis un terme du glossaire), pour les relire : reste sur la langue affichée
+    /// si elle en a, sinon bascule sur la première langue qui en a — un filtre posé sur une
+    /// langue sans ligne marquée viderait la grille sans rien dire. Tous les filtres remis à
+    /// zéro, arborescence recochée, et le pseudo-filtre <c>translation:review</c> posé dans la
+    /// zone de saisie de la colonne Traduction — visible, donc effaçable comme n'importe quel
+    /// filtre. Même mécanique que le drill-down. Retourne faux si aucune ligne n'est marquée dans
+    /// aucune langue.
     /// </summary>
-    private bool ShowRetranslatedRows()
+    private bool ShowRowsToReview()
     {
         if (_allRows is null)
             return false;
 
-        var target = _allRows.Any(row => row.WasRetranslated(_currentLanguage.Code))
+        var target = _allRows.Any(row => row.IsMarkedForReview(_currentLanguage.Code))
             ? _currentLanguage
-            : Array.Find(Languages, language => _allRows.Any(row => row.WasRetranslated(language.Code)));
+            : Array.Find(Languages, language => _allRows.Any(row => row.IsMarkedForReview(language.Code)));
         if (target is null)
             return false;
 
@@ -897,7 +1079,7 @@ public partial class MainForm : Form
         ResetSolutionTreeChecks();
 
         if (_filterTextBoxes.TryGetValue("Translation", out var box))
-            box.Text = "translation:retranslated";
+            box.Text = "translation:review";
 
         _filterDebounceTimer?.Stop();
         ApplyFilters();

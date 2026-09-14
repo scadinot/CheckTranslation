@@ -22,25 +22,26 @@ internal sealed class TranslationRow
     public Dictionary<string, string> Comments { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Langues dans lesquelles la ligne a été retraduite par la dernière passe de retraduction
-    /// ciblée. Marqueur transitoire (jamais persisté) : il ne sert qu'à relire ce que la passe a
-    /// changé, via le pseudo-filtre <c>translation:retranslated</c>. Par langue, comme les
-    /// traductions : une ligne retraduite en allemand n'est pas « retraduite » en anglais.
+    /// Langues dans lesquelles la ligne a été touchée par la dernière passe ciblée : retraduite
+    /// (retraduction ciblée, écarts au glossaire, retraduction d'un terme) ou contrôlée depuis un
+    /// terme du glossaire. Marqueur transitoire (jamais persisté) : il ne sert qu'à relire ce que
+    /// la passe a fait, via le pseudo-filtre <c>translation:review</c>. Par langue, comme les
+    /// traductions : une ligne retraduite en allemand n'est pas « à relire » en anglais.
     /// </summary>
-    private readonly HashSet<string> _retranslatedLanguages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _reviewLanguages = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Vrai si la ligne a été retraduite dans la langue affichée, par la dernière passe.</summary>
-    public bool Retranslated { get; private set; }
+    /// <summary>Vrai si la ligne a été touchée dans la langue affichée par la dernière passe ciblée.</summary>
+    public bool ToReview { get; private set; }
 
-    internal void MarkRetranslated(string languageCode) => _retranslatedLanguages.Add(languageCode);
+    internal void MarkForReview(string languageCode) => _reviewLanguages.Add(languageCode);
 
-    internal bool WasRetranslated(string languageCode) => _retranslatedLanguages.Contains(languageCode);
+    internal bool IsMarkedForReview(string languageCode) => _reviewLanguages.Contains(languageCode);
 
     /// <summary>Oublie la passe précédente : appelé au début de chaque nouvelle passe.</summary>
-    internal void ClearRetranslated()
+    internal void ClearReviewMarks()
     {
-        _retranslatedLanguages.Clear();
-        Retranslated = false;
+        _reviewLanguages.Clear();
+        ToReview = false;
     }
 
     public void SwitchLanguage(string oldLanguageCode, string newLanguageCode)
@@ -57,7 +58,7 @@ internal sealed class TranslationRow
     {
         Translation = Translations.GetValueOrDefault(languageCode, string.Empty);
         Comment = Comments.GetValueOrDefault(languageCode, string.Empty);
-        Retranslated = _retranslatedLanguages.Contains(languageCode);
+        ToReview = _reviewLanguages.Contains(languageCode);
         SelectLayoutVerdict(languageCode);
     }
 

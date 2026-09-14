@@ -56,7 +56,7 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    en vérification porte un garde-fou : **la conformité au glossaire ne justifie à elle seule
    aucune note** — un vérificateur qui a le glossaire sous les yeux tend sinon à constater la
    conformité et à noter 100 sans juger la langue. À la fin, la grille est **filtrée sur les
-   lignes retraduites** (pseudo-filtre `translation:retranslated`, par langue) pour les relire.
+   lignes retraduites** (pseudo-filtre `translation:review`, par langue) pour les relire.
    Deux décisions assumées : un terme **supprimé** ne déclenche rien (une suppression lève une
    contrainte, elle n'invalide pas l'existant — un terme erroné se corrige, il ne se supprime
    pas) ; la détection est une **inclusion insensible à la casse** — les formes fléchies
@@ -68,6 +68,11 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    confondues, les traductions qui n'emploient pas le terme imposé — même définition que
    `glossary.py check` — et enchaîne sur la même retraduction. C'est aussi la commande à utiliser
    pour rattraper un corpus traduit avant l'existence du glossaire.
+   Enfin, un terme peut être traité seul, depuis son menu contextuel dans l'éditeur : **Contrôler**
+   vérifie par l'IA les traductions existantes des lignes qui le contiennent dans une langue,
+   **Retraduire** les retraduit puis re-vérifie — les écarts seuls ou toutes les lignes, au choix.
+   La langue est celle de la colonne cliquée ; les modifications en cours de l'éditeur sont
+   enregistrées d'abord, l'action portant sur le glossaire que les prompts verront.
 5. **Boucle** — le glossaire vit ; chaque campagne rejoue les phases 2 à 4. Le tableau de bord
    mesure l'effet (scores avant / après par langue).
 

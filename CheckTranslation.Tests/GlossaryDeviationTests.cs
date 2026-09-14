@@ -142,4 +142,45 @@ public class GlossaryDeviationTests
 
         Assert.Empty(GlossaryDeviation.SelectDeviations(rows, "de-DE", Array.Empty<GlossaryEntry>()));
     }
+
+    [Fact]
+    public void SelectDeviationsForTerm_RestrictsTheSameCheckToOneTerm_LongestTermStillMasks()
+    {
+        var entries = new[]
+        {
+            Entry("neutre", "Neutral"),
+            Entry("régime de neutre", "Netzform"),
+            Entry("disjoncteur", "Leistungsschalter"),
+        };
+        var rows = new[]
+        {
+            Row("Le conducteur neutre", "de-DE", "Der N-Leiter"),               // écart sur « neutre »
+            Row("Le régime de neutre TT", "de-DE", "Die Netzform TT"),           // « neutre » masqué, conforme
+            Row("Le régime de neutre IT", "de-DE", "Das IT-System"),             // écart sur « régime de neutre » seul
+            Row("Le neutre est coupé", "de-DE", "Der Neutral ist getrennt"),     // conforme
+            Row("Le neutre est isolé", "de-DE", ""),                            // non traduite : pas un écart
+            Row("Le disjoncteur déclenche", "de-DE", "Der Schalter"),            // écart, mais sur un autre terme
+        };
+
+        var forNeutre = GlossaryDeviation.SelectDeviationsForTerm(rows, "de-DE", entries, "neutre");
+        Assert.Equal("Le conducteur neutre", Assert.Single(forNeutre).French);
+
+        // Source insensible à la casse, comme partout dans le glossaire.
+        var forRegime = GlossaryDeviation.SelectDeviationsForTerm(rows, "de-DE", entries, "Régime de neutre");
+        Assert.Equal("Le régime de neutre IT", Assert.Single(forRegime).French);
+
+        // Même définition que SelectDeviations : la réunion par terme redonne la liste globale.
+        Assert.Equal(3, GlossaryDeviation.SelectDeviations(rows, "de-DE", entries).Count);
+    }
+
+    [Fact]
+    public void SelectDeviationsForTerm_WithoutCellOrUnknownTerm_SelectsNothing()
+    {
+        var entries = new[] { Entry("neutre", "") };
+        var rows = new[] { Row("Le conducteur neutre", "de-DE", "Der N-Leiter") };
+
+        Assert.Empty(GlossaryDeviation.SelectDeviationsForTerm(rows, "de-DE", entries, "neutre"));
+        Assert.Empty(GlossaryDeviation.SelectDeviationsForTerm(rows, "de-DE", entries, "borne"));
+        Assert.Empty(GlossaryDeviation.SelectDeviationsForTerm(rows, "de-DE", entries, ""));
+    }
 }
