@@ -383,29 +383,85 @@ public partial class MainForm : Form
         return LoadIcon("config.png", 24);
     }
 
-    private async void BtnGlossary_Click(object? sender, EventArgs e)
+    // Éditeur de glossaire non modal : une seule instance à la fois, et la photographie de la
+    // projection prompts prise à son ouverture, comparée à sa fermeture.
+    private GlossaryForm? _glossaryForm;
+    private Dictionary<string, IReadOnlyList<GlossaryEntry>>? _glossaryProjectionBefore;
+
+    /// <summary>
+    /// Ouvre l'éditeur de glossaire, <b>non modal</b> : la grille principale reste utilisable
+    /// pendant l'édition, et le menu contextuel d'un terme peut la filtrer sans fermer l'éditeur
+    /// (<see cref="FilterGridOnFrench"/>). Une seule instance : un second clic ramène l'éditeur
+    /// ouvert au premier plan. Tout ce qui suivait la fermeture du dialog modal — action demandée
+    /// sur un terme, détection des lignes impactées — vit dans <see cref="GlossaryForm_FormClosed"/>.
+    /// </summary>
+    private void BtnGlossary_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (_glossaryForm is not null)
+            {
+                if (_glossaryForm.WindowState == FormWindowState.Minimized)
+                    _glossaryForm.WindowState = FormWindowState.Normal;
+                _glossaryForm.Activate();
+                return;
+            }
+
+            // Photographie de la projection prompts avant l'éditeur : toute modification qui
+            // change les prompts (correction importée, promotion Validé, édition manuelle) sera
+            // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
+            _glossaryProjectionBefore = SnapshotPromptProjections();
+
+            var form = _glossaryFormFactory();
+            form.FilterMainGrid = FilterGridOnFrench;
+            form.FormClosed += GlossaryForm_FormClosed;
+            form.SelectLanguage(_currentLanguage.Code);
+            _glossaryForm = form;
+            form.Show(this);
+        }
+        catch (Exception ex)
+        {
+            _glossaryForm = null;
+            _glossaryProjectionBefore = null;
+            MessageBox.Show(this, $"Impossible d'ouvrir l'éditeur de glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Suite de l'éditeur, à sa fermeture : la demande explicite sur un terme passe d'abord ; la
+    /// détection automatique suit, sans ce terme dans cette langue quand la passe a bien eu lieu
+    /// — le proposer une seconde fois ferait deux confirmations pour les mêmes lignes. Une demande
+    /// refusée, annulée ou sans objet ne masque rien : le changement du glossaire reste proposé.
+    /// L'éditeur étant non modal, la grille peut être gelée à ce moment (batch lancé depuis la
+    /// grille pendant l'édition) : rien n'est lancé alors, et c'est dit.
+    /// </summary>
+    private async void GlossaryForm_FormClosed(object? sender, FormClosedEventArgs e)
     {
         // async void : une exception qui s'échapperait du handler remonterait au
         // SynchronizationContext et abattrait l'application — tout le corps est donc encadré.
         try
         {
-            // Photographie de la projection prompts avant l'éditeur : toute modification qui
-            // change les prompts (correction importée, promotion Validé, édition manuelle) sera
-            // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
-            var projectionBefore = SnapshotPromptProjections();
+            var action = (sender as GlossaryForm)?.RequestedAction;
+            var projectionBefore = _glossaryProjectionBefore;
+            _glossaryForm = null;
+            _glossaryProjectionBefore = null;
 
-            GlossaryTermAction? action;
-            using (var form = _glossaryFormFactory())
+            // Fermeture entrainee par celle de la fenetre principale (ou de l'application) : rien
+            // a proposer a un utilisateur qui s'en va, et plus de grille pour l'executer.
+            if (projectionBefore is null || e.CloseReason != CloseReason.UserClosing || IsDisposed || Disposing)
+                return;
+
+            if (!toolStrip.Enabled || _isWriting)
             {
-                form.SelectLanguage(_currentLanguage.Code);
-                form.ShowDialog(this);
-                action = form.RequestedAction;
+                MessageBox.Show(this,
+                    "La grille principale est occupée (traduction, vérification, analyse ou enregistrement en cours)."
+                    + (action is not null ? "\n\nL'action demandée sur le terme n'a pas été lancée : relancez-la depuis le glossaire une fois l'opération terminée." : string.Empty)
+                    + "\n\nLes lignes impactées par vos modifications du glossaire n'ont pas été recherchées : le bouton « Retraduire les écarts au glossaire » les rattrape.",
+                    "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
 
-            // La demande explicite sur un terme passe d'abord ; la détection automatique suit,
-            // sans ce terme dans cette langue quand la passe a bien eu lieu — le proposer une
-            // seconde fois ferait deux confirmations pour les mêmes lignes. Une demande refusée,
-            // annulée ou sans objet ne masque rien : le changement du glossaire reste proposé.
             bool executed = action is not null && await RunGlossaryTermActionAsync(action);
 
             await ProposeTargetedRetranslationAsync(projectionBefore, executed ? action : null);
@@ -415,6 +471,35 @@ public partial class MainForm : Form
             MessageBox.Show(this, $"Erreur pendant le traitement qui suit l'éditeur de glossaire :\n\n{ex.Message}",
                 "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Filtre demandé depuis l'éditeur de glossaire, qui reste ouvert : la grille ne montre plus
+    /// que les lignes dont le français contient le terme — filtre texte de la colonne Français,
+    /// même inclusion insensible à la casse que la retraduction ciblée. Tous les filtres sont
+    /// remis à zéro d'abord (même mécanique que le drill-down : le compte rendu à l'éditeur doit
+    /// être celui des lignes qui contiennent le terme, pas d'un sous-ensemble), le terme posé
+    /// dans la zone de saisie de la colonne — visible, donc effaçable comme n'importe quel
+    /// filtre. Rend le nombre de lignes affichées, ou -1 si la grille est gelée : refiltrer
+    /// pendant un batch ou une écriture n'est pas permis.
+    /// </summary>
+    private int FilterGridOnFrench(string source)
+    {
+        if (_allRows is null || !toolStrip.Enabled || _isWriting)
+            return -1;
+
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+        ResetSolutionTreeChecks();
+
+        if (_filterTextBoxes.TryGetValue("French", out var box))
+            box.Text = source;
+
+        _filterDebounceTimer?.Stop();
+        ApplyFilters();
+        UpdateFilterPanelLayout();
+        return dataGridView.RowCount;
     }
 
     // --- Retraduction ciblée (GLOSSAIRE.md, phase 4) ---
@@ -1226,6 +1311,15 @@ public partial class MainForm : Form
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
     {
+        // Le glossaire suit la solution (SwitchStore au chargement) : changer de solution sous un
+        // éditeur ouvert lui ferait enregistrer l'ancien glossaire dans le fichier de la nouvelle.
+        if (_glossaryForm is not null)
+        {
+            FlashStatus("Fermez le glossaire avant d'ouvrir une autre solution : il est lié au glossaire de la solution courante.");
+            _glossaryForm.Activate();
+            return;
+        }
+
         using var dialog = new OpenFileDialog
         {
             Title = "Sélectionner une solution (.sln / .slnx)",
@@ -3017,6 +3111,15 @@ public partial class MainForm : Form
     /// </summary>
     private async Task ExtractTermsFromContextSelectionAsync(bool allLanguagesWithContent)
     {
+        // Le versement des candidats (AddProposedTerms) et l'éditeur écrivent le même glossaire :
+        // avec l'éditeur ouvert, périmé, son enregistrement écraserait les termes versés.
+        if (_glossaryForm is not null)
+        {
+            FlashStatus("Fermez le glossaire avant d'extraire des termes : le versement des candidats et l'éditeur écriraient le même glossaire.");
+            _glossaryForm.Activate();
+            return;
+        }
+
         IReadOnlyList<TranslationRow> rows;
         if (dataGridView.SelectedRows.Count > 1)
         {

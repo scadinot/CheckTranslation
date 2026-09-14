@@ -72,7 +72,10 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    vérifie par l'IA les traductions existantes des lignes qui le contiennent dans une langue,
    **Retraduire** les retraduit puis re-vérifie — les écarts seuls ou toutes les lignes, au choix.
    La langue est celle de la colonne cliquée ; les modifications en cours de l'éditeur sont
-   enregistrées d'abord, l'action portant sur le glossaire que les prompts verront.
+   enregistrées d'abord, l'action portant sur le glossaire que les prompts verront. Le même
+   menu **filtre la grille principale** sur les lignes dont le français contient le terme, sans
+   fermer l'éditeur, qui est non modal : on relit les lignes d'un terme en gardant le glossaire
+   sous les yeux.
 5. **Boucle** — le glossaire vit ; chaque campagne rejoue les phases 2 à 4. Le tableau de bord
    mesure l'effet (scores avant / après par langue).
 
