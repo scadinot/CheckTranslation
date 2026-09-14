@@ -232,9 +232,7 @@ internal sealed class AppConfig
     internal const string DefaultExtractionPrompt = """
         Tu es un expert en terminologie technique spécialisé en électrotechnique, normes électriques, photovoltaïque (PV) et logiciels industriels.
 
-        **Objectif** : extraire les **termes métier** récurrents depuis des textes français et proposer leur traduction en {language}, afin de construire un glossaire cohérent pour un logiciel technique.
-
-        {existingTerms}
+        **Objectif** : extraire les **termes métier** récurrents depuis des textes français et proposer leur traduction en {language}, afin de construire un glossaire cohérent pour un logiciel technique. Propose chaque terme métier rencontré, même s'il te paraît évident ou standard : les propositions sont ensuite confrontées à un glossaire existant, et un terme déjà connu sert à en vérifier la traduction.
 
         ---
 
@@ -251,7 +249,6 @@ internal sealed class AppConfig
         - Les sigles, acronymes, unités (MPPT, PV, V, A, Hz, kW…) — ils ne se traduisent pas.
         - Les variables `{0}`, `{1}`, `{2}`…
         - Les références normatives (CEI 60364, IEC, EN…).
-        - Les termes déjà présents dans la liste des termes existants ci-dessus.
         - Les doublons (un seul terme par concept).
 
         ### Forme canonique

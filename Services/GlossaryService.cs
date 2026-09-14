@@ -574,22 +574,18 @@ internal sealed class GlossaryService : IGlossaryService
         CancellationToken cancellationToken = default)
     {
         if (frenchTexts.Count == 0)
-            return new GlossaryExtractionResult(Array.Empty<GlossaryEntry>(), 0, 0, 0, 0, false, null);
+            return new GlossaryExtractionResult(Array.Empty<GlossaryEntry>(), 0, 0, 0, false, null);
 
-        EnsureLoaded();
-        var existing = GetEntries(languageCode);
-        var existingTerms = new HashSet<string>(
-            existing.Select(e => e.Source.Trim()),
-            StringComparer.OrdinalIgnoreCase);
-
-        var existingListBlock = BuildExistingTermsBlock(existing);
-        var systemPrompt = AppConfig.DefaultExtractionPrompt
-            .Replace("{language}", languageName)
-            .Replace("{existingTerms}", existingListBlock);
+        // L'IA ne connaît pas le glossaire et rien n'est filtré ici : un terme déjà tranché est
+        // proposé comme les autres, et c'est le dialog de validation qui confronte la proposition
+        // à la valeur du glossaire (identique en noir, différente en rouge). L'extraction est ainsi
+        // un second regard sur le glossaire ; filtrer les termes connus en amont rendait le rouge
+        // inatteignable, et un terme connu dans toutes les langues n'apparaissait même plus.
+        var systemPrompt = AppConfig.DefaultExtractionPrompt.Replace("{language}", languageName);
 
         var aggregated = new List<GlossaryEntry>();
         var seenInBatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int processed = 0, batches = 0, failedBatches = 0, unreadableBatches = 0, alreadyKnown = 0;
+        int processed = 0, batches = 0, failedBatches = 0, unreadableBatches = 0;
         bool truncated = false;
         string? firstError = null;
 
@@ -634,15 +630,10 @@ internal sealed class GlossaryService : IGlossaryService
                 var key = candidate.Source.Trim();
                 if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(candidate.Destination))
                     continue;
-                // Une clé n'est comptée qu'une fois, connue ou candidate : l'IA répète parfois un
-                // terme d'un lot à l'autre, et le compte rendu parle de termes, pas d'occurrences.
+                // Un terme n'est retenu qu'une fois par extraction : l'IA le répète parfois d'un
+                // lot à l'autre, la première proposition l'emporte.
                 if (!seenInBatches.Add(key))
                     continue;
-                if (existingTerms.Contains(key))
-                {
-                    alreadyKnown++;
-                    continue;
-                }
 
                 aggregated.Add(candidate);
             }
@@ -651,25 +642,7 @@ internal sealed class GlossaryService : IGlossaryService
             progress?.Report(processed);
         }
 
-        return new GlossaryExtractionResult(aggregated, batches, failedBatches, unreadableBatches, alreadyKnown, truncated, firstError);
-    }
-
-    private static string BuildExistingTermsBlock(IReadOnlyList<GlossaryEntry> existing)
-    {
-        if (existing.Count == 0)
-            return "Aucun terme n'est encore défini dans le glossaire pour cette langue.";
-
-        var sb = new StringBuilder();
-        sb.AppendLine("## Termes déjà présents dans le glossaire (NE PAS les ré-extraire)");
-        sb.AppendLine();
-        foreach (var entry in existing.Take(200))
-        {
-            sb.Append("- ").Append(entry.Source);
-            if (!string.IsNullOrWhiteSpace(entry.Destination))
-                sb.Append(" → ").Append(entry.Destination);
-            sb.AppendLine();
-        }
-        return sb.ToString();
+        return new GlossaryExtractionResult(aggregated, batches, failedBatches, unreadableBatches, truncated, firstError);
     }
 
     private static string BuildNumberedUserMessage(IReadOnlyList<string> texts)

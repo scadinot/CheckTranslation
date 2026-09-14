@@ -2,15 +2,14 @@ namespace CheckTranslation;
 
 /// <summary>
 /// Bilan d'une extraction de termes métier : les candidats retenus et, à côté, ce qui n'a pas
-/// pu l'être — lots en échec d'appel API, lots dont la réponse était illisible, candidats écartés
-/// parce que déjà au glossaire. Une liste vide seule est indiscernable d'un échec : c'est ce
-/// bilan qui permet à l'interface de dire lequel des deux s'est produit.
+/// pu l'être — lots en échec d'appel API, lots dont la réponse était illisible. Une liste vide
+/// seule est indiscernable d'un échec : c'est ce bilan qui permet à l'interface de dire lequel
+/// des deux s'est produit.
 /// </summary>
-/// <param name="Candidates">Termes proposés, dédupliqués, absents du glossaire.</param>
+/// <param name="Candidates">Termes proposés, dédupliqués — y compris ceux déjà au glossaire : c'est le dialog de validation qui les confronte aux valeurs tranchées.</param>
 /// <param name="Batches">Nombre de lots envoyés à l'IA.</param>
 /// <param name="FailedBatches">Lots dont l'appel API a échoué.</param>
 /// <param name="UnreadableBatches">Lots dont la réponse n'a pas pu être lue (JSON invalide ou tronqué).</param>
-/// <param name="AlreadyKnown">Candidats proposés par l'IA mais déjà présents au glossaire, donc écartés.</param>
 /// <param name="Truncated">Au moins une réponse illisible porte la signature d'une troncature (plafond de tokens).</param>
 /// <param name="FirstError">Message du premier échec d'appel API, s'il y en a eu.</param>
 internal sealed record GlossaryExtractionResult(
@@ -18,7 +17,6 @@ internal sealed record GlossaryExtractionResult(
     int Batches,
     int FailedBatches,
     int UnreadableBatches,
-    int AlreadyKnown,
     bool Truncated,
     string? FirstError)
 {
