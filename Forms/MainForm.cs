@@ -2853,10 +2853,10 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Extraction IA des termes métier des lignes données, dans la langue affichée ou dans toutes
-    /// les langues où la sélection a du contenu. L'extraction est un appel par langue (prompt et
-    /// filtre des termes déjà connus propres à chaque langue) ; les candidats sont ensuite
-    /// fusionnés en termes transversaux (<see cref="GlossaryCandidates.Merge"/>) et validés dans un
-    /// seul dialog, une colonne par langue.
+    /// les langues où la sélection a du contenu. L'extraction est un appel par langue (le prompt
+    /// cible une langue, aucun terme connu n'est filtré) ; les candidats sont ensuite fusionnés en
+    /// termes transversaux (<see cref="GlossaryCandidates.Merge"/>) et validés dans un seul dialog,
+    /// une colonne par langue, où chaque proposition est confrontée au glossaire courant.
     /// </summary>
     private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows, bool allLanguagesWithContent)
     {
