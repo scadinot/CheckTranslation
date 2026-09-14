@@ -1,7 +1,8 @@
 namespace CheckTranslation;
 
 /// <summary>
-/// Éditeur du glossaire transversal : une ligne par terme, une colonne par langue, plus le statut
+/// Éditeur du glossaire transversal, <b>non modal</b> (la grille principale reste utilisable, le
+/// menu contextuel d'un terme peut la filtrer) : une ligne par terme, une colonne par langue, plus le statut
 /// de gouvernance et le commentaire des réviseurs externes (lecture seule, rempli par l'import —
 /// voir GLOSSAIRE.md). La grille est non liée : les colonnes de langue sont dynamiques et les
 /// dictionnaires d'un <see cref="GlossaryTerm"/> ne se prêtent pas au binding WinForms.
@@ -32,14 +33,32 @@ internal sealed partial class GlossaryForm : Form
     // SortMode.Automatic) et déplacer la ligne entre le clic et l'action.
     private DataGridViewRow? _menuRow;
     private string _menuLanguageCode = MainForm.Languages[0].Code;
-    private string _preferredLanguageCode = MainForm.Languages[0].Code;
+    private readonly ToolStripMenuItem menuFilterGrid = new();
+    // Dernier filtre posé sur la grille principale depuis ici, affiché dans le bandeau.
+    private string _gridFilterInfo = string.Empty;
 
     /// <summary>
     /// Action demandée depuis le menu contextuel d'un terme, ou null si l'éditeur s'est fermé
-    /// normalement. L'éditeur est modal et n'a pas accès aux lignes : il se ferme en portant la
-    /// demande, <c>MainForm</c> l'exécute sur le glossaire enregistré.
+    /// normalement. L'éditeur n'a pas accès aux lignes : il se ferme en portant la demande,
+    /// <c>MainForm</c> l'exécute sur le glossaire enregistré.
     /// </summary>
     public GlossaryTermAction? RequestedAction { get; private set; }
+
+    /// <summary>
+    /// Posé par <c>MainForm</c> : filtre la grille principale sur les lignes dont le français
+    /// contient le terme, sans fermer l'éditeur (non modal), et rend le nombre de lignes affichées
+    /// — ou -1 si la grille est gelée (batch, écriture disque) et n'a pas pu être filtrée. Null
+    /// (éditeur ouvert sans grille) grise l'entrée de menu.
+    /// </summary>
+    public Func<string, int>? FilterMainGrid { get; set; }
+
+    /// <summary>
+    /// Posé par <c>MainForm</c> : code de la langue que la grille principale affiche, lu au moment
+    /// du clic droit — l'éditeur est non modal, la grille peut changer de langue pendant qu'il
+    /// est ouvert. C'est la langue des actions par terme quand la cellule cliquée n'est pas une
+    /// colonne de langue.
+    /// </summary>
+    public Func<string>? MainGridLanguageCode { get; set; }
 
     public GlossaryForm() : this(new GlossaryService())
     {
@@ -60,6 +79,9 @@ internal sealed partial class GlossaryForm : Form
         btnExport.Click += BtnExport_Click;
         btnImport.Click += BtnImport_Click;
         btnOk.Click += BtnOk_Click;
+        // Fenêtre non modale : un bouton à DialogResult ne la ferme pas (seul ShowDialog s'arrête
+        // sur DialogResult), la fermeture est explicite — comme dans BtnOk_Click.
+        btnCancel.Click += (_, _) => Close();
         FormClosing += GlossaryForm_FormClosing;
         InitTermContextMenu();
 
@@ -91,9 +113,6 @@ internal sealed partial class GlossaryForm : Form
         var column = _languageColumns.Find(c => string.Equals((string)c.Tag!, languageCode, StringComparison.OrdinalIgnoreCase));
         if (column is null)
             return;
-
-        // Langue des actions par terme quand la cellule cliquée n'est pas une colonne de langue.
-        _preferredLanguageCode = languageCode;
 
         if (grid.Rows.Count > 0)
             grid.CurrentCell = grid.Rows[0].Cells[column.Index];
@@ -282,8 +301,11 @@ internal sealed partial class GlossaryForm : Form
     {
         // Rattaché au conteneur du formulaire : libéré avec lui, l'éditeur est transient.
         termMenu = new ContextMenuStrip(components);
+        menuFilterGrid.Click += (_, _) => RequestGridFilter();
         menuVerifyTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Verify);
         menuRetranslateTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Retranslate);
+        termMenu.Items.Add(menuFilterGrid);
+        termMenu.Items.Add(new ToolStripSeparator());
         termMenu.Items.Add(menuVerifyTerm);
         termMenu.Items.Add(menuRetranslateTerm);
 
@@ -306,9 +328,12 @@ internal sealed partial class GlossaryForm : Form
                 return;
 
             // Les colonnes de langue portent leur code en Tag ; les autres (Source, Contexte,
-            // Statut, Commentaire réviseur) n'en ont pas.
+            // Statut, Commentaire réviseur) n'en ont pas : la langue est alors celle que la grille
+            // principale affiche en ce moment, lue au clic — pas à l'ouverture de l'éditeur.
             _menuRow = row;
-            _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string ?? _preferredLanguageCode;
+            _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string
+                ?? MainGridLanguageCode?.Invoke()
+                ?? MainForm.Languages[0].Code;
             var languageName = Array.Find(MainForm.Languages,
                 language => string.Equals(language.Code, _menuLanguageCode, StringComparison.OrdinalIgnoreCase))?.Name ?? _menuLanguageCode;
 
@@ -316,8 +341,10 @@ internal sealed partial class GlossaryForm : Form
             var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
             bool hasSource = source.Length > 0;
             var label = hasSource ? $"« {source} »" : "ce terme";
+            menuFilterGrid.Text = $"Filtrer la grille principale sur {label}";
             menuVerifyTerm.Text = $"Contrôler les traductions de {label} en {languageName}";
             menuRetranslateTerm.Text = $"Retraduire les traductions de {label} en {languageName}";
+            menuFilterGrid.Enabled = hasSource && FilterMainGrid is not null;
             menuVerifyTerm.Enabled = hasSource;
             menuRetranslateTerm.Enabled = hasSource;
 
@@ -328,21 +355,58 @@ internal sealed partial class GlossaryForm : Form
         };
     }
 
-    private void RequestTermAction(GlossaryTermActionKind kind)
+    /// <summary>
+    /// Source normalisée de la ligne du dernier clic droit, après commit de l'édition en cours :
+    /// la valeur relue doit être celle que l'enregistrement écrira, et _dirty ne doit pas mentir.
+    /// La ligne est tenue par référence : un re-tri éventuel ne la perd pas. Null si la ligne a
+    /// disparu ou n'a pas de source.
+    /// </summary>
+    private string? ReadMenuRowSource()
     {
         var row = _menuRow;
         if (row is null || row.Index < 0 || row.IsNewRow)
-            return;
+            return null;
 
-        // Committe une édition de cellule encore ouverte : la source relue doit être celle que
-        // l'enregistrement écrira, et _dirty ne doit pas mentir. La ligne est tenue par
-        // référence : un re-tri éventuel ne la perd pas.
         grid.EndEdit();
         if (row.Index < 0)
-            return;
+            return null;
 
         var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
-        if (source.Length == 0)
+        return source.Length == 0 ? null : source;
+    }
+
+    /// <summary>
+    /// Filtre la grille principale sur les lignes dont le français contient le terme, sans fermer
+    /// l'éditeur : c'est <c>MainForm</c> qui pose le filtre (délégué <see cref="FilterMainGrid"/>)
+    /// et rend le compte, affiché dans le bandeau. Le terme n'a pas besoin d'être enregistré : ce
+    /// n'est qu'un texte français à chercher.
+    /// </summary>
+    private void RequestGridFilter()
+    {
+        var source = ReadMenuRowSource();
+        if (source is null || FilterMainGrid is null)
+            return;
+
+        // Le filtre texte de la grille lit un « = » initial comme une égalité exacte : un tel
+        // terme n'y serait pas cherché en « contient ». Cas d'école, dit plutôt que faussé.
+        if (TranslationRowFiltering.UsesExactMatchSyntax(source))
+        {
+            _gridFilterInfo = $"« {source} » commence par « = », syntaxe réservée du filtre : non filtrable";
+            UpdateCountLabel();
+            return;
+        }
+
+        int count = FilterMainGrid(source);
+        _gridFilterInfo = count < 0
+            ? "grille principale occupée, filtre non appliqué"
+            : $"grille principale : {count} ligne(s) contiennent « {source} »";
+        UpdateCountLabel();
+    }
+
+    private void RequestTermAction(GlossaryTermActionKind kind)
+    {
+        var source = ReadMenuRowSource();
+        if (source is null)
             return;
 
         if (_dirty)
@@ -575,7 +639,8 @@ internal sealed partial class GlossaryForm : Form
     private void UpdateCountLabel()
     {
         int count = grid.Rows.Cast<DataGridViewRow>().Count(row => !row.IsNewRow);
-        lblCount.Text = $"{count} terme(s) — seuls les termes au statut Validé sont injectés dans les prompts";
+        lblCount.Text = $"{count} terme(s) — seuls les termes au statut Validé sont injectés dans les prompts"
+            + (_gridFilterInfo.Length > 0 ? $" — {_gridFilterInfo}" : string.Empty);
     }
 
     private static string StatusLabel(GlossaryTermStatus status) => status switch

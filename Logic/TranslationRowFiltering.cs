@@ -38,9 +38,16 @@ internal static class TranslationRowFiltering
         IEnumerable<TranslationRow> rows,
         string filter,
         Func<TranslationRow, string> selector)
-        => filter.StartsWith('=')
+        => UsesExactMatchSyntax(filter)
             ? rows.Where(row => string.Equals(selector(row), filter[1..], StringComparison.OrdinalIgnoreCase))
             : rows.Where(row => selector(row).Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Un filtre texte commençant par « = » est une égalité exacte, pas un « contient » : la
+    /// syntaxe est réservée. Exposé pour qu'un appelant qui pose un texte littéral dans une zone de
+    /// filtre (le filtre par terme du glossaire) sache quand ce texte serait réinterprété.
+    /// </summary>
+    public static bool UsesExactMatchSyntax(string filter) => filter.StartsWith('=');
 
     /// <summary>
     /// Pseudo-filtres de la colonne de traduction : « translation:none » (non traduite),

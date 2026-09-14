@@ -85,6 +85,16 @@ public class TranslationRowFilteringTests
         Assert.Empty(Filter(rows, "Translation", "translation:review"));
     }
 
+    [Theory]
+    [InlineData("=Total", true)]
+    [InlineData("Total", false)]
+    [InlineData("a=b", false)]
+    [InlineData("", false)]
+    public void UsesExactMatchSyntax_IsALeadingEqualsSign(string filter, bool expected)
+    {
+        Assert.Equal(expected, TranslationRowFiltering.UsesExactMatchSyntax(filter));
+    }
+
     [Fact]
     public void ScoreNone_MatchesUnparsableComments()
     {

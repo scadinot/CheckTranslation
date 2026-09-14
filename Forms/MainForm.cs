@@ -373,6 +373,14 @@ public partial class MainForm : Form
             ToolTipText = "Éditer le glossaire métier",
         };
         btnGlossary.Click += BtnGlossary_Click;
+
+        // Une suite d'éditeur mise en attente pendant un gel (voir GlossaryForm_FormClosed) part
+        // au dégel — après le finally qui a rouvert l'UI, d'où BeginInvoke.
+        toolStrip.EnabledChanged += (_, _) =>
+        {
+            if (toolStrip.Enabled && !_isWriting && _pendingGlossaryFollowUp is not null)
+                BeginInvoke(RunPendingGlossaryFollowUp);
+        };
     }
 
     private static Bitmap LoadGlossaryIcon()
@@ -383,38 +391,176 @@ public partial class MainForm : Form
         return LoadIcon("config.png", 24);
     }
 
-    private async void BtnGlossary_Click(object? sender, EventArgs e)
+    // Éditeur de glossaire non modal : une seule instance à la fois, et la photographie de la
+    // projection prompts prise à son ouverture, comparée à sa fermeture.
+    private GlossaryForm? _glossaryForm;
+    private Dictionary<string, IReadOnlyList<GlossaryEntry>>? _glossaryProjectionBefore;
+    // Suite d'un éditeur fermé pendant un gel de la grille : photographie et action conservées
+    // jusqu'au dégel, jamais jetées — un changement de contexte ou un terme déjà conforme
+    // échapperaient au bouton des écarts.
+    private (Dictionary<string, IReadOnlyList<GlossaryEntry>> ProjectionBefore, GlossaryTermAction? Action)? _pendingGlossaryFollowUp;
+
+    /// <summary>
+    /// Ouvre l'éditeur de glossaire, <b>non modal</b> : la grille principale reste utilisable
+    /// pendant l'édition, et le menu contextuel d'un terme peut la filtrer sans fermer l'éditeur
+    /// (<see cref="FilterGridOnFrench"/>). Une seule instance : un second clic ramène l'éditeur
+    /// ouvert au premier plan. Tout ce qui suivait la fermeture du dialog modal — action demandée
+    /// sur un terme, détection des lignes impactées — vit dans <see cref="GlossaryForm_FormClosed"/>.
+    /// </summary>
+    private void BtnGlossary_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (_glossaryForm is not null)
+            {
+                BringGlossaryEditorToFront();
+                return;
+            }
+
+            // Photographie de la projection prompts avant l'éditeur : toute modification qui
+            // change les prompts (correction importée, promotion Validé, édition manuelle) sera
+            // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
+            _glossaryProjectionBefore = SnapshotPromptProjections();
+
+            var form = _glossaryFormFactory();
+            form.FilterMainGrid = FilterGridOnFrench;
+            form.MainGridLanguageCode = () => _currentLanguage.Code;
+            form.FormClosed += GlossaryForm_FormClosed;
+            form.SelectLanguage(_currentLanguage.Code);
+            _glossaryForm = form;
+            form.Show(this);
+        }
+        catch (Exception ex)
+        {
+            _glossaryForm = null;
+            _glossaryProjectionBefore = null;
+            MessageBox.Show(this, $"Impossible d'ouvrir l'éditeur de glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Ramène l'éditeur de glossaire ouvert au premier plan, restauré s'il était réduit :
+    /// <c>Activate</c> seul ne rend pas visible une fenêtre réduite, et les gardes qui renvoient
+    /// vers l'éditeur (« Ouvrir », extraction) laisseraient l'utilisateur devant un refus sans
+    /// rien à l'écran.
+    /// </summary>
+    private void BringGlossaryEditorToFront()
+    {
+        if (_glossaryForm is null)
+            return;
+
+        if (_glossaryForm.WindowState == FormWindowState.Minimized)
+            _glossaryForm.WindowState = FormWindowState.Normal;
+        _glossaryForm.Activate();
+    }
+
+    /// <summary>
+    /// Suite de l'éditeur, à sa fermeture : la demande explicite sur un terme passe d'abord ; la
+    /// détection automatique suit, sans ce terme dans cette langue quand la passe a bien eu lieu
+    /// — le proposer une seconde fois ferait deux confirmations pour les mêmes lignes. Une demande
+    /// refusée, annulée ou sans objet ne masque rien : le changement du glossaire reste proposé.
+    /// L'éditeur étant non modal, la grille peut être gelée à ce moment (batch lancé depuis la
+    /// grille pendant l'édition) : la suite est alors mise en attente et part au dégel
+    /// (<see cref="RunPendingGlossaryFollowUp"/>), la photographie n'est pas jetée.
+    /// </summary>
+    private async void GlossaryForm_FormClosed(object? sender, FormClosedEventArgs e)
     {
         // async void : une exception qui s'échapperait du handler remonterait au
         // SynchronizationContext et abattrait l'application — tout le corps est donc encadré.
         try
         {
-            // Photographie de la projection prompts avant l'éditeur : toute modification qui
-            // change les prompts (correction importée, promotion Validé, édition manuelle) sera
-            // détectée par comparaison à la fermeture, quel que soit le chemin qui l'a produite.
-            var projectionBefore = SnapshotPromptProjections();
+            var action = (sender as GlossaryForm)?.RequestedAction;
+            var projectionBefore = _glossaryProjectionBefore;
+            _glossaryForm = null;
+            _glossaryProjectionBefore = null;
 
-            GlossaryTermAction? action;
-            using (var form = _glossaryFormFactory())
+            // Fermeture entraînée par celle de la fenêtre principale (ou de l'application) : rien
+            // à proposer à un utilisateur qui s'en va, et plus de grille pour l'exécuter.
+            if (projectionBefore is null || e.CloseReason != CloseReason.UserClosing || IsDisposed || Disposing)
+                return;
+
+            if (!toolStrip.Enabled || _isWriting)
             {
-                form.SelectLanguage(_currentLanguage.Code);
-                form.ShowDialog(this);
-                action = form.RequestedAction;
+                // Grille gelée : la suite attend le dégel (toolStrip.EnabledChanged), rien n'est perdu.
+                _pendingGlossaryFollowUp = (projectionBefore, action);
+                FlashStatus("Glossaire fermé pendant une opération : la recherche des lignes impactées"
+                    + (action is not null ? " et l'action demandée" : string.Empty)
+                    + " suivront la fin de l'opération.");
+                return;
             }
 
-            // La demande explicite sur un terme passe d'abord ; la détection automatique suit,
-            // sans ce terme dans cette langue quand la passe a bien eu lieu — le proposer une
-            // seconde fois ferait deux confirmations pour les mêmes lignes. Une demande refusée,
-            // annulée ou sans objet ne masque rien : le changement du glossaire reste proposé.
-            bool executed = action is not null && await RunGlossaryTermActionAsync(action);
-
-            await ProposeTargetedRetranslationAsync(projectionBefore, executed ? action : null);
+            await RunGlossaryFollowUpAsync(projectionBefore, action);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"Erreur pendant le traitement qui suit l'éditeur de glossaire :\n\n{ex.Message}",
                 "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Ce qui suit la fermeture de l'éditeur : la demande explicite sur un terme d'abord, puis la
+    /// détection automatique, sans ce terme dans cette langue quand la passe a abouti.
+    /// </summary>
+    private async Task RunGlossaryFollowUpAsync(Dictionary<string, IReadOnlyList<GlossaryEntry>> projectionBefore, GlossaryTermAction? action)
+    {
+        bool executed = action is not null && await RunGlossaryTermActionAsync(action);
+        await ProposeTargetedRetranslationAsync(projectionBefore, executed ? action : null);
+    }
+
+    /// <summary>
+    /// Lance la suite d'éditeur mise en attente pendant un gel, une fois la grille rouverte.
+    /// Appelé par BeginInvoke depuis <c>toolStrip.EnabledChanged</c> : le finally qui a dégelé
+    /// l'UI est terminé. Revérifie le gel — un autre a pu s'enchaîner — et laisse alors la suite
+    /// en attente pour le dégel suivant.
+    /// </summary>
+    private async void RunPendingGlossaryFollowUp()
+    {
+        try
+        {
+            if (_pendingGlossaryFollowUp is not { } pending || !toolStrip.Enabled || _isWriting || IsDisposed || Disposing)
+                return;
+
+            _pendingGlossaryFollowUp = null;
+            await RunGlossaryFollowUpAsync(pending.ProjectionBefore, pending.Action);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant le traitement différé qui suit l'éditeur de glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Filtre demandé depuis l'éditeur de glossaire, qui reste ouvert : la grille ne montre plus
+    /// que les lignes dont le français contient le terme — filtre texte de la colonne Français,
+    /// même inclusion insensible à la casse que la retraduction ciblée. Tous les filtres sont
+    /// remis à zéro d'abord (même mécanique que le drill-down : le compte rendu à l'éditeur doit
+    /// être celui des lignes qui contiennent le terme, pas d'un sous-ensemble), le terme posé
+    /// dans la zone de saisie de la colonne — visible, donc effaçable comme n'importe quel
+    /// filtre. Rend le nombre de lignes affichées, ou -1 si la grille est gelée : refiltrer
+    /// pendant un batch ou une écriture n'est pas permis.
+    /// </summary>
+    private int FilterGridOnFrench(string source)
+    {
+        if (_allRows is null || !toolStrip.Enabled || _isWriting)
+            return -1;
+
+        // L'éditeur étant non modal, une cellule de la grille principale peut être en cours
+        // d'édition : remplacer le DataSource perdrait la saisie, la committer d'abord
+        // (CellEndEdit pousse la valeur dans la ligne et le cache).
+        dataGridView.EndEdit();
+
+        ResetAllFilters();
+
+        if (_filterTextBoxes.TryGetValue("French", out var box))
+            box.Text = source;
+
+        _filterDebounceTimer?.Stop();
+        ApplyFilters();
+        UpdateFilterPanelLayout();
+        return dataGridView.RowCount;
     }
 
     // --- Retraduction ciblée (GLOSSAIRE.md, phase 4) ---
@@ -1020,10 +1166,7 @@ public partial class MainForm : Form
         if (target is not null && target != _currentLanguage)
             SwitchToLanguage(target);
 
-        foreach (var textBox in _filterTextBoxes.Values)
-            textBox.Text = string.Empty;
-        ResetSpecialFilters();
-        ResetSolutionTreeChecks();
+        ResetAllFilters();
 
         // Projet et Fichier n'ont plus de colonne : leur filtre passe par l'arborescence, en
         // sélection exacte — seuls le projet ou le fichier cliqués restent cochés. Même garantie
@@ -1070,6 +1213,29 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// Remet tous les filtres à zéro — zones de saisie des colonnes, listes déroulantes, cases de
+    /// l'arborescence et filtre de son bandeau — avant d'en poser un seul : un filtre resté en
+    /// place ferait afficher moins de lignes que promis, et un arbre encore filtré sur un projet
+    /// contredirait la grille. Socle du drill-down, de la relecture et du filtre par terme.
+    /// </summary>
+    private void ResetAllFilters()
+    {
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+        ResetSolutionTreeChecks();
+
+        // Vider le bandeau arme son debounce : on le stoppe et on reconstruit tout de suite, la
+        // grille et l'arbre doivent changer ensemble.
+        if (treeFilterBox is not null && treeFilterBox.Text.Length > 0)
+        {
+            treeFilterBox.Text = string.Empty;
+            _treeFilterDebounceTimer?.Stop();
+            RebuildSolutionTreeNodes();
+        }
+    }
+
+    /// <summary>
     /// Restreint la grille aux lignes touchées par la dernière passe ciblée (retraduites, ou
     /// contrôlées depuis un terme du glossaire), pour les relire : reste sur la langue affichée
     /// si elle en a, sinon bascule sur la première langue qui en a — un filtre posé sur une
@@ -1093,10 +1259,7 @@ public partial class MainForm : Form
         if (target != _currentLanguage)
             SwitchToLanguage(target);
 
-        foreach (var textBox in _filterTextBoxes.Values)
-            textBox.Text = string.Empty;
-        ResetSpecialFilters();
-        ResetSolutionTreeChecks();
+        ResetAllFilters();
 
         if (_filterTextBoxes.TryGetValue("Translation", out var box))
             box.Text = "translation:review";
@@ -1226,6 +1389,15 @@ public partial class MainForm : Form
 
     private async void BtnOpen_Click(object? sender, EventArgs e)
     {
+        // Le glossaire suit la solution (SwitchStore au chargement) : changer de solution sous un
+        // éditeur ouvert lui ferait enregistrer l'ancien glossaire dans le fichier de la nouvelle.
+        if (_glossaryForm is not null)
+        {
+            FlashStatus("Fermez le glossaire avant d'ouvrir une autre solution : il est lié au glossaire de la solution courante.");
+            BringGlossaryEditorToFront();
+            return;
+        }
+
         using var dialog = new OpenFileDialog
         {
             Title = "Sélectionner une solution (.sln / .slnx)",
@@ -3017,6 +3189,15 @@ public partial class MainForm : Form
     /// </summary>
     private async Task ExtractTermsFromContextSelectionAsync(bool allLanguagesWithContent)
     {
+        // Le versement des candidats (AddProposedTerms) et l'éditeur écrivent le même glossaire :
+        // avec l'éditeur ouvert, périmé, son enregistrement écraserait les termes versés.
+        if (_glossaryForm is not null)
+        {
+            FlashStatus("Fermez le glossaire avant d'extraire des termes : le versement des candidats et l'éditeur écriraient le même glossaire.");
+            BringGlossaryEditorToFront();
+            return;
+        }
+
         IReadOnlyList<TranslationRow> rows;
         if (dataGridView.SelectedRows.Count > 1)
         {
