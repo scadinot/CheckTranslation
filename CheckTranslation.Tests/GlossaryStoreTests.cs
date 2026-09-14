@@ -224,6 +224,61 @@ public sealed class GlossaryStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ExtractCandidatesAsync_KeepsTermsAlreadyInTheGlossary_AndDoesNotLeakThemIntoThePrompt()
+    {
+        var path = StorePath();
+        var service = new GlossaryService(path);
+        service.ReplaceTermsAndSave(new[] { Term("disjoncteur", translations: ("de-DE", "Leistungsschalter")) });
+
+        string? promptSeen = null;
+        service.ExtractionApiCall = (systemPrompt, _, _) =>
+        {
+            promptSeen = systemPrompt;
+            return Task.FromResult("""
+                [
+                  { "term": "disjoncteur", "translation": "Leitungsschutzschalter", "context": "protection" },
+                  { "term": "tension", "translation": "Spannung", "context": "grandeur" },
+                  { "term": "disjoncteur", "translation": "doublon intra-extraction", "context": "" }
+                ]
+                """);
+        };
+
+        var result = await service.ExtractCandidatesAsync(new[] { "Le disjoncteur coupe la tension." }, new AppConfig(), "de-DE", "Allemand");
+
+        // Le terme déjà au glossaire reste candidat, avec la proposition de l'IA : c'est ce qui
+        // rend le rouge du dialog atteignable. Un doublon intra-extraction est écarté, la
+        // première proposition l'emporte.
+        Assert.Equal(new[] { "disjoncteur", "tension" }, result.Candidates.Select(c => c.Source));
+        Assert.Equal("Leitungsschutzschalter", result.Candidates[0].Destination);
+        Assert.Equal(1, result.Batches);
+        Assert.Equal(0, result.ProblemBatches);
+        // Le glossaire n'est pas soufflé à l'IA : son avis doit rester indépendant.
+        Assert.DoesNotContain("Leistungsschalter", promptSeen);
+        Assert.DoesNotContain("{existingTerms}", promptSeen);
+        Assert.Contains("Allemand", promptSeen);
+    }
+
+    [Fact]
+    public async Task ExtractCandidatesAsync_DeduplicatesAcrossBatches_AndCountsBatches()
+    {
+        var service = new GlossaryService(StorePath());
+        int calls = 0;
+        service.ExtractionApiCall = (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult("""[ { "term": "tension", "translation": "Spannung", "context": "" } ]""");
+        };
+
+        // Onze textes : deux lots (ExtractionBatchSize = 10), la même proposition dans chacun.
+        var texts = Enumerable.Range(1, 11).Select(i => $"Texte {i} sur la tension").ToList();
+        var result = await service.ExtractCandidatesAsync(texts, new AppConfig(), "de-DE", "Allemand");
+
+        Assert.Equal(2, calls);
+        Assert.Equal(2, result.Batches);
+        Assert.Equal("tension", Assert.Single(result.Candidates).Source);
+    }
+
+    [Fact]
     public void SwitchStore_ReloadsFromTheNewFile_AndBackAgain()
     {
         var pathA = StorePath("a.json");

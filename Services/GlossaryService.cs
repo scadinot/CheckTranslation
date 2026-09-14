@@ -32,6 +32,13 @@ internal sealed class GlossaryService : IGlossaryService
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>
+    /// Appel IA de l'extraction : <c>Translator.CallApiAsync</c> en production, remplaçable par
+    /// les tests — c'est la seule couture qui permette de rejouer <see cref="ExtractCandidatesAsync"/>
+    /// de bout en bout (lots, parseur, déduplication, bilan) sans réseau.
+    /// </summary>
+    internal Func<string, string, AppConfig, Task<string>> ExtractionApiCall { get; set; } = Translator.CallApiAsync;
+
     private readonly object _lock = new();
     private Glossary _glossary;
     private bool _loaded;
@@ -600,7 +607,7 @@ internal sealed class GlossaryService : IGlossaryService
             string raw;
             try
             {
-                raw = await Translator.CallApiAsync(systemPrompt, userMessage, config);
+                raw = await ExtractionApiCall(systemPrompt, userMessage, config);
             }
             catch (Exception ex)
             {
