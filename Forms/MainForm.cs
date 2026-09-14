@@ -3005,7 +3005,9 @@ public partial class MainForm : Form
         }
 
         using var dialog = _extractionDialogFactory();
-        dialog.SetCandidates(candidates, languages);
+        // Le glossaire courant sert de référence aux couleurs du dialog (vert / noir / rouge) :
+        // même classification que le versement, qui reclassera à l'écriture.
+        dialog.SetCandidates(candidates, languages, _glossaryService.GetTerms());
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 

@@ -173,6 +173,7 @@ public sealed class GlossaryStoreTests : IDisposable
         var borne = Assert.Single(reloaded, t => t.Source == "borne");
         Assert.Equal("Klemme", borne.Translations["de-DE"]);        // case tranchée : jamais écrasée
         Assert.Equal("terminal", borne.Translations["en-US"]);      // case vide : complétée
+        Assert.Equal("raccordement", borne.Context);                // contexte vide : complété aussi
         Assert.Equal(GlossaryTermStatus.Validated, borne.Status);   // statut conservé
 
         var tension = Assert.Single(reloaded, t => t.Source == "tension");
@@ -181,6 +182,27 @@ public sealed class GlossaryStoreTests : IDisposable
         Assert.Equal(2, tension.Translations.Count);
 
         Assert.DoesNotContain(reloaded, t => t.Source == "sans cellule");
+    }
+
+    [Fact]
+    public void AddProposedTerms_MultiLanguage_NeverOverwritesATranchedCellOrContext()
+    {
+        var path = StorePath();
+        var service = new GlossaryService(path);
+        var existing = Term("borne", translations: ("de-DE", "Klemme"));
+        existing.Context = "ancien";
+        service.ReplaceTermsAndSave(new[] { existing });
+
+        int added = service.AddProposedTerms(new[]
+        {
+            new GlossaryTerm { Source = "borne", Context = "nouveau", Translations = { ["de-DE"] = "Anschluss", ["en-US"] = "terminal" } },
+        });
+
+        var borne = Assert.Single(new GlossaryService(path).GetTerms());
+        Assert.Equal(1, added);                                   // complété (en-US) : compte par terme
+        Assert.Equal("ancien", borne.Context);                    // contexte tranché : conservé
+        Assert.Equal("Klemme", borne.Translations["de-DE"]);      // conflit : la proposition est ignorée
+        Assert.Equal("terminal", borne.Translations["en-US"]);    // case vide : remplie
     }
 
     [Fact]

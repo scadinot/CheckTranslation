@@ -38,7 +38,7 @@ partial class GlossaryExtractionDialog
         //
         topPanel.Controls.Add(lblHeader);
         topPanel.Dock = DockStyle.Top;
-        topPanel.Height = 44;
+        topPanel.Size = new Size(1100, 64);
         topPanel.Name = "topPanel";
         topPanel.Padding = new Padding(10, 10, 10, 4);
         //
