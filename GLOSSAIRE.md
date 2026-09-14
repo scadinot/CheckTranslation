@@ -71,8 +71,9 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    Enfin, un terme peut être traité seul, depuis son menu contextuel dans l'éditeur : **Contrôler**
    vérifie par l'IA les traductions existantes des lignes qui le contiennent dans une langue,
    **Retraduire** les retraduit puis re-vérifie — les écarts seuls ou toutes les lignes, au choix.
-   La langue est celle de la colonne cliquée ; les modifications en cours de l'éditeur sont
-   enregistrées d'abord, l'action portant sur le glossaire que les prompts verront. Le même
+   La langue est celle de la colonne cliquée — hors des colonnes de langue, celle que la grille
+   principale affiche à ce moment ; les modifications en cours de l'éditeur sont enregistrées
+   d'abord, l'action portant sur le glossaire que les prompts verront. Le même
    menu **filtre la grille principale** sur les lignes dont le français contient le terme, sans
    fermer l'éditeur, qui est non modal : on relit les lignes d'un terme en gardant le glossaire
    sous les yeux.

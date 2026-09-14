@@ -373,6 +373,14 @@ public partial class MainForm : Form
             ToolTipText = "Éditer le glossaire métier",
         };
         btnGlossary.Click += BtnGlossary_Click;
+
+        // Une suite d'éditeur mise en attente pendant un gel (voir GlossaryForm_FormClosed) part
+        // au dégel — après le finally qui a rouvert l'UI, d'où BeginInvoke.
+        toolStrip.EnabledChanged += (_, _) =>
+        {
+            if (toolStrip.Enabled && !_isWriting && _pendingGlossaryFollowUp is not null)
+                BeginInvoke(RunPendingGlossaryFollowUp);
+        };
     }
 
     private static Bitmap LoadGlossaryIcon()
@@ -387,6 +395,10 @@ public partial class MainForm : Form
     // projection prompts prise à son ouverture, comparée à sa fermeture.
     private GlossaryForm? _glossaryForm;
     private Dictionary<string, IReadOnlyList<GlossaryEntry>>? _glossaryProjectionBefore;
+    // Suite d'un éditeur fermé pendant un gel de la grille : photographie et action conservées
+    // jusqu'au dégel, jamais jetées — un changement de contexte ou un terme déjà conforme
+    // échapperaient au bouton des écarts.
+    private (Dictionary<string, IReadOnlyList<GlossaryEntry>> ProjectionBefore, GlossaryTermAction? Action)? _pendingGlossaryFollowUp;
 
     /// <summary>
     /// Ouvre l'éditeur de glossaire, <b>non modal</b> : la grille principale reste utilisable
@@ -449,7 +461,8 @@ public partial class MainForm : Form
     /// — le proposer une seconde fois ferait deux confirmations pour les mêmes lignes. Une demande
     /// refusée, annulée ou sans objet ne masque rien : le changement du glossaire reste proposé.
     /// L'éditeur étant non modal, la grille peut être gelée à ce moment (batch lancé depuis la
-    /// grille pendant l'édition) : rien n'est lancé alors, et c'est dit.
+    /// grille pendant l'édition) : la suite est alors mise en attente et part au dégel
+    /// (<see cref="RunPendingGlossaryFollowUp"/>), la photographie n'est pas jetée.
     /// </summary>
     private async void GlossaryForm_FormClosed(object? sender, FormClosedEventArgs e)
     {
@@ -462,28 +475,59 @@ public partial class MainForm : Form
             _glossaryForm = null;
             _glossaryProjectionBefore = null;
 
-            // Fermeture entrainee par celle de la fenetre principale (ou de l'application) : rien
-            // a proposer a un utilisateur qui s'en va, et plus de grille pour l'executer.
+            // Fermeture entraînée par celle de la fenêtre principale (ou de l'application) : rien
+            // à proposer à un utilisateur qui s'en va, et plus de grille pour l'exécuter.
             if (projectionBefore is null || e.CloseReason != CloseReason.UserClosing || IsDisposed || Disposing)
                 return;
 
             if (!toolStrip.Enabled || _isWriting)
             {
-                MessageBox.Show(this,
-                    "La grille principale est occupée (traduction, vérification, analyse ou enregistrement en cours)."
-                    + (action is not null ? "\n\nL'action demandée sur le terme n'a pas été lancée : relancez-la depuis le glossaire une fois l'opération terminée." : string.Empty)
-                    + "\n\nLes lignes impactées par vos modifications du glossaire n'ont pas été recherchées : le bouton « Retraduire les écarts au glossaire » les rattrape.",
-                    "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Grille gelée : la suite attend le dégel (toolStrip.EnabledChanged), rien n'est perdu.
+                _pendingGlossaryFollowUp = (projectionBefore, action);
+                FlashStatus("Glossaire fermé pendant une opération : la recherche des lignes impactées"
+                    + (action is not null ? " et l'action demandée" : string.Empty)
+                    + " suivront la fin de l'opération.");
                 return;
             }
 
-            bool executed = action is not null && await RunGlossaryTermActionAsync(action);
-
-            await ProposeTargetedRetranslationAsync(projectionBefore, executed ? action : null);
+            await RunGlossaryFollowUpAsync(projectionBefore, action);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"Erreur pendant le traitement qui suit l'éditeur de glossaire :\n\n{ex.Message}",
+                "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Ce qui suit la fermeture de l'éditeur : la demande explicite sur un terme d'abord, puis la
+    /// détection automatique, sans ce terme dans cette langue quand la passe a abouti.
+    /// </summary>
+    private async Task RunGlossaryFollowUpAsync(Dictionary<string, IReadOnlyList<GlossaryEntry>> projectionBefore, GlossaryTermAction? action)
+    {
+        bool executed = action is not null && await RunGlossaryTermActionAsync(action);
+        await ProposeTargetedRetranslationAsync(projectionBefore, executed ? action : null);
+    }
+
+    /// <summary>
+    /// Lance la suite d'éditeur mise en attente pendant un gel, une fois la grille rouverte.
+    /// Appelé par BeginInvoke depuis <c>toolStrip.EnabledChanged</c> : le finally qui a dégelé
+    /// l'UI est terminé. Revérifie le gel — un autre a pu s'enchaîner — et laisse alors la suite
+    /// en attente pour le dégel suivant.
+    /// </summary>
+    private async void RunPendingGlossaryFollowUp()
+    {
+        try
+        {
+            if (_pendingGlossaryFollowUp is not { } pending || !toolStrip.Enabled || _isWriting || IsDisposed || Disposing)
+                return;
+
+            _pendingGlossaryFollowUp = null;
+            await RunGlossaryFollowUpAsync(pending.ProjectionBefore, pending.Action);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant le traitement différé qui suit l'éditeur de glossaire :\n\n{ex.Message}",
                 "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
