@@ -414,6 +414,7 @@ public partial class MainForm : Form
 
             var form = _glossaryFormFactory();
             form.FilterMainGrid = FilterGridOnFrench;
+            form.MainGridLanguageCode = () => _currentLanguage.Code;
             form.FormClosed += GlossaryForm_FormClosed;
             form.SelectLanguage(_currentLanguage.Code);
             _glossaryForm = form;
@@ -488,10 +489,12 @@ public partial class MainForm : Form
         if (_allRows is null || !toolStrip.Enabled || _isWriting)
             return -1;
 
-        foreach (var textBox in _filterTextBoxes.Values)
-            textBox.Text = string.Empty;
-        ResetSpecialFilters();
-        ResetSolutionTreeChecks();
+        // L'éditeur étant non modal, une cellule de la grille principale peut être en cours
+        // d'édition : remplacer le DataSource perdrait la saisie, la committer d'abord
+        // (CellEndEdit pousse la valeur dans la ligne et le cache).
+        dataGridView.EndEdit();
+
+        ResetAllFilters();
 
         if (_filterTextBoxes.TryGetValue("French", out var box))
             box.Text = source;
@@ -1105,10 +1108,7 @@ public partial class MainForm : Form
         if (target is not null && target != _currentLanguage)
             SwitchToLanguage(target);
 
-        foreach (var textBox in _filterTextBoxes.Values)
-            textBox.Text = string.Empty;
-        ResetSpecialFilters();
-        ResetSolutionTreeChecks();
+        ResetAllFilters();
 
         // Projet et Fichier n'ont plus de colonne : leur filtre passe par l'arborescence, en
         // sélection exacte — seuls le projet ou le fichier cliqués restent cochés. Même garantie
@@ -1155,6 +1155,29 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// Remet tous les filtres à zéro — zones de saisie des colonnes, listes déroulantes, cases de
+    /// l'arborescence et filtre de son bandeau — avant d'en poser un seul : un filtre resté en
+    /// place ferait afficher moins de lignes que promis, et un arbre encore filtré sur un projet
+    /// contredirait la grille. Socle du drill-down, de la relecture et du filtre par terme.
+    /// </summary>
+    private void ResetAllFilters()
+    {
+        foreach (var textBox in _filterTextBoxes.Values)
+            textBox.Text = string.Empty;
+        ResetSpecialFilters();
+        ResetSolutionTreeChecks();
+
+        // Vider le bandeau arme son debounce : on le stoppe et on reconstruit tout de suite, la
+        // grille et l'arbre doivent changer ensemble.
+        if (treeFilterBox is not null && treeFilterBox.Text.Length > 0)
+        {
+            treeFilterBox.Text = string.Empty;
+            _treeFilterDebounceTimer?.Stop();
+            RebuildSolutionTreeNodes();
+        }
+    }
+
+    /// <summary>
     /// Restreint la grille aux lignes touchées par la dernière passe ciblée (retraduites, ou
     /// contrôlées depuis un terme du glossaire), pour les relire : reste sur la langue affichée
     /// si elle en a, sinon bascule sur la première langue qui en a — un filtre posé sur une
@@ -1178,10 +1201,7 @@ public partial class MainForm : Form
         if (target != _currentLanguage)
             SwitchToLanguage(target);
 
-        foreach (var textBox in _filterTextBoxes.Values)
-            textBox.Text = string.Empty;
-        ResetSpecialFilters();
-        ResetSolutionTreeChecks();
+        ResetAllFilters();
 
         if (_filterTextBoxes.TryGetValue("Translation", out var box))
             box.Text = "translation:review";

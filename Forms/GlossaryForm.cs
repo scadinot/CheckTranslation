@@ -33,7 +33,6 @@ internal sealed partial class GlossaryForm : Form
     // SortMode.Automatic) et déplacer la ligne entre le clic et l'action.
     private DataGridViewRow? _menuRow;
     private string _menuLanguageCode = MainForm.Languages[0].Code;
-    private string _preferredLanguageCode = MainForm.Languages[0].Code;
     private readonly ToolStripMenuItem menuFilterGrid = new();
     // Dernier filtre posé sur la grille principale depuis ici, affiché dans le bandeau.
     private string _gridFilterInfo = string.Empty;
@@ -52,6 +51,14 @@ internal sealed partial class GlossaryForm : Form
     /// (éditeur ouvert sans grille) grise l'entrée de menu.
     /// </summary>
     public Func<string, int>? FilterMainGrid { get; set; }
+
+    /// <summary>
+    /// Posé par <c>MainForm</c> : code de la langue que la grille principale affiche, lu au moment
+    /// du clic droit — l'éditeur est non modal, la grille peut changer de langue pendant qu'il
+    /// est ouvert. C'est la langue des actions par terme quand la cellule cliquée n'est pas une
+    /// colonne de langue.
+    /// </summary>
+    public Func<string>? MainGridLanguageCode { get; set; }
 
     public GlossaryForm() : this(new GlossaryService())
     {
@@ -106,9 +113,6 @@ internal sealed partial class GlossaryForm : Form
         var column = _languageColumns.Find(c => string.Equals((string)c.Tag!, languageCode, StringComparison.OrdinalIgnoreCase));
         if (column is null)
             return;
-
-        // Langue des actions par terme quand la cellule cliquée n'est pas une colonne de langue.
-        _preferredLanguageCode = languageCode;
 
         if (grid.Rows.Count > 0)
             grid.CurrentCell = grid.Rows[0].Cells[column.Index];
@@ -324,9 +328,12 @@ internal sealed partial class GlossaryForm : Form
                 return;
 
             // Les colonnes de langue portent leur code en Tag ; les autres (Source, Contexte,
-            // Statut, Commentaire réviseur) n'en ont pas.
+            // Statut, Commentaire réviseur) n'en ont pas : la langue est alors celle que la grille
+            // principale affiche en ce moment, lue au clic — pas à l'ouverture de l'éditeur.
             _menuRow = row;
-            _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string ?? _preferredLanguageCode;
+            _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string
+                ?? MainGridLanguageCode?.Invoke()
+                ?? MainForm.Languages[0].Code;
             var languageName = Array.Find(MainForm.Languages,
                 language => string.Equals(language.Code, _menuLanguageCode, StringComparison.OrdinalIgnoreCase))?.Name ?? _menuLanguageCode;
 
