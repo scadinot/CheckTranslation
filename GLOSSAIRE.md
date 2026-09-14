@@ -28,7 +28,10 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
 ## 2. Le cycle en cinq phases
 
 1. **Constitution** — l'extraction IA (« Extraire les termes métier… ») verse des termes Proposé,
-   l'éditeur consolide. Les termes naissent Proposé.
+   l'éditeur consolide. Les termes naissent Proposé. L'extraction se fait dans la langue
+   affichée, ou d'un coup dans toutes les langues où la sélection est déjà traduite : un appel
+   par langue, les candidats fusionnés par terme et validés dans un seul tableau à une colonne
+   par langue — un terme y naît avec plusieurs cellules à la fois.
 2. **Export pour contrôle externe** — classeur Excel au format du tableau ci-dessus (une ligne
    par terme), daté et portant l'empreinte du glossaire à l'export. Seuls les termes Proposé
    passent En contrôle : les Validé restent injectés dans les prompts pendant toute la durée du

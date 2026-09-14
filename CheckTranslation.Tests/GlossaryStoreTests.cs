@@ -151,6 +151,57 @@ public sealed class GlossaryStoreTests : IDisposable
     }
 
     [Fact]
+    public void AddProposedTerms_MultiLanguage_CreatesProposedTerms_FillsOnlyEmptyCells_CountsTerms()
+    {
+        var path = StorePath();
+        new GlossaryService(path).ReplaceTermsAndSave(new[] { Term("borne", translations: ("de-DE", "Klemme")) });
+        var service = new GlossaryService(path);
+
+        var candidates = new[]
+        {
+            new GlossaryTerm { Source = "borne", Context = "raccordement", Translations = { ["de-DE"] = "Anschluss", ["en-US"] = "terminal" } },
+            new GlossaryTerm { Source = "tension", Context = "grandeur", Translations = { ["de-DE"] = "Spannung", ["en-US"] = "voltage" } },
+            new GlossaryTerm { Source = "sans cellule", Translations = { ["de-DE"] = "  " } },
+        };
+
+        int added = service.AddProposedTerms(candidates);
+
+        // Compte par terme, pas par cellule ; un candidat sans cellule non vide est ignoré.
+        Assert.Equal(2, added);
+        var reloaded = new GlossaryService(path).GetTerms();
+
+        var borne = Assert.Single(reloaded, t => t.Source == "borne");
+        Assert.Equal("Klemme", borne.Translations["de-DE"]);        // case tranchée : jamais écrasée
+        Assert.Equal("terminal", borne.Translations["en-US"]);      // case vide : complétée
+        Assert.Equal(GlossaryTermStatus.Validated, borne.Status);   // statut conservé
+
+        var tension = Assert.Single(reloaded, t => t.Source == "tension");
+        Assert.Equal(GlossaryTermStatus.Proposed, tension.Status);
+        Assert.Equal("grandeur", tension.Context);
+        Assert.Equal(2, tension.Translations.Count);
+
+        Assert.DoesNotContain(reloaded, t => t.Source == "sans cellule");
+    }
+
+    [Fact]
+    public void AddProposedTerms_MultiLanguage_NothingToFill_ReturnsZero_AndWritesNothing()
+    {
+        var path = StorePath();
+        var service = new GlossaryService(path);
+        service.ReplaceTermsAndSave(new[] { Term("borne", translations: ("de-DE", "Klemme")) });
+        var before = File.GetLastWriteTimeUtc(path);
+
+        int added = service.AddProposedTerms(new[]
+        {
+            new GlossaryTerm { Source = "BORNE", Translations = { ["de-DE"] = "Anschluss" } },
+        });
+
+        Assert.Equal(0, added);
+        Assert.Equal("Klemme", Assert.Single(service.GetTerms()).Translations["de-DE"]);
+        Assert.Equal(before, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
     public void SwitchStore_ReloadsFromTheNewFile_AndBackAgain()
     {
         var pathA = StorePath("a.json");

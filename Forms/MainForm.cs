@@ -2302,6 +2302,9 @@ public partial class MainForm : Form
         var menuExtractTerms = new ToolStripMenuItem("Extraire les termes métier…");
         menuExtractTerms.Click += MenuExtractTerms_Click;
 
+        var menuExtractTermsAllLanguages = new ToolStripMenuItem("Extraire les termes métier (toutes les langues avec du contenu)…");
+        menuExtractTermsAllLanguages.Click += MenuExtractTermsAllLanguages_Click;
+
         var menuCopyFrench = new ToolStripMenuItem("Copier le français");
         menuCopyFrench.Click += MenuCopyFrench_Click;
 
@@ -2312,6 +2315,7 @@ public partial class MainForm : Form
         contextMenu.Items.Add(menuVerify);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(menuExtractTerms);
+        contextMenu.Items.Add(menuExtractTermsAllLanguages);
 
         var frenchContextMenu = new ContextMenuStrip();
         frenchContextMenu.Items.Add(menuCopyFrench);
@@ -2324,14 +2328,16 @@ public partial class MainForm : Form
                 menuAutoTranslate.Text = $"Auto-traduire la sélection ({count} lignes)";
                 menuTranslate.Text = $"Traduire la sélection ({count} lignes)";
                 menuVerify.Text = $"Vérifier la sélection ({count} lignes)";
-                menuExtractTerms.Text = $"Extraire les termes métier de la sélection ({count} lignes)…";
+                menuExtractTerms.Text = $"Extraire les termes métier de la sélection ({count} lignes, {_currentLanguage.Name})…";
+                menuExtractTermsAllLanguages.Text = $"Extraire les termes métier de la sélection ({count} lignes, toutes les langues avec du contenu)…";
             }
             else
             {
                 menuAutoTranslate.Text = "Auto-traduire (copie existante)";
                 menuTranslate.Text = "Traduire";
                 menuVerify.Text = "Vérifier la traduction";
-                menuExtractTerms.Text = "Extraire les termes métier…";
+                menuExtractTerms.Text = $"Extraire les termes métier ({_currentLanguage.Name})…";
+                menuExtractTermsAllLanguages.Text = "Extraire les termes métier (toutes les langues avec du contenu)…";
             }
         };
 
@@ -2768,6 +2774,37 @@ public partial class MainForm : Form
 
     private async void MenuExtractTerms_Click(object? sender, EventArgs e)
     {
+        // async void : une exception qui s'échapperait abattrait l'application.
+        try
+        {
+            await ExtractTermsFromContextSelectionAsync(allLanguagesWithContent: false);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant l'extraction des termes métier :\n\n{ex.Message}",
+                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private async void MenuExtractTermsAllLanguages_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            await ExtractTermsFromContextSelectionAsync(allLanguagesWithContent: true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Erreur pendant l'extraction des termes métier :\n\n{ex.Message}",
+                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Lignes visées par le menu contextuel : la sélection si elle compte plusieurs lignes, sinon
+    /// la ligne sous le clic droit. Les lignes sans français sont écartées : rien à extraire.
+    /// </summary>
+    private async Task ExtractTermsFromContextSelectionAsync(bool allLanguagesWithContent)
+    {
         IReadOnlyList<TranslationRow> rows;
         if (dataGridView.SelectedRows.Count > 1)
         {
@@ -2787,29 +2824,42 @@ public partial class MainForm : Form
             rows = [row];
         }
 
-        await ExtractTermsRowsAsync(rows);
+        await ExtractTermsRowsAsync(rows, allLanguagesWithContent);
     }
 
     /// <summary>
     /// Compte rendu des lots d'extraction qui n'ont rien donné et pourquoi : échec d'appel (avec
     /// le premier message d'erreur), réponse illisible, troncature par le plafond de tokens.
+    /// Une ligne par langue en cause quand l'extraction en couvre plusieurs.
     /// </summary>
-    private static string DescribeExtractionProblems(GlossaryExtractionResult result)
+    private static string DescribeExtractionProblems(IReadOnlyList<(LanguageInfo Language, GlossaryExtractionResult Result)> results)
     {
         var lines = new List<string>();
+        bool several = results.Count > 1;
 
-        if (result.FailedBatches > 0)
-            lines.Add($"{result.FailedBatches} lot(s) sur {result.Batches} : échec de l'appel à l'IA.");
-        if (result.UnreadableBatches > 0)
-            lines.Add($"{result.UnreadableBatches} lot(s) sur {result.Batches} : réponse de l'IA illisible"
-                + (result.Truncated ? " (réponse tronquée : plafond de tokens de sortie atteint)." : "."));
-        if (result.FirstError is not null)
-            lines.Add($"Première erreur : {result.FirstError}");
+        foreach (var (language, result) in results)
+        {
+            var prefix = several ? $"[{language.Code}] " : string.Empty;
+            if (result.FailedBatches > 0)
+                lines.Add($"{prefix}{result.FailedBatches} lot(s) sur {result.Batches} : échec de l'appel à l'IA.");
+            if (result.UnreadableBatches > 0)
+                lines.Add($"{prefix}{result.UnreadableBatches} lot(s) sur {result.Batches} : réponse de l'IA illisible"
+                    + (result.Truncated ? " (réponse tronquée : plafond de tokens de sortie atteint)." : "."));
+            if (result.FirstError is not null)
+                lines.Add($"{prefix}Première erreur : {result.FirstError}");
+        }
 
         return string.Join("\n", lines);
     }
 
-    private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows)
+    /// <summary>
+    /// Extraction IA des termes métier des lignes données, dans la langue affichée ou dans toutes
+    /// les langues où la sélection a du contenu. L'extraction est un appel par langue (prompt et
+    /// filtre des termes déjà connus propres à chaque langue) ; les candidats sont ensuite
+    /// fusionnés en termes transversaux (<see cref="GlossaryCandidates.Merge"/>) et validés dans un
+    /// seul dialog, une colonne par langue.
+    /// </summary>
+    private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows, bool allLanguagesWithContent)
     {
         if (rows.Count == 0)
             return;
@@ -2826,40 +2876,67 @@ public partial class MainForm : Form
         if (texts.Count == 0)
             return;
 
-        // Même gel que TranslateRowsAsync : l'extraction lit _currentLanguage au retour pour
-        // alimenter le glossaire — changer de langue pendant l'attente enverrait les termes
-        // dans le glossaire d'une autre langue.
+        // Langues cibles : la langue affichée, ou toutes celles où la sélection porte une
+        // traduction. La langue affichée ne vit que dans la vue active tant qu'elle n'est pas
+        // poussée : commit avant de lire les dictionnaires.
+        IReadOnlyList<LanguageInfo> languages;
+        if (allLanguagesWithContent)
+        {
+            foreach (var row in rows)
+                row.CommitActiveLanguage(_currentLanguage.Code);
+
+            languages = GlossaryCandidates.LanguagesWithContent(rows, Languages);
+            if (languages.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "Aucune langue n'a de contenu pour la sélection : rien à extraire.\n\nTraduisez d'abord, ou utilisez l'extraction dans la langue affichée.",
+                    "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+        }
+        else
+        {
+            languages = [_currentLanguage];
+        }
+
+        // Même gel que TranslateRowsAsync : les langues cibles sont figées ici, et le versement au
+        // retour ne doit pas trouver une grille ou une source qui ont changé pendant l'attente.
         dataGridView.EndEdit();
         toolStrip.Enabled = false;
         dataGridView.Enabled = false;
+        int total = texts.Count * languages.Count;
         statusProgressBar.Visible = true;
-        statusProgressBar.Maximum = texts.Count;
+        statusProgressBar.Maximum = total;
         statusProgressBar.Value = 0;
-        statusRowCount.Text = $"Extraction : 0 / {texts.Count}";
+        statusRowCount.Text = $"Extraction : 0 / {total}";
 
         UseWaitCursor = true;
         Application.UseWaitCursor = true;
 
-        var progress = new Progress<int>(done =>
-        {
-            statusProgressBar.Value = Math.Min(done, statusProgressBar.Maximum);
-            statusRowCount.Text = $"Extraction : {done} / {texts.Count}";
-        });
-
-        GlossaryExtractionResult? result = null;
+        var results = new List<(LanguageInfo Language, GlossaryExtractionResult Result)>();
+        string? failure = null;
         try
         {
-            result = await _glossaryService.ExtractCandidatesAsync(
-                texts,
-                config,
-                _currentLanguage.Code,
-                _currentLanguage.Name,
-                progress);
+            for (int i = 0; i < languages.Count; i++)
+            {
+                var language = languages[i];
+                int offset = i * texts.Count;
+                var progress = new Progress<int>(done =>
+                {
+                    statusProgressBar.Value = Math.Min(offset + done, total);
+                    statusRowCount.Text = languages.Count == 1
+                        ? $"Extraction : {done} / {texts.Count}"
+                        : $"Extraction {language.Code} : {done} / {texts.Count}";
+                });
+
+                var result = await _glossaryService.ExtractCandidatesAsync(
+                    texts, config, language.Code, language.Name, progress);
+                results.Add((language, result));
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Erreur lors de l'extraction des termes métier :\n\n{ex.Message}",
-                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            failure = ex.Message;
         }
         finally
         {
@@ -2880,15 +2957,28 @@ public partial class MainForm : Form
             Application.UseWaitCursor = false;
         }
 
-        if (result is null)
-            return;
+        if (failure is not null)
+        {
+            // Les langues déjà extraites ne sont pas perdues : l'échec d'une langue n'annule pas
+            // le travail des précédentes.
+            MessageBox.Show($"Erreur lors de l'extraction des termes métier :\n\n{failure}"
+                + (results.Count > 0 ? $"\n\nLes {results.Count} langue(s) déjà traitée(s) sont conservées." : string.Empty),
+                "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (results.Count == 0)
+                return;
+        }
+
+        var candidates = GlossaryCandidates.Merge(
+            results.Select(r => (r.Language.Code, r.Result.Candidates)).ToList());
+        int problemBatches = results.Sum(r => r.Result.ProblemBatches);
+        int alreadyKnown = results.Sum(r => r.Result.AlreadyKnown);
+        string problems = DescribeExtractionProblems(results);
 
         // Dire pourquoi la liste est vide : « l'IA n'a rien trouvé » et « l'IA n'a pas pu
         // répondre » appellent des réactions opposées, et un même message les confondait.
-        string problems = DescribeExtractionProblems(result);
-        if (result.Candidates.Count == 0)
+        if (candidates.Count == 0)
         {
-            if (result.ProblemBatches > 0)
+            if (problemBatches > 0)
             {
                 MessageBox.Show(
                     "L'extraction n'a produit aucun terme exploitable.\n\n" + problems,
@@ -2896,17 +2986,18 @@ public partial class MainForm : Form
             }
             else
             {
-                var known = result.AlreadyKnown > 0
-                    ? $"\n\n{result.AlreadyKnown} terme(s) proposé(s) par l'IA étaient déjà au glossaire."
+                var known = alreadyKnown > 0
+                    ? $"\n\n{alreadyKnown} proposition(s) de l'IA étaient déjà au glossaire."
                     : string.Empty;
+                var scope = languages.Count == 1 ? languages[0].Name : $"{languages.Count} langues";
                 MessageBox.Show(
-                    $"L'IA n'a identifié aucun nouveau terme métier dans les {texts.Count} ligne(s) sélectionnée(s).{known}",
+                    $"L'IA n'a identifié aucun nouveau terme métier dans les {texts.Count} ligne(s) sélectionnée(s) ({scope}).{known}",
                     "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             return;
         }
 
-        if (result.ProblemBatches > 0)
+        if (problemBatches > 0)
         {
             MessageBox.Show(
                 "Extraction partielle : les candidats affichés proviennent des lots exploitables.\n\n" + problems,
@@ -2914,22 +3005,23 @@ public partial class MainForm : Form
         }
 
         using var dialog = _extractionDialogFactory();
-        dialog.SetCandidates(result.Candidates, _currentLanguage.Name);
+        dialog.SetCandidates(candidates, languages);
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        var accepted = dialog.AcceptedEntries;
+        var accepted = dialog.AcceptedTerms;
         if (accepted.Count == 0)
             return;
 
         // Un candidat accepté devient un terme Proposé : il n'entre dans les prompts qu'une fois
         // validé, dans l'éditeur ou par le cycle de contrôle externe (GLOSSAIRE.md). Un terme
-        // existant n'est complété que si sa case pour cette langue est vide. L'appel persiste
-        // lui-même, transactionnellement : en cas d'échec, l'état mémoire est restauré.
+        // existant n'est complété que sur ses cases vides. L'appel persiste lui-même, en une
+        // fois pour toutes les langues, transactionnellement : en cas d'échec, l'état mémoire
+        // est restauré.
         int added;
         try
         {
-            added = _glossaryService.AddProposedTerms(_currentLanguage.Code, accepted);
+            added = _glossaryService.AddProposedTerms(accepted);
         }
         catch (Exception ex)
         {

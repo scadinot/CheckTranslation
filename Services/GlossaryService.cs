@@ -253,6 +253,26 @@ internal sealed class GlossaryService : IGlossaryService
         if (string.IsNullOrWhiteSpace(languageCode) || entries.Count == 0)
             return 0;
 
+        // Un candidat par entrée, une seule cellule : la version multi-langues fait le travail.
+        var candidates = entries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Source) && !string.IsNullOrWhiteSpace(entry.Destination))
+            .Select(entry => new GlossaryTerm
+            {
+                Source = entry.Source,
+                Context = entry.Context,
+                Status = GlossaryTermStatus.Proposed,
+                Translations = { [languageCode] = entry.Destination },
+            })
+            .ToList();
+
+        return AddProposedTerms(candidates);
+    }
+
+    public int AddProposedTerms(IReadOnlyList<GlossaryTerm> candidates)
+    {
+        if (candidates.Count == 0)
+            return 0;
+
         EnsureLoaded();
         lock (_lock)
         {
@@ -261,21 +281,27 @@ internal sealed class GlossaryService : IGlossaryService
             // prise à la première mutation avérée seulement — une extraction qui ne propose que
             // des doublons ne paie pas le clone du glossaire entier.
             List<GlossaryTerm>? snapshot = null;
-            int touched = 0;
+            // Compte par terme, jamais par cellule ni par candidat : deux candidats de même source
+            // qui complètent le même terme ne le comptent qu'une fois.
+            var touched = new HashSet<GlossaryTerm>(ReferenceEqualityComparer.Instance);
 
-            foreach (var entry in entries)
+            foreach (var candidate in candidates)
             {
-                if (string.IsNullOrWhiteSpace(entry.Source) || string.IsNullOrWhiteSpace(entry.Destination))
+                if (candidate is null || string.IsNullOrWhiteSpace(candidate.Source))
                     continue;
 
-                var term = FindTermLocked(entry.Source);
-                if (term is not null
-                    && term.Translations.TryGetValue(languageCode, out var existing)
-                    && !string.IsNullOrWhiteSpace(existing))
-                {
-                    // Ne jamais écraser une traduction déjà tranchée par une proposition.
+                var term = FindTermLocked(candidate.Source);
+
+                // Ne jamais écraser une traduction déjà tranchée par une proposition : seules les
+                // cellules vides du terme existant (ou toutes, pour un terme nouveau) se remplissent.
+                var fillable = candidate.Translations
+                    .Where(cell => !string.IsNullOrWhiteSpace(cell.Key) && !string.IsNullOrWhiteSpace(cell.Value))
+                    .Where(cell => term is null
+                        || !term.Translations.TryGetValue(cell.Key, out var existing)
+                        || string.IsNullOrWhiteSpace(existing))
+                    .ToList();
+                if (fillable.Count == 0)
                     continue;
-                }
 
                 snapshot ??= _glossary.Terms.Select(CloneTerm).ToList();
 
@@ -285,21 +311,19 @@ internal sealed class GlossaryService : IGlossaryService
                     // fois validé (gouvernance de GLOSSAIRE.md).
                     term = new GlossaryTerm
                     {
-                        Source = NormalizeCell(entry.Source),
-                        Context = NormalizeCell(entry.Context),
+                        Source = NormalizeCell(candidate.Source),
+                        Context = NormalizeCell(candidate.Context),
                         Status = GlossaryTermStatus.Proposed,
                     };
                     _glossary.Terms.Add(term);
                 }
 
-                // Un incrément par terme, jamais par entrée : un doublon de source dans les
-                // candidats retombe sur la garde de non-écrasement (la case vient d'être
-                // remplie, jamais vide ni blanche) et est écarté avant d'arriver ici.
-                term.Translations[languageCode] = NormalizeCell(entry.Destination);
-                touched++;
+                foreach (var (code, value) in fillable)
+                    term.Translations[code] = NormalizeCell(value);
+                touched.Add(term);
             }
 
-            if (touched > 0)
+            if (touched.Count > 0)
             {
                 try
                 {
@@ -307,13 +331,13 @@ internal sealed class GlossaryService : IGlossaryService
                 }
                 catch
                 {
-                    // touched > 0 implique que le snapshot a été pris (première mutation).
+                    // touched non vide implique que le snapshot a été pris (première mutation).
                     _glossary.Terms = snapshot!;
                     throw;
                 }
             }
 
-            return touched;
+            return touched.Count;
         }
     }
 

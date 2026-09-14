@@ -56,6 +56,14 @@ internal interface IGlossaryService
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 
     /// <summary>
+    /// Version multi-langues : chaque candidat porte ses cellules par code de langue, une seule
+    /// persistance pour l'ensemble. Même règle par cellule (une case déjà tranchée n'est jamais
+    /// écrasée, seules les vides se remplissent), même compte (termes créés ou complétés, pas
+    /// cellules). Un candidat sans source ou sans cellule non vide est ignoré.
+    /// </summary>
+    int AddProposedTerms(IReadOnlyList<GlossaryTerm> candidates);
+
+    /// <summary>
     /// Empreinte de la totalité du glossaire (tous champs, toutes langues), écrite dans le
     /// classeur d'export et comparée à l'import pour détecter que le glossaire a changé côté
     /// application pendant le contrôle externe.
