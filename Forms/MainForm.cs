@@ -401,9 +401,7 @@ public partial class MainForm : Form
         {
             if (_glossaryForm is not null)
             {
-                if (_glossaryForm.WindowState == FormWindowState.Minimized)
-                    _glossaryForm.WindowState = FormWindowState.Normal;
-                _glossaryForm.Activate();
+                BringGlossaryEditorToFront();
                 return;
             }
 
@@ -427,6 +425,22 @@ public partial class MainForm : Form
             MessageBox.Show(this, $"Impossible d'ouvrir l'éditeur de glossaire :\n\n{ex.Message}",
                 "Glossaire", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Ramène l'éditeur de glossaire ouvert au premier plan, restauré s'il était réduit :
+    /// <c>Activate</c> seul ne rend pas visible une fenêtre réduite, et les gardes qui renvoient
+    /// vers l'éditeur (« Ouvrir », extraction) laisseraient l'utilisateur devant un refus sans
+    /// rien à l'écran.
+    /// </summary>
+    private void BringGlossaryEditorToFront()
+    {
+        if (_glossaryForm is null)
+            return;
+
+        if (_glossaryForm.WindowState == FormWindowState.Minimized)
+            _glossaryForm.WindowState = FormWindowState.Normal;
+        _glossaryForm.Activate();
     }
 
     /// <summary>
@@ -1336,7 +1350,7 @@ public partial class MainForm : Form
         if (_glossaryForm is not null)
         {
             FlashStatus("Fermez le glossaire avant d'ouvrir une autre solution : il est lié au glossaire de la solution courante.");
-            _glossaryForm.Activate();
+            BringGlossaryEditorToFront();
             return;
         }
 
@@ -3136,7 +3150,7 @@ public partial class MainForm : Form
         if (_glossaryForm is not null)
         {
             FlashStatus("Fermez le glossaire avant d'extraire des termes : le versement des candidats et l'éditeur écriraient le même glossaire.");
-            _glossaryForm.Activate();
+            BringGlossaryEditorToFront();
             return;
         }
 

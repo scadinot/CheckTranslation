@@ -387,6 +387,15 @@ internal sealed partial class GlossaryForm : Form
         if (source is null || FilterMainGrid is null)
             return;
 
+        // Le filtre texte de la grille lit un « = » initial comme une égalité exacte : un tel
+        // terme n'y serait pas cherché en « contient ». Cas d'école, dit plutôt que faussé.
+        if (TranslationRowFiltering.UsesExactMatchSyntax(source))
+        {
+            _gridFilterInfo = $"« {source} » commence par « = », syntaxe réservée du filtre : non filtrable";
+            UpdateCountLabel();
+            return;
+        }
+
         int count = FilterMainGrid(source);
         _gridFilterInfo = count < 0
             ? "grille principale occupée, filtre non appliqué"
