@@ -293,14 +293,14 @@ internal sealed partial class GlossaryForm : Form
                 return;
 
             var row = grid.Rows[e.RowIndex];
-            if (row.IsNewRow)
-                return;
 
-            // Committe une édition de cellule encore ouverte : une source tapée dans une ligne
-            // neuve n'est dans Value qu'après EndEdit, et le menu serait grisé à tort. Le commit
-            // peut re-trier la grille (colonnes en SortMode.Automatic) : e.RowIndex ne vaut plus
-            // rien après, seule la référence à la ligne compte — et le menu s'ouvre sous la
-            // souris, pas sur une cellule dont l'index a pu changer.
+            // Committe une édition de cellule encore ouverte : une source tapée dans la ligne
+            // « nouvelle » n'est dans Value qu'après EndEdit, et c'est ce commit qui en fait une
+            // vraie ligne — le placeholder n'est donc rejeté qu'APRÈS, sinon le menu resterait
+            // inaccessible à une ligne qu'on vient de saisir. Le commit peut aussi re-trier la
+            // grille (colonnes en SortMode.Automatic) : e.RowIndex ne vaut plus rien après, seule
+            // la référence à la ligne compte — et le menu s'ouvre sous la souris, pas sur une
+            // cellule dont l'index a pu changer.
             grid.EndEdit();
             if (row.Index < 0 || row.IsNewRow)
                 return;
