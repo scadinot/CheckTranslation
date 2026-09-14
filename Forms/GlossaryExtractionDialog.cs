@@ -31,6 +31,28 @@ internal sealed partial class GlossaryExtractionDialog : Form
         btnAll.Click += (_, _) => SetAll(true);
         btnNone.Click += (_, _) => SetAll(false);
         btnOk.Click += BtnOk_Click;
+
+        // L'en-tête (comptes + légende) se replie sur plusieurs lignes selon la largeur : la
+        // hauteur du panneau suit le texte mesuré, sinon il rogne à largeur minimale.
+        topPanel.Resize += (_, _) => FitHeaderHeight();
+    }
+
+    /// <summary>
+    /// Ajuste la hauteur du panneau d'en-tête à celle du texte replié dans la largeur courante du
+    /// libellé. Idempotent : la hauteur mesurée ne dépend pas de la hauteur du panneau, le
+    /// Resize que déclenche l'ajustement ne relance donc rien.
+    /// </summary>
+    private void FitHeaderHeight()
+    {
+        if (lblHeader.Width <= 0 || string.IsNullOrEmpty(lblHeader.Text))
+            return;
+
+        var needed = TextRenderer.MeasureText(
+            lblHeader.Text, lblHeader.Font, new Size(lblHeader.Width, int.MaxValue),
+            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+        int target = needed + topPanel.Padding.Vertical;
+        if (topPanel.Height != target)
+            topPanel.Height = target;
     }
 
     protected override void OnLoad(EventArgs e)
@@ -105,6 +127,7 @@ internal sealed partial class GlossaryExtractionDialog : Form
         lblHeader.Text =
             $"{candidates.Count} terme(s) candidat(s) {scope} : {newTerms} nouveau(x), {completedTerms} existant(s) à compléter, {unchangedTerms} sans rien à ajouter (décoché(s)). Cochez ceux à ajouter (édition possible ; une cellule laissée vide reste non tranchée)."
             + "\nVert : sera ajouté au glossaire · Noir : déjà au glossaire, non modifiable ici · Rouge : diffère d'une valeur déjà tranchée, ne sera pas appliqué (valeur tranchée en infobulle).";
+        FitHeaderHeight();
     }
 
     /// <summary>

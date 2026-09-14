@@ -45,21 +45,25 @@ internal interface IGlossaryService
     void ReplaceTermsAndSave(IReadOnlyList<GlossaryTerm> terms);
 
     /// <summary>
-    /// Verse des candidats d'extraction dans le glossaire ET persiste : un terme nouveau naît
-    /// <see cref="GlossaryTermStatus.Proposed"/> (le contrôle le validera — voir GLOSSAIRE.md) ;
-    /// un terme existant reçoit la traduction proposée seulement si sa case pour cette langue est
-    /// vide, et garde son statut. Si la persistance échoue, l'état mémoire est restauré et
-    /// l'exception remonte. Retourne le nombre de termes créés ou complétés — un compte de
-    /// termes, pas d'entrées : des candidats en doublon sur la même source ne comptent qu'une
-    /// fois, la garde de non-écrasement écartant les suivants.
+    /// Verse des candidats d'extraction d'une langue dans le glossaire ET persiste : un terme
+    /// nouveau naît <see cref="GlossaryTermStatus.Proposed"/> (le contrôle le validera — voir
+    /// GLOSSAIRE.md) ; un terme existant reçoit la traduction proposée seulement si sa case pour
+    /// cette langue est vide (et son contexte proposé si le sien est vide), et garde son statut.
+    /// Se ramène à la surcharge multi-langues, dont il partage toutes les règles. Si la
+    /// persistance échoue, l'état mémoire est restauré et l'exception remonte. Retourne le nombre
+    /// de termes créés ou complétés — un compte de termes, pas d'entrées.
     /// </summary>
     int AddProposedTerms(string languageCode, IReadOnlyList<GlossaryEntry> entries);
 
     /// <summary>
     /// Version multi-langues : chaque candidat porte ses cellules par code de langue, une seule
-    /// persistance pour l'ensemble. Même règle par cellule (une case déjà tranchée n'est jamais
-    /// écrasée, seules les vides se remplissent), même compte (termes créés ou complétés, pas
-    /// cellules). Un candidat sans source ou sans cellule non vide est ignoré.
+    /// persistance pour l'ensemble. Ce qui s'écrit est décidé par
+    /// <c>GlossaryCandidates.Classify</c>, la même règle que les couleurs du dialog de validation :
+    /// un terme nouveau naît Proposé avec ses cellules non vides (sans aucune, il est ignoré) ;
+    /// un terme existant est complété sur ses cases vides <b>et sur son contexte vide</b>, une
+    /// valeur déjà tranchée (cellule ou contexte) n'étant jamais écrasée, statut conservé. Rien
+    /// n'est écrit ni persisté quand aucun candidat n'a rien à remplir. Compte par terme créé ou
+    /// complété, pas par cellule. Un candidat sans source est ignoré.
     /// </summary>
     int AddProposedTerms(IReadOnlyList<GlossaryTerm> candidates);
 
