@@ -23,7 +23,6 @@ partial class GlossaryExtractionDialog
         grid = new DataGridView();
         colSelected = new DataGridViewCheckBoxColumn();
         colSource = new DataGridViewTextBoxColumn();
-        colDestination = new DataGridViewTextBoxColumn();
         colContext = new DataGridViewTextBoxColumn();
         bottomPanel = new Panel();
         btnAll = new Button();
@@ -58,7 +57,7 @@ partial class GlossaryExtractionDialog
         grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
         grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-        grid.Columns.AddRange(new DataGridViewColumn[] { colSelected, colSource, colDestination, colContext });
+        grid.Columns.AddRange(new DataGridViewColumn[] { colSelected, colSource, colContext });
         grid.Dock = DockStyle.Fill;
         grid.Name = "grid";
         grid.RowHeadersVisible = false;
@@ -67,28 +66,18 @@ partial class GlossaryExtractionDialog
         // colSelected
         //
         colSelected.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-        colSelected.DataPropertyName = "Selected";
         colSelected.FillWeight = 8F;
         colSelected.HeaderText = "Ajouter";
         colSelected.Name = "colSelected";
         //
         // colSource
         //
-        colSource.DataPropertyName = "Source";
         colSource.FillWeight = 25F;
         colSource.HeaderText = "Source";
         colSource.Name = "colSource";
         //
-        // colDestination
-        //
-        colDestination.DataPropertyName = "Destination";
-        colDestination.FillWeight = 25F;
-        colDestination.HeaderText = "Destination";
-        colDestination.Name = "colDestination";
-        //
         // colContext
         //
-        colContext.DataPropertyName = "Context";
         colContext.FillWeight = 42F;
         colContext.HeaderText = "Contexte";
         colContext.Name = "colContext";
@@ -170,7 +159,6 @@ partial class GlossaryExtractionDialog
     private DataGridView grid;
     private DataGridViewCheckBoxColumn colSelected;
     private DataGridViewTextBoxColumn colSource;
-    private DataGridViewTextBoxColumn colDestination;
     private DataGridViewTextBoxColumn colContext;
     private Panel bottomPanel;
     private Button btnAll;
