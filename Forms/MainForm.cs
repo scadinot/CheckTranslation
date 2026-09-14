@@ -1606,6 +1606,9 @@ public partial class MainForm : Form
     // Nœuds de fichier par identité, pour retrouver le nœud d'une ligne de la grille sans
     // parcourir l'arbre. Reconstruit avec les nœuds : un fichier masqué par le bandeau n'y est pas.
     private readonly Dictionary<(string Project, string File), TreeNode> _fileNodesByKey = new(FileKeyComparer.Instance);
+    // Projets repliés par l'utilisateur. Hors des nœuds, comme les cases cochées : la
+    // reconstruction (filtre du bandeau, F5) recrée les nœuds et perdrait les replis.
+    private readonly HashSet<string> _collapsedProjects = new(StringComparer.OrdinalIgnoreCase);
     // Verrou anti-boucle de la synchronisation de sélection : chaque sens (grille -> arbre,
     // arbre -> grille) déclenche l'événement de l'autre.
     private bool _isSyncingSelection;
@@ -1659,9 +1662,12 @@ public partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             CheckBoxes = true,
-            ShowLines = false,
+            // Les boutons de repli des projets — des nœuds racine — n'existent qu'avec ShowLines
+            // ET ShowRootLines (règle Win32 : TVS_LINESATROOT n'agit qu'avec TVS_HASLINES) ; le
+            // thème Explorer posé par CheckBoxTreeView remplace les pointillés par des flèches.
+            ShowLines = true,
             ShowPlusMinus = true,
-            ShowRootLines = false,
+            ShowRootLines = true,
             BorderStyle = BorderStyle.None,
             // Sans quoi la sélection n'est surlignée que lorsque l'arbre a le focus — et la
             // synchronisation grille → arbre se joue précisément quand le focus est dans la
@@ -1670,6 +1676,18 @@ public partial class MainForm : Form
         };
         solutionTree.AfterCheck += SolutionTree_AfterCheck;
         solutionTree.AfterSelect += SolutionTree_AfterSelect;
+        // Les replis faits par l'utilisateur sont mémorisés ; ceux de la reconstruction non
+        // (_isUpdatingTreeChecks), sinon déplier pour un filtre effacerait les replis.
+        solutionTree.AfterCollapse += (_, e) =>
+        {
+            if (!_isUpdatingTreeChecks && e.Node?.Tag is string project)
+                _collapsedProjects.Add(project);
+        };
+        solutionTree.AfterExpand += (_, e) =>
+        {
+            if (!_isUpdatingTreeChecks && e.Node?.Tag is string project)
+                _collapsedProjects.Remove(project);
+        };
         dataGridView.SelectionChanged += (_, _) => SyncTreeSelectionFromGrid();
         treeBoldFont = new Font(solutionTree.Font, FontStyle.Bold);
 
@@ -1902,16 +1920,22 @@ public partial class MainForm : Form
         if (!preserveChecks)
         {
             _uncheckedFiles.Clear();
+            _collapsedProjects.Clear();
             if (treeFilterBox is not null)
                 treeFilterBox.Text = string.Empty;
         }
         else
         {
             var currentKeys = new HashSet<(string Project, string File)>(FileKeyComparer.Instance);
+            var currentProjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in _allRows)
+            {
                 currentKeys.Add(BuildFileKey(row.Project, row.File));
+                currentProjects.Add(row.Project.Trim());
+            }
 
             _uncheckedFiles.RemoveWhere(key => !currentKeys.Contains(key));
+            _collapsedProjects.RemoveWhere(project => !currentProjects.Contains(project));
         }
 
         // La reconstruction a lieu tout de suite : un tick de debounce déjà armé — par
@@ -1926,7 +1950,9 @@ public partial class MainForm : Form
     /// filtre du bandeau. Un projet dont le nom correspond montre tous ses fichiers ; sinon,
     /// seuls ses fichiers correspondants apparaissent. Les états cochés ne vivent pas dans les
     /// nœuds mais dans <see cref="_uncheckedFiles"/> : filtrer ne perd donc aucun décochage, y
-    /// compris sur les éléments masqués.
+    /// compris sur les éléments masqués. Même chose pour les replis (<see cref="_collapsedProjects"/>) :
+    /// sans filtre, un projet replié par l'utilisateur le reste ; avec un filtre, tout est
+    /// déplié — ses correspondances doivent se voir — sans que les replis soient oubliés.
     /// </summary>
     private void RebuildSolutionTreeNodes()
     {
@@ -1981,7 +2007,14 @@ public partial class MainForm : Form
                 solutionTree.Nodes.Add(projectNode);
             }
 
-            solutionTree.ExpandAll();
+            foreach (TreeNode projectNode in solutionTree.Nodes)
+            {
+                if (filter.Length == 0 && projectNode.Tag is string project && _collapsedProjects.Contains(project))
+                    projectNode.Collapse();
+                else
+                    projectNode.Expand();
+            }
+
             if (solutionTree.Nodes.Count > 0)
                 solutionTree.Nodes[0].EnsureVisible();
         }
@@ -2094,14 +2127,18 @@ public partial class MainForm : Form
                 _uncheckedFiles.Add(key);
         }
 
+        // Le projet demandé doit se voir : un repli antérieur cacherait la sélection posée.
+        _collapsedProjects.Remove(project);
         RebuildSolutionTreeNodes();
     }
 
     /// <summary>
     /// Sélectionne dans l'arbre le fichier de la ligne courante de la grille, et l'amène à
-    /// l'écran. L'arbre est mono-sélection : sur une sélection multi-fichiers, c'est la ligne
-    /// courante (l'ancre) qui décide. Un fichier masqué par le filtre du bandeau n'a pas de
-    /// nœud : on ne touche alors à rien — la synchronisation ne défait pas un filtre posé.
+    /// l'écran — en dépliant son projet s'il était replié, repli alors oublié : l'utilisateur
+    /// voit le projet ouvert, la prochaine reconstruction ne le refermera pas. L'arbre est
+    /// mono-sélection : sur une sélection multi-fichiers, c'est la ligne courante (l'ancre) qui
+    /// décide. Un fichier masqué par le filtre du bandeau n'a pas de nœud : on ne touche alors à
+    /// rien — la synchronisation ne défait pas un filtre posé.
     /// </summary>
     private void SyncTreeSelectionFromGrid()
     {
@@ -2113,13 +2150,17 @@ public partial class MainForm : Form
         if (row is null)
             return;
 
+        // Déjà sélectionné ET visible : rien à faire. Déjà sélectionné mais sous un projet
+        // replié depuis : il faut le déplier — c'est le cas d'une autre ligne du même fichier.
         if (!_fileNodesByKey.TryGetValue(BuildFileKey(row.Project, row.File), out var node)
-            || ReferenceEquals(solutionTree.SelectedNode, node))
+            || (ReferenceEquals(solutionTree.SelectedNode, node) && node.Parent?.IsExpanded != false))
             return;
 
         _isSyncingSelection = true;
         try
         {
+            if (node.Parent?.Tag is string project)
+                _collapsedProjects.Remove(project);
             solutionTree.SelectedNode = node;
             node.EnsureVisible();
         }
@@ -2138,6 +2179,12 @@ public partial class MainForm : Form
     private void SolutionTree_AfterSelect(object? sender, TreeViewEventArgs e)
     {
         if (_isSyncingSelection || _isUpdatingTreeChecks || e.Node is null)
+            return;
+
+        // Replier le projet du fichier sélectionné fait remonter la sélection sur le projet :
+        // une sélection induite par un repli ne doit pas sélectionner toutes les lignes du
+        // projet dans la grille — l'utilisateur n'a rien choisi.
+        if (e.Action is TreeViewAction.Collapse or TreeViewAction.Expand)
             return;
 
         // Le Tag dit la nature du nœud : tuple (projet, fichier) pour un fichier, nom du projet
@@ -2202,10 +2249,30 @@ public partial class MainForm : Form
 
     /// <summary>
     /// TreeView dont le double-clic sur une case à cocher est neutralisé : WinForms bascule alors
-    /// l'état visuel sans lever AfterCheck, et l'affichage se désynchronise du filtre.
+    /// l'état visuel sans lever AfterCheck, et l'affichage se désynchronise du filtre. Porte
+    /// aussi le thème visuel « Explorer » : les boutons de repli des nœuds racine exigent
+    /// ShowLines, et ce thème dessine des flèches à la place des pointillés que ShowLines
+    /// impliquerait sinon. Sans thème (échec de uxtheme), l'arbre reste fonctionnel, avec les
+    /// pointillés classiques.
     /// </summary>
     private sealed class CheckBoxTreeView : TreeView
     {
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string? pszSubIdList);
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try
+            {
+                SetWindowTheme(Handle, "Explorer", null);
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+            {
+                // Poste sans uxtheme : l'arbre garde son rendu classique.
+            }
+        }
+
         protected override void WndProc(ref Message m)
         {
             const int WM_LBUTTONDBLCLK = 0x0203;
