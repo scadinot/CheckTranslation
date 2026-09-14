@@ -93,4 +93,88 @@ public class GlossaryCandidatesTests
     {
         Assert.Empty(GlossaryCandidates.Merge(Array.Empty<(string, IReadOnlyList<GlossaryEntry>)>()));
     }
+
+    private static GlossaryTerm Term(string source, string context = "", params (string Code, string Value)[] cells)
+    {
+        var term = new GlossaryTerm { Source = source, Context = context };
+        foreach (var (code, value) in cells)
+            term.Translations[code] = value;
+        return term;
+    }
+
+    [Fact]
+    public void FindExisting_MatchesNormalizedSource_IgnoringCase()
+    {
+        var terms = new[] { Term("Disjoncteur différentiel", "", ("de-DE", "FI-Schalter")) };
+
+        Assert.NotNull(GlossaryCandidates.FindExisting(terms, "  disjoncteur différentiel\n"));
+        Assert.Null(GlossaryCandidates.FindExisting(terms, "disjoncteur"));
+        Assert.Null(GlossaryCandidates.FindExisting(terms, ""));
+    }
+
+    [Fact]
+    public void Classify_NewTerm_EveryFilledCellIsAdded()
+    {
+        var diff = GlossaryCandidates.Classify(Term("tension", "grandeur", ("de-DE", "Spannung"), ("en-US", "")), existing: null);
+
+        Assert.True(diff.IsNewTerm);
+        Assert.Equal(CandidateCellStatus.Added, diff.Cells["de-DE"]);
+        Assert.Equal(CandidateCellStatus.Empty, diff.Cells["en-US"]);
+        Assert.Equal(CandidateCellStatus.Added, diff.Context);
+        // Le contexte d'un terme nouveau part avec lui : il ne « remplit » pas un vide existant.
+        Assert.False(diff.FillsContext);
+        Assert.True(diff.AddsAnything);
+    }
+
+    [Fact]
+    public void Classify_NewTermWithoutAnyCell_AddsNothing()
+    {
+        var diff = GlossaryCandidates.Classify(Term("vide", "un contexte", ("de-DE", "  ")), existing: null);
+
+        Assert.False(diff.AddsAnything);
+    }
+
+    [Fact]
+    public void Classify_ExistingTerm_DistinguishesAddedExistingAndConflict()
+    {
+        var existing = Term("borne", "", ("de-DE", "Klemme"), ("it-IT", "morsetto"));
+        var candidate = Term("Borne", "raccordement", ("de-DE", "Anschluss"), ("en-US", "terminal"), ("it-IT", " morsetto "));
+
+        var diff = GlossaryCandidates.Classify(candidate, existing);
+
+        Assert.False(diff.IsNewTerm);
+        Assert.Equal(CandidateCellStatus.Conflict, diff.Cells["de-DE"]);  // tranché autrement : ignoré
+        Assert.Equal(CandidateCellStatus.Added, diff.Cells["en-US"]);     // case vide : remplie
+        Assert.Equal(CandidateCellStatus.Existing, diff.Cells["it-IT"]);  // identique après normalisation : rien
+        Assert.Equal(CandidateCellStatus.Added, diff.Context);            // contexte vide au glossaire : rempli
+        Assert.True(diff.FillsContext);
+        Assert.Equal(new[] { "en-US" }, diff.AddedCells);
+    }
+
+    [Fact]
+    public void Classify_ExistingCellWithoutProposal_IsExisting_AndCaseDifferenceIsAConflict()
+    {
+        var existing = Term("borne", "ctx", ("de-DE", "Klemme"));
+
+        var diff = GlossaryCandidates.Classify(Term("borne", "autre", ("en-US", "terminal")), existing);
+        // La cellule du glossaire apparaît même sans proposition : le dialog doit la montrer.
+        Assert.Equal(CandidateCellStatus.Existing, diff.Cells["de-DE"]);
+        Assert.Equal(CandidateCellStatus.Conflict, diff.Context);
+        Assert.False(diff.FillsContext);
+
+        // « klemme » n'est pas « Klemme » : la casse d'un terme imposé compte, c'est un conflit.
+        var casing = GlossaryCandidates.Classify(Term("borne", "", ("de-DE", "klemme")), existing);
+        Assert.Equal(CandidateCellStatus.Conflict, casing.Cells["de-DE"]);
+    }
+
+    [Fact]
+    public void Classify_NothingToAdd_WhenEverythingIsAlreadyThere()
+    {
+        var existing = Term("borne", "ctx", ("de-DE", "Klemme"));
+
+        var diff = GlossaryCandidates.Classify(Term("borne", "ctx", ("de-DE", " Klemme ")), existing);
+
+        Assert.False(diff.AddsAnything);
+        Assert.Empty(diff.AddedCells);
+    }
 }

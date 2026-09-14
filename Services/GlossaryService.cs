@@ -292,15 +292,12 @@ internal sealed class GlossaryService : IGlossaryService
 
                 var term = FindTermLocked(candidate.Source);
 
-                // Ne jamais écraser une traduction déjà tranchée par une proposition : seules les
-                // cellules vides du terme existant (ou toutes, pour un terme nouveau) se remplissent.
-                var fillable = candidate.Translations
-                    .Where(cell => !string.IsNullOrWhiteSpace(cell.Key) && !string.IsNullOrWhiteSpace(cell.Value))
-                    .Where(cell => term is null
-                        || !term.Translations.TryGetValue(cell.Key, out var existing)
-                        || string.IsNullOrWhiteSpace(existing))
-                    .ToList();
-                if (fillable.Count == 0)
+                // Une seule définition de ce qui s'écrit, partagée avec le dialog de validation
+                // (ses couleurs) : seules les cases vides — traductions, et contexte d'un terme
+                // existant — se remplissent. Une valeur déjà tranchée n'est jamais écrasée.
+                var diff = GlossaryCandidates.Classify(candidate, term);
+                var addedCells = diff.AddedCells.ToList();
+                if (addedCells.Count == 0 && !diff.FillsContext)
                     continue;
 
                 snapshot ??= _glossary.Terms.Select(CloneTerm).ToList();
@@ -317,9 +314,13 @@ internal sealed class GlossaryService : IGlossaryService
                     };
                     _glossary.Terms.Add(term);
                 }
+                else if (diff.FillsContext)
+                {
+                    term.Context = NormalizeCell(candidate.Context);
+                }
 
-                foreach (var (code, value) in fillable)
-                    term.Translations[code] = NormalizeCell(value);
+                foreach (var code in addedCells)
+                    term.Translations[code] = NormalizeCell(candidate.Translations[code]);
                 touched.Add(term);
             }
 

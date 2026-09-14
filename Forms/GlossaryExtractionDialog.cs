@@ -5,11 +5,20 @@ namespace CheckTranslation;
 /// (une seule en mode « langue courante », toutes celles avec du contenu en mode multi-langues),
 /// créées par code à l'appel de <see cref="SetCandidates"/> — comme dans <c>GlossaryForm</c>.
 /// Grille non liée : les dictionnaires de <see cref="GlossaryTerm"/> ne se prêtent pas au
-/// binding. L'utilisateur coche, corrige éventuellement, puis valide ; <see cref="AcceptedTerms"/>
-/// ne rend que les termes cochés qui ont une source et au moins une cellule non vide.
+/// binding.
+///
+/// Chaque cellule est confrontée au glossaire (<see cref="GlossaryCandidates.Classify"/>, la même
+/// définition que le versement) et colorée : <b>vert</b> sera écrit, <b>noir</b> est déjà au
+/// glossaire (affiché en lecture seule, pour que personne ne ressaisisse une valeur qui serait
+/// abandonnée), <b>rouge</b> diffère d'une valeur déjà tranchée et ne sera pas appliqué (la
+/// valeur tranchée est en infobulle). Une ligne qui n'ajouterait rien arrive décochée. Les
+/// couleurs sont un aperçu ; l'autorité reste le service, qui reclasse à l'écriture.
 /// </summary>
 internal sealed partial class GlossaryExtractionDialog : Form
 {
+    private static readonly Color AddedColor = Color.FromArgb(0, 128, 0);
+    private static readonly Color ConflictColor = Color.FromArgb(192, 0, 0);
+
     private readonly List<DataGridViewTextBoxColumn> _languageColumns = new();
 
     public IReadOnlyList<GlossaryTerm> AcceptedTerms { get; private set; } = Array.Empty<GlossaryTerm>();
@@ -30,7 +39,10 @@ internal sealed partial class GlossaryExtractionDialog : Form
         ScreenFit.Apply(this);
     }
 
-    public void SetCandidates(IReadOnlyList<GlossaryTerm> candidates, IReadOnlyList<LanguageInfo> languages)
+    public void SetCandidates(
+        IReadOnlyList<GlossaryTerm> candidates,
+        IReadOnlyList<LanguageInfo> languages,
+        IReadOnlyList<GlossaryTerm> existingTerms)
     {
         // Colonnes de langue insérées avant Contexte, une par langue extraite. Poids réparti : sept
         // langues ne doivent pas écraser Source et Contexte, une seule ne doit pas les noyer.
@@ -54,21 +66,75 @@ internal sealed partial class GlossaryExtractionDialog : Form
         }
 
         grid.Rows.Clear();
+        int newTerms = 0, completedTerms = 0, unchangedTerms = 0;
         foreach (var candidate in candidates)
         {
+            var existing = GlossaryCandidates.FindExisting(existingTerms, candidate.Source);
+            var diff = GlossaryCandidates.Classify(candidate, existing);
+
             int index = grid.Rows.Add();
             var row = grid.Rows[index];
             row.Tag = candidate;
-            row.Cells[colSelected.Index].Value = true;
-            row.Cells[colSource.Index].Value = candidate.Source;
-            row.Cells[colContext.Index].Value = candidate.Context;
+            row.Cells[colSelected.Index].Value = diff.AddsAnything;
+
+            var sourceCell = row.Cells[colSource.Index];
+            sourceCell.Value = candidate.Source;
+            if (diff.IsNewTerm)
+                sourceCell.Style.ForeColor = AddedColor;
+            else
+                sourceCell.ToolTipText = "Terme déjà au glossaire : ses cases vides seront complétées, les autres restent.";
+
+            PaintCell(row.Cells[colContext.Index], diff.Context, candidate.Context, existing?.Context);
             foreach (var column in _languageColumns)
-                row.Cells[column.Index].Value = candidate.Translations.GetValueOrDefault((string)column.Tag!, string.Empty);
+            {
+                var code = (string)column.Tag!;
+                PaintCell(row.Cells[column.Index],
+                    diff.Cells.GetValueOrDefault(code, CandidateCellStatus.Empty),
+                    candidate.Translations.GetValueOrDefault(code),
+                    existing?.Translations.GetValueOrDefault(code));
+            }
+
+            if (diff.IsNewTerm) newTerms++;
+            else if (diff.AddsAnything) completedTerms++;
+            else unchangedTerms++;
         }
 
-        lblHeader.Text = languages.Count == 1
-            ? $"{candidates.Count} terme(s) candidat(s) pour {languages[0].Name}. Cochez ceux à ajouter (édition possible)."
-            : $"{candidates.Count} terme(s) candidat(s) pour {languages.Count} langues ({string.Join(", ", languages.Select(l => l.Code))}). Cochez ceux à ajouter (édition possible) ; une cellule laissée vide reste non tranchée.";
+        var scope = languages.Count == 1
+            ? $"pour {languages[0].Name}"
+            : $"pour {languages.Count} langues ({string.Join(", ", languages.Select(l => l.Code))})";
+        lblHeader.Text =
+            $"{candidates.Count} terme(s) candidat(s) {scope} : {newTerms} nouveau(x), {completedTerms} existant(s) à compléter, {unchangedTerms} sans rien à ajouter (décoché(s)). Cochez ceux à ajouter (édition possible ; une cellule laissée vide reste non tranchée)."
+            + "\nVert : sera ajouté au glossaire · Noir : déjà au glossaire, non modifiable ici · Rouge : diffère d'une valeur déjà tranchée, ne sera pas appliqué (valeur tranchée en infobulle).";
+    }
+
+    /// <summary>
+    /// Une cellule existante s'affiche telle que le glossaire la porte, en lecture seule : la
+    /// modifier ici ne servirait à rien, le versement n'écrase jamais. Une cellule en conflit
+    /// montre la proposition — c'est elle que l'utilisateur relit — et la valeur tranchée en
+    /// infobulle, pour qu'il sache ce qui restera.
+    /// </summary>
+    private static void PaintCell(DataGridViewCell cell, CandidateCellStatus status, string? proposed, string? current)
+    {
+        switch (status)
+        {
+            case CandidateCellStatus.Added:
+                cell.Value = proposed;
+                cell.Style.ForeColor = AddedColor;
+                break;
+            case CandidateCellStatus.Existing:
+                cell.Value = current;
+                cell.ReadOnly = true;
+                cell.ToolTipText = "Déjà au glossaire.";
+                break;
+            case CandidateCellStatus.Conflict:
+                cell.Value = proposed;
+                cell.Style.ForeColor = ConflictColor;
+                cell.ToolTipText = $"Déjà tranché au glossaire : « {current} ». La proposition ne remplacera pas cette valeur.";
+                break;
+            default:
+                cell.Value = string.Empty;
+                break;
+        }
     }
 
     private void Grid_CellContentClick(object? sender, DataGridViewCellEventArgs e)
@@ -107,6 +173,8 @@ internal sealed partial class GlossaryExtractionDialog : Form
                 Status = GlossaryTermStatus.Proposed,
             };
 
+            // Les cellules existantes (lecture seule) repartent telles quelles : le service les
+            // reclassera « déjà là » et ne les écrira pas ; les rouges seront ignorées de même.
             foreach (var column in _languageColumns)
             {
                 var value = (row.Cells[column.Index].Value as string)?.Trim();
