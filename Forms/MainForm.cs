@@ -1609,9 +1609,32 @@ public partial class MainForm : Form
     // Projets repliés par l'utilisateur. Hors des nœuds, comme les cases cochées : la
     // reconstruction (filtre du bandeau, F5) recrée les nœuds et perdrait les replis.
     private readonly HashSet<string> _collapsedProjects = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Vrai quand le bandeau de l'arborescence filtre les nœuds.</summary>
+    private bool IsTreeFilterActive => !string.IsNullOrWhiteSpace(treeFilterBox?.Text);
+
+    /// <summary>
+    /// Mémorise un repli ou un dépliage de projet — seulement sans filtre du bandeau. Sous
+    /// filtre, tout est déplié pour montrer les correspondances : un repli fait là est
+    /// transitoire (la prochaine reconstruction le défait) et ne doit ni s'ajouter ni retirer un
+    /// repli mémorisé avant le filtre, restauré quand celui-ci est vidé.
+    /// </summary>
+    private void RememberProjectCollapse(string project, bool collapsed)
+    {
+        if (IsTreeFilterActive)
+            return;
+
+        if (collapsed)
+            _collapsedProjects.Add(project);
+        else
+            _collapsedProjects.Remove(project);
+    }
     // Verrou anti-boucle de la synchronisation de sélection : chaque sens (grille -> arbre,
     // arbre -> grille) déclenche l'événement de l'autre.
     private bool _isSyncingSelection;
+    // Vrai pendant qu'ApplyFilters réaffecte le DataSource ou qu'une sélection existante est
+    // restaurée : les SelectionChanged de ce rebind ne sont pas des choix de l'utilisateur.
+    private bool _isRebindingGrid;
 
     private void InitSolutionTreeButton()
     {
@@ -1677,16 +1700,17 @@ public partial class MainForm : Form
         solutionTree.AfterCheck += SolutionTree_AfterCheck;
         solutionTree.AfterSelect += SolutionTree_AfterSelect;
         // Les replis faits par l'utilisateur sont mémorisés ; ceux de la reconstruction non
-        // (_isUpdatingTreeChecks), sinon déplier pour un filtre effacerait les replis.
+        // (_isUpdatingTreeChecks), sinon déplier pour un filtre effacerait les replis — et ceux
+        // faits sous filtre non plus (RememberProjectCollapse), ils sont transitoires.
         solutionTree.AfterCollapse += (_, e) =>
         {
             if (!_isUpdatingTreeChecks && e.Node?.Tag is string project)
-                _collapsedProjects.Add(project);
+                RememberProjectCollapse(project, collapsed: true);
         };
         solutionTree.AfterExpand += (_, e) =>
         {
             if (!_isUpdatingTreeChecks && e.Node?.Tag is string project)
-                _collapsedProjects.Remove(project);
+                RememberProjectCollapse(project, collapsed: false);
         };
         dataGridView.SelectionChanged += (_, _) => SyncTreeSelectionFromGrid();
         treeBoldFont = new Font(solutionTree.Font, FontStyle.Bold);
@@ -2128,7 +2152,7 @@ public partial class MainForm : Form
         }
 
         // Le projet demandé doit se voir : un repli antérieur cacherait la sélection posée.
-        _collapsedProjects.Remove(project);
+        RememberProjectCollapse(project, collapsed: false);
         RebuildSolutionTreeNodes();
     }
 
@@ -2150,17 +2174,26 @@ public partial class MainForm : Form
         if (row is null)
             return;
 
+        if (!_fileNodesByKey.TryGetValue(BuildFileKey(row.Project, row.File), out var node))
+            return;
+
         // Déjà sélectionné ET visible : rien à faire. Déjà sélectionné mais sous un projet
         // replié depuis : il faut le déplier — c'est le cas d'une autre ligne du même fichier.
-        if (!_fileNodesByKey.TryGetValue(BuildFileKey(row.Project, row.File), out var node)
-            || (ReferenceEquals(solutionTree.SelectedNode, node) && node.Parent?.IsExpanded != false))
+        bool parentCollapsed = node.Parent?.IsExpanded == false;
+        if (ReferenceEquals(solutionTree.SelectedNode, node) && !parentCollapsed)
+            return;
+
+        // Un rebind de la grille (filtre de colonne, langue, F5, drill-down) n'est pas un choix
+        // de l'utilisateur : il ne déplie pas un projet replié — et ne sélectionne pas le nœud
+        // caché, ce qui le dévoilerait. Un clic ou une navigation dans la grille, si.
+        if (parentCollapsed && _isRebindingGrid)
             return;
 
         _isSyncingSelection = true;
         try
         {
-            if (node.Parent?.Tag is string project)
-                _collapsedProjects.Remove(project);
+            if (parentCollapsed && node.Parent?.Tag is string project)
+                RememberProjectCollapse(project, collapsed: false);
             solutionTree.SelectedNode = node;
             node.EnsureVisible();
         }
@@ -2567,10 +2600,22 @@ public partial class MainForm : Form
         CollectSpecialFilters(_filters);
 
         var list = TranslationRowFiltering.Filter(GetTreeVisibleRows(), _filters);
-        dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
 
-        if (_sortColumnIndex >= 0 && _sortColumnIndex < dataGridView.Columns.Count)
-            dataGridView.Sort(dataGridView.Columns[_sortColumnIndex], _sortDirection);
+        // Rebind : les SelectionChanged qu'il provoque ne sont pas des choix de l'utilisateur,
+        // la synchronisation vers l'arbre ne doit pas déplier un projet replié sur leur foi.
+        bool wasRebinding = _isRebindingGrid;
+        _isRebindingGrid = true;
+        try
+        {
+            dataGridView.DataSource = new SortableBindingList<TranslationRow>(list);
+
+            if (_sortColumnIndex >= 0 && _sortColumnIndex < dataGridView.Columns.Count)
+                dataGridView.Sort(dataGridView.Columns[_sortColumnIndex], _sortDirection);
+        }
+        finally
+        {
+            _isRebindingGrid = wasRebinding;
+        }
 
         SetViewRefreshPending(false);
         ClearSortGlyphs();
@@ -2612,39 +2657,50 @@ public partial class MainForm : Form
         if (selectedItems.Count == 0 && currentItem is null)
             return;
 
-        dataGridView.ClearSelection();
-
-        DataGridViewRow? currentRow = null;
-        DataGridViewRow? firstSelectedRow = null;
-
-        foreach (DataGridViewRow row in dataGridView.Rows)
+        // Restaurer une sélection existante est un rebind, pas un choix de l'utilisateur : la
+        // synchronisation vers l'arbre ne déplie pas un projet replié sur la foi de ces événements.
+        bool wasRebinding = _isRebindingGrid;
+        _isRebindingGrid = true;
+        try
         {
-            if (row.DataBoundItem is not TranslationRow item)
-                continue;
+            dataGridView.ClearSelection();
 
-            if (currentItem is not null && ReferenceEquals(item, currentItem))
-                currentRow = row;
+            DataGridViewRow? currentRow = null;
+            DataGridViewRow? firstSelectedRow = null;
 
-            if (selectedItems.Contains(item))
-                firstSelectedRow ??= row;
+            foreach (DataGridViewRow row in dataGridView.Rows)
+            {
+                if (row.DataBoundItem is not TranslationRow item)
+                    continue;
+
+                if (currentItem is not null && ReferenceEquals(item, currentItem))
+                    currentRow = row;
+
+                if (selectedItems.Contains(item))
+                    firstSelectedRow ??= row;
+            }
+
+            // Important : définir la cellule courante AVANT de restaurer les sélections.
+            // Sur WinForms, assigner `CurrentCell` peut modifier la sélection courante.
+            var anchorRow = currentRow ?? firstSelectedRow;
+            if (anchorRow is not null)
+            {
+                var colIndex = Math.Clamp(currentColumnIndex, 0, dataGridView.ColumnCount - 1);
+                dataGridView.CurrentCell = anchorRow.Cells[colIndex];
+            }
+
+            foreach (DataGridViewRow row in dataGridView.Rows)
+            {
+                if (row.DataBoundItem is not TranslationRow item)
+                    continue;
+
+                if (selectedItems.Contains(item) || (currentItem is not null && ReferenceEquals(item, currentItem)))
+                    row.Selected = true;
+            }
         }
-
-        // Important : définir la cellule courante AVANT de restaurer les sélections.
-        // Sur WinForms, assigner `CurrentCell` peut modifier la sélection courante.
-        var anchorRow = currentRow ?? firstSelectedRow;
-        if (anchorRow is not null)
+        finally
         {
-            var colIndex = Math.Clamp(currentColumnIndex, 0, dataGridView.ColumnCount - 1);
-            dataGridView.CurrentCell = anchorRow.Cells[colIndex];
-        }
-
-        foreach (DataGridViewRow row in dataGridView.Rows)
-        {
-            if (row.DataBoundItem is not TranslationRow item)
-                continue;
-
-            if (selectedItems.Contains(item) || (currentItem is not null && ReferenceEquals(item, currentItem)))
-                row.Selected = true;
+            _isRebindingGrid = wasRebinding;
         }
 
         // Restaurer la position de scroll (best effort). Le rebind du DataSource remet la vue en haut.
