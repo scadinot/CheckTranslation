@@ -2551,7 +2551,6 @@ public partial class MainForm : Form
             : $"Lignes : {total}";
     }
 
-
     private async Task TranslateRowsAsync(IReadOnlyList<TranslationRow> rows)
     {
         if (rows.Count == 0)
@@ -2854,10 +2853,10 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Extraction IA des termes métier des lignes données, dans la langue affichée ou dans toutes
-    /// les langues où la sélection a du contenu. L'extraction est un appel par langue (prompt et
-    /// filtre des termes déjà connus propres à chaque langue) ; les candidats sont ensuite
-    /// fusionnés en termes transversaux (<see cref="GlossaryCandidates.Merge"/>) et validés dans un
-    /// seul dialog, une colonne par langue.
+    /// les langues où la sélection a du contenu. L'extraction est un appel par langue (le prompt
+    /// cible une langue, aucun terme connu n'est filtré) ; les candidats sont ensuite fusionnés en
+    /// termes transversaux (<see cref="GlossaryCandidates.Merge"/>) et validés dans un seul dialog,
+    /// une colonne par langue, où chaque proposition est confrontée au glossaire courant.
     /// </summary>
     private async Task ExtractTermsRowsAsync(IReadOnlyList<TranslationRow> rows, bool allLanguagesWithContent)
     {
@@ -2971,7 +2970,6 @@ public partial class MainForm : Form
         var candidates = GlossaryCandidates.Merge(
             results.Select(r => (r.Language.Code, r.Result.Candidates)).ToList());
         int problemBatches = results.Sum(r => r.Result.ProblemBatches);
-        int alreadyKnown = results.Sum(r => r.Result.AlreadyKnown);
         string problems = DescribeExtractionProblems(results);
 
         // Dire pourquoi la liste est vide : « l'IA n'a rien trouvé » et « l'IA n'a pas pu
@@ -2986,12 +2984,9 @@ public partial class MainForm : Form
             }
             else
             {
-                var known = alreadyKnown > 0
-                    ? $"\n\n{alreadyKnown} proposition(s) de l'IA étaient déjà au glossaire."
-                    : string.Empty;
                 var scope = languages.Count == 1 ? languages[0].Name : $"{languages.Count} langues";
                 MessageBox.Show(
-                    $"L'IA n'a identifié aucun nouveau terme métier dans les {texts.Count} ligne(s) sélectionnée(s) ({scope}).{known}",
+                    $"L'IA n'a identifié aucun terme métier dans les {texts.Count} ligne(s) sélectionnée(s) ({scope}).",
                     "Extraction", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             return;

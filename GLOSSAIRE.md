@@ -31,7 +31,10 @@ langue sur cette projection : corriger une colonne n'invalide que les caches de 
    l'éditeur consolide. Les termes naissent Proposé. L'extraction se fait dans la langue
    affichée, ou d'un coup dans toutes les langues où la sélection est déjà traduite : un appel
    par langue, les candidats fusionnés par terme et validés dans un seul tableau à une colonne
-   par langue — un terme y naît avec plusieurs cellules à la fois.
+   par langue — un terme y naît avec plusieurs cellules à la fois. L'extraction est aussi un
+   second regard sur le glossaire : les termes déjà tranchés sont proposés comme les autres, et
+   une proposition qui diffère de la valeur du glossaire s'affiche en rouge sans jamais l'écraser
+   — c'est dans l'éditeur que l'erreur éventuelle se corrige.
 2. **Export pour contrôle externe** — classeur Excel au format du tableau ci-dessus (une ligne
    par terme), daté et portant l'empreinte du glossaire à l'export. Seuls les termes Proposé
    passent En contrôle : les Validé restent injectés dans les prompts pendant toute la durée du

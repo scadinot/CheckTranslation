@@ -2,9 +2,9 @@ namespace CheckTranslation;
 
 /// <summary>
 /// Candidats d'extraction multi-langues. L'extraction IA travaille langue par langue — un prompt
-/// par langue cible, filtré sur les termes que le glossaire connaît déjà dans cette langue — ; ce
-/// module décide quelles langues valent un appel et recolle les résultats en termes
-/// transversaux. Pur, éprouvable hors WinForms.
+/// par langue cible, sans filtrage des termes déjà connus — ; ce module décide quelles langues
+/// valent un appel, recolle les résultats en termes transversaux, et classe chaque proposition
+/// face au glossaire (à écrire, déjà là, en conflit). Pur, éprouvable hors WinForms.
 /// </summary>
 internal static class GlossaryCandidates
 {
