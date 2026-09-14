@@ -45,8 +45,8 @@ internal static class TranslationRowFiltering
     /// <summary>
     /// Pseudo-filtres de la colonne de traduction : « translation:none » (non traduite),
     /// « translation:done » (traduite), « translation:same » (traduction identique au français),
-    /// « translation:retranslated » (retraduite dans la langue affichée par la dernière passe de
-    /// retraduction ciblée — pour relire ce que la passe a changé).
+    /// « translation:review » (touchée dans la langue affichée par la dernière passe ciblée —
+    /// retraduite, ou contrôlée depuis un terme du glossaire — pour relire ce que la passe a fait).
     ///
     /// « Identique au français » est un signal, pas une erreur : un libellé comme « Total » ou
     /// « Configuration » peut légitimement ne pas changer. C'est en revanche la signature d'une
@@ -58,7 +58,7 @@ internal static class TranslationRowFiltering
             "translation:none" => rows.Where(r => string.IsNullOrWhiteSpace(r.Translation)),
             "translation:done" => rows.Where(r => !string.IsNullOrWhiteSpace(r.Translation)),
             "translation:same" => rows.Where(IsSameAsFrench),
-            "translation:retranslated" => rows.Where(r => r.Retranslated),
+            "translation:review" => rows.Where(r => r.ToReview),
             _ => ApplyTextFilter(rows, filter, row => row.Translation),
         };
 

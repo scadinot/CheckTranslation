@@ -34,6 +34,25 @@ public class GlossaryImpactTests
     }
 
     [Fact]
+    public void RemoveTerm_DropsTheTerm_AndTheLanguageOnceEmpty()
+    {
+        var changed = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["de-DE"] = new() { "disjoncteur", "borne" },
+            ["en-US"] = new() { "disjoncteur" },
+        };
+
+        // Insensible à la casse sur le terme ; une langue inconnue est ignorée.
+        GlossaryImpact.RemoveTerm(changed, "de-DE", "Disjoncteur");
+        GlossaryImpact.RemoveTerm(changed, "en-US", "disjoncteur");
+        GlossaryImpact.RemoveTerm(changed, "it-IT", "disjoncteur");
+
+        var remaining = Assert.Single(changed);
+        Assert.Equal("de-DE", remaining.Key);
+        Assert.Equal(new[] { "borne" }, remaining.Value);
+    }
+
+    [Fact]
     public void ComputeChangedTerms_ContextChangeAloneImpacts()
     {
         // Le contexte est injecté dans les prompts : le changer change la contrainte.

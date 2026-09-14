@@ -21,6 +21,23 @@ internal sealed partial class GlossaryForm : Form
     // CellValueChanged, qui ne doit pas marquer le formulaire modifié.
     private bool _suppressDirty;
 
+    // Menu contextuel d'un terme (contrôler / retraduire dans une langue) : ligne et langue du
+    // dernier clic droit, langue affichée par la grille principale en repli hors des colonnes
+    // de langue.
+    private ContextMenuStrip _termMenu = null!;
+    private readonly ToolStripMenuItem _menuVerifyTerm = new();
+    private readonly ToolStripMenuItem _menuRetranslateTerm = new();
+    private int _menuRowIndex = -1;
+    private string _menuLanguageCode = MainForm.Languages[0].Code;
+    private string _preferredLanguageCode = MainForm.Languages[0].Code;
+
+    /// <summary>
+    /// Action demandée depuis le menu contextuel d'un terme, ou null si l'éditeur s'est fermé
+    /// normalement. L'éditeur est modal et n'a pas accès aux lignes : il se ferme en portant la
+    /// demande, <c>MainForm</c> l'exécute sur le glossaire enregistré.
+    /// </summary>
+    public GlossaryTermAction? RequestedAction { get; private set; }
+
     public GlossaryForm() : this(new GlossaryService())
     {
     }
@@ -41,6 +58,7 @@ internal sealed partial class GlossaryForm : Form
         btnImport.Click += BtnImport_Click;
         btnOk.Click += BtnOk_Click;
         FormClosing += GlossaryForm_FormClosing;
+        InitTermContextMenu();
 
         LoadTerms();
 
@@ -70,6 +88,9 @@ internal sealed partial class GlossaryForm : Form
         var column = _languageColumns.Find(c => string.Equals((string)c.Tag!, languageCode, StringComparison.OrdinalIgnoreCase));
         if (column is null)
             return;
+
+        // Langue des actions par terme quand la cellule cliquée n'est pas une colonne de langue.
+        _preferredLanguageCode = languageCode;
 
         if (grid.Rows.Count > 0)
             grid.CurrentCell = grid.Rows[0].Cells[column.Index];
@@ -167,6 +188,19 @@ internal sealed partial class GlossaryForm : Form
 
     private void BtnOk_Click(object? sender, EventArgs e)
     {
+        if (!TrySaveTerms())
+            return;
+
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
+    /// <summary>
+    /// Relit la grille et enregistre le glossaire. Faux — avec message — si une source est en
+    /// doublon ou si la persistance échoue ; l'éditeur reste alors ouvert, rien n'est perdu.
+    /// </summary>
+    private bool TrySaveTerms()
+    {
         grid.EndEdit();
 
         var terms = new List<GlossaryTerm>();
@@ -191,7 +225,7 @@ internal sealed partial class GlossaryForm : Form
                     "Glossaire",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
-                return;
+                return false;
             }
 
             var term = new GlossaryTerm
@@ -217,8 +251,7 @@ internal sealed partial class GlossaryForm : Form
         {
             _glossaryService.ReplaceTermsAndSave(terms);
             _dirty = false;
-            DialogResult = DialogResult.OK;
-            Close();
+            return true;
         }
         catch (Exception ex)
         {
@@ -227,7 +260,89 @@ internal sealed partial class GlossaryForm : Form
                 "Glossaire",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+            return false;
         }
+    }
+
+    // --- Menu contextuel d'un terme : contrôler / retraduire dans une langue ---
+
+    /// <summary>
+    /// Clic droit sur un terme : contrôler (vérifier par l'IA) ou retraduire les lignes de la
+    /// grille principale dont le français contient ce terme, dans la langue de la colonne
+    /// cliquée — ou, hors des colonnes de langue, dans la langue affichée par la grille
+    /// principale ; l'entrée nomme toujours la langue visée. L'éditeur n'a pas accès aux lignes :
+    /// il se ferme en portant la demande (<see cref="RequestedAction"/>), après avoir enregistré
+    /// les modifications en cours si l'utilisateur l'accepte — l'action porte sur le glossaire
+    /// enregistré, celui que les prompts verront.
+    /// </summary>
+    private void InitTermContextMenu()
+    {
+        // Rattaché au conteneur du formulaire : libéré avec lui, l'éditeur est transient.
+        _termMenu = new ContextMenuStrip(components);
+        _menuVerifyTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Verify);
+        _menuRetranslateTerm.Click += (_, _) => RequestTermAction(GlossaryTermActionKind.Retranslate);
+        _termMenu.Items.Add(_menuVerifyTerm);
+        _termMenu.Items.Add(_menuRetranslateTerm);
+
+        grid.CellMouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.ColumnIndex < 0)
+                return;
+
+            var row = grid.Rows[e.RowIndex];
+            if (row.IsNewRow)
+                return;
+
+            // Les colonnes de langue portent leur code en Tag ; les autres (Source, Contexte,
+            // Statut, Commentaire réviseur) n'en ont pas.
+            _menuRowIndex = e.RowIndex;
+            _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string ?? _preferredLanguageCode;
+            var languageName = Array.Find(MainForm.Languages,
+                language => string.Equals(language.Code, _menuLanguageCode, StringComparison.OrdinalIgnoreCase))?.Name ?? _menuLanguageCode;
+
+            // La valeur affichée suffit au libellé : la source est relue à l'exécution, après
+            // EndEdit, avec la même normalisation que l'enregistrement.
+            var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
+            bool hasSource = source.Length > 0;
+            var label = hasSource ? $"« {source} »" : "ce terme";
+            _menuVerifyTerm.Text = $"Contrôler les traductions de {label} en {languageName}";
+            _menuRetranslateTerm.Text = $"Retraduire les traductions de {label} en {languageName}";
+            _menuVerifyTerm.Enabled = hasSource;
+            _menuRetranslateTerm.Enabled = hasSource;
+
+            grid.ClearSelection();
+            row.Selected = true;
+
+            var cellRect = grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
+            _termMenu.Show(grid, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
+        };
+    }
+
+    private void RequestTermAction(GlossaryTermActionKind kind)
+    {
+        if (_menuRowIndex < 0 || _menuRowIndex >= grid.Rows.Count || grid.Rows[_menuRowIndex].IsNewRow)
+            return;
+
+        // Committe une édition de cellule encore ouverte : la source relue doit être celle que
+        // l'enregistrement écrira, et _dirty ne doit pas mentir.
+        grid.EndEdit();
+
+        var source = GlossaryService.NormalizeCell(grid.Rows[_menuRowIndex].Cells[colSource.Index].Value as string);
+        if (source.Length == 0)
+            return;
+
+        if (_dirty)
+        {
+            var answer = MessageBox.Show(this,
+                "Des modifications du glossaire ne sont pas enregistrées : l'action porte sur le glossaire enregistré, celui que les prompts verront.\n\nEnregistrer le glossaire et continuer ?",
+                "Glossaire", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes || !TrySaveTerms())
+                return;
+        }
+
+        RequestedAction = new GlossaryTermAction(kind, source, _menuLanguageCode);
+        DialogResult = DialogResult.OK;
+        Close();
     }
 
     // --- Export / import pour le contrôle externe (GLOSSAIRE.md, phases 2 et 3) ---

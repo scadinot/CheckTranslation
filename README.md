@@ -26,7 +26,7 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 
 ### Filtrage, tri et colorisation
 - **Filtres par colonne** : icône loupe dans chaque en-tête, saisie texte (debounce 300 ms)
-- **Pseudo-filtres de la colonne Traduction** : `translation:none`, `translation:done`, `translation:same` (identique au français), `translation:retranslated` (lignes retraduites par la dernière passe de retraduction ciblée, posé automatiquement à la fin de la passe pour les relire)
+- **Pseudo-filtres de la colonne Traduction** : `translation:none`, `translation:done`, `translation:same` (identique au français), `translation:review` (lignes touchées par la dernière passe ciblée — retraduites, ou contrôlées depuis un terme du glossaire — posé automatiquement à la fin de la passe pour les relire)
 - **Filtre par score de vérification** : ComboBox dans l'en-tête Commentaire — « Non vérifiés », « ≤ 50 … 100 », « ≥ 90 »
 - **Tri** : clic sur l'en-tête (asc/desc)
 - **Colorisation** : dégradé rouge → vert des cellules Traduction / Commentaire selon le score (format `XXX - commentaire`)
@@ -45,6 +45,7 @@ Application de bureau Windows Forms (.NET 8.0) destinée au contrôle, à la tra
 - **Injection dans les prompts** : le placeholder `{glossary}` des prompts de traduction / vérification est remplacé par la section glossaire de la langue active — garantit la cohérence terminologique d'un appel à l'autre ; en vérification, la section rappelle que la conformité au glossaire ne justifie à elle seule aucune note
 - **Invalidation de cache** : un fingerprint SHA256 du glossaire est inclus dans les clés de cache ; toute modification d'une entrée fait retraduire les lignes concernées au prochain appel
 - **Retraduire les écarts au glossaire** : bouton de la toolbar, à côté du glossaire. Sélectionne dans toutes les langues les traductions qui n'emploient pas le terme imposé (français contenant le terme, traduction sans la forme attendue ni ses variantes), affiche le compte par langue, puis retraduit et re-vérifie après confirmation. À utiliser après une modification du glossaire faite hors de l'application, ou pour mettre un corpus existant en conformité
+- **Contrôler / retraduire depuis un terme** : clic droit sur un terme dans l'éditeur du glossaire — « Contrôler les traductions de « terme » en <langue> » vérifie par l'IA les traductions existantes des lignes dont le français contient le terme, « Retraduire … » les retraduit puis re-vérifie (les écarts au glossaire seuls, ou toutes les lignes, au choix). La langue est celle de la colonne cliquée (hors des colonnes de langue : la langue affichée). Les modifications en cours de l'éditeur sont enregistrées d'abord, avec confirmation ; à la fin, la grille bascule sur la langue et se filtre sur les lignes concernées (`translation:review`)
 
 ### Vérification de mise en page
 - **Automatique, au chargement de la solution** : confronte chaque libellé de contrôle à la place réellement disponible dans son formulaire — troncatures des contrôles à largeur fixe, collisions des contrôles `AutoSize` avec leurs voisins
