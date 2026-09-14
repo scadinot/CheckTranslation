@@ -28,7 +28,9 @@ internal sealed partial class GlossaryForm : Form
     private ContextMenuStrip termMenu = null!;
     private readonly ToolStripMenuItem menuVerifyTerm = new();
     private readonly ToolStripMenuItem menuRetranslateTerm = new();
-    private int _menuRowIndex = -1;
+    // La ligne elle-même, jamais son index : EndEdit peut re-trier la grille (colonnes en
+    // SortMode.Automatic) et déplacer la ligne entre le clic et l'action.
+    private DataGridViewRow? _menuRow;
     private string _menuLanguageCode = MainForm.Languages[0].Code;
     private string _preferredLanguageCode = MainForm.Languages[0].Code;
 
@@ -294,17 +296,23 @@ internal sealed partial class GlossaryForm : Form
             if (row.IsNewRow)
                 return;
 
+            // Committe une édition de cellule encore ouverte : une source tapée dans une ligne
+            // neuve n'est dans Value qu'après EndEdit, et le menu serait grisé à tort. Le commit
+            // peut re-trier la grille (colonnes en SortMode.Automatic) : e.RowIndex ne vaut plus
+            // rien après, seule la référence à la ligne compte — et le menu s'ouvre sous la
+            // souris, pas sur une cellule dont l'index a pu changer.
+            grid.EndEdit();
+            if (row.Index < 0 || row.IsNewRow)
+                return;
+
             // Les colonnes de langue portent leur code en Tag ; les autres (Source, Contexte,
             // Statut, Commentaire réviseur) n'en ont pas.
-            _menuRowIndex = e.RowIndex;
+            _menuRow = row;
             _menuLanguageCode = grid.Columns[e.ColumnIndex].Tag as string ?? _preferredLanguageCode;
             var languageName = Array.Find(MainForm.Languages,
                 language => string.Equals(language.Code, _menuLanguageCode, StringComparison.OrdinalIgnoreCase))?.Name ?? _menuLanguageCode;
 
-            // Committe une édition de cellule encore ouverte : une source tapée dans une ligne
-            // neuve n'est dans Value qu'après EndEdit, et le menu serait grisé à tort. Même
-            // normalisation que l'enregistrement.
-            grid.EndEdit();
+            // Même normalisation que l'enregistrement.
             var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
             bool hasSource = source.Length > 0;
             var label = hasSource ? $"« {source} »" : "ce terme";
@@ -316,21 +324,24 @@ internal sealed partial class GlossaryForm : Form
             grid.ClearSelection();
             row.Selected = true;
 
-            var cellRect = grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, true);
-            termMenu.Show(grid, new Point(cellRect.Left + e.X, cellRect.Top + e.Y));
+            termMenu.Show(grid, grid.PointToClient(Cursor.Position));
         };
     }
 
     private void RequestTermAction(GlossaryTermActionKind kind)
     {
-        if (_menuRowIndex < 0 || _menuRowIndex >= grid.Rows.Count || grid.Rows[_menuRowIndex].IsNewRow)
+        var row = _menuRow;
+        if (row is null || row.Index < 0 || row.IsNewRow)
             return;
 
         // Committe une édition de cellule encore ouverte : la source relue doit être celle que
-        // l'enregistrement écrira, et _dirty ne doit pas mentir.
+        // l'enregistrement écrira, et _dirty ne doit pas mentir. La ligne est tenue par
+        // référence : un re-tri éventuel ne la perd pas.
         grid.EndEdit();
+        if (row.Index < 0)
+            return;
 
-        var source = GlossaryService.NormalizeCell(grid.Rows[_menuRowIndex].Cells[colSource.Index].Value as string);
+        var source = GlossaryService.NormalizeCell(row.Cells[colSource.Index].Value as string);
         if (source.Length == 0)
             return;
 
