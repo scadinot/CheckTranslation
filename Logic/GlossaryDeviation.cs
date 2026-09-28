@@ -7,7 +7,10 @@ namespace CheckTranslation;
 /// le français contient le terme source. C'est le contrôle que fait <c>glossary.py check</c> dans
 /// l'outillage resx-tools d'elec calc, porté ici à l'identique pour que l'application et les
 /// skills comptent la même chose sur le même <c>glossary.json</c> :
-/// - côté français, des mots entiers (« terre » ne se déclenche pas sur « atterrissage ») ;
+/// - côté français, des mots entiers (« terre » ne se déclenche pas sur « atterrissage »), au
+///   pluriel près : chaque mot est ramené au singulier des deux côtés (<see cref="Singular"/>),
+///   sans quoi « régimes de neutre » n'atteint pas sa ligne et retombe sur « neutre », qui
+///   accuse alors une traduction juste ;
 /// - côté cible, une inclusion insensible à la casse, chaque forme d'une cellule à variantes
 ///   (« kabel / kabl ») valant, avec tolérance sur la dernière lettre d'un mot d'au moins cinq
 ///   caractères (« curva » couvre « curve ») — le contrôle propose une relecture, il ne
@@ -35,7 +38,7 @@ internal static partial class GlossaryDeviation
             .Where(v => v.Length > 0)
             .ToList();
 
-    /// <summary>Le français contient le terme, en mots entiers et dans l'ordre.</summary>
+    /// <summary>Le français contient le terme, en mots entiers et dans l'ordre, au pluriel près.</summary>
     public static bool FrenchContains(string? french, string? term)
     {
         var words = Words(french);
@@ -190,6 +193,20 @@ internal static partial class GlossaryDeviation
         }).ToList();
     }
 
+    /// <summary>
+    /// Retire la marque du pluriel, sur chaque membre d'un mot composé — le français la porte sur
+    /// tous les mots du groupe, « courts-circuits ». Port de <c>glossary.py singulier</c>. La règle
+    /// est volontairement grossière : elle sert à comparer deux formes normalisées de la même
+    /// façon, pas à produire un singulier juste — que « processus » devienne « processu » est
+    /// sans effet tant que les deux côtés subissent le même traitement. Les pluriels en -aux ne
+    /// sont pas couverts (« terminaux » ne rejoint pas « terminal ») : aucun terme du glossaire
+    /// n'en a pour l'instant, et l'ajouter ici sans l'ajouter dans <c>glossary.py</c> ferait
+    /// diverger les deux comptes.
+    /// </summary>
+    internal static string Singular(string word)
+        => string.Join('-', word.Split('-').Select(member =>
+            (member.Length >= 4 && member[^1] is 's' or 'x') ? member[..^1] : member));
+
     private static List<string> Words(string? text)
-        => WordRegex().Matches(text ?? string.Empty).Select(m => m.Value.ToLowerInvariant()).ToList();
+        => WordRegex().Matches(text ?? string.Empty).Select(m => Singular(m.Value.ToLowerInvariant())).ToList();
 }

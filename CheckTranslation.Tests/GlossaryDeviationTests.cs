@@ -22,9 +22,33 @@ public class GlossaryDeviationTests
     [InlineData("Le Transformateur de courant mesure", "transformateur de courant", true)]
     [InlineData("Un transformateur mesure le courant", "transformateur de courant", false)]
     [InlineData("", "terre", false)]
+    [InlineData("Les disjoncteurs déclenchent", "disjoncteur", true)]
+    [InlineData("Régimes de neutre disponibles", "régime de neutre", true)]
+    [InlineData("Protection contre les courts-circuits", "court-circuit", true)]
+    [InlineData("Choix des réseaux", "réseau", true)]
+    [InlineData("Le disjoncteur principal", "disjoncteurs", true)]
+    [InlineData("Un bus de communication", "bus", true)]
     public void FrenchContains_MatchesWholeWordsInOrder(string french, string term, bool expected)
     {
+        // Le pluriel se ramène au singulier des deux côtés, terme comme texte : un glossaire
+        // qui porte « disjoncteurs » trouve « disjoncteur », et réciproquement.
         Assert.Equal(expected, GlossaryDeviation.FrenchContains(french, term));
+    }
+
+    [Theory]
+    [InlineData("disjoncteurs", "disjoncteur")]
+    [InlineData("réseaux", "réseau")]
+    [InlineData("courts-circuits", "court-circuit")]
+    [InlineData("bus", "bus")]
+    [InlineData("cas", "cas")]
+    [InlineData("processus", "processu")]
+    [InlineData("terminaux", "terminau")]
+    public void Singular_IsThePortOfGlossaryPySingulier(string word, string expected)
+    {
+        // Règle grossière et symétrique, portée telle quelle : un mot de moins de quatre lettres
+        // reste intact, « processus » perd son s (sans effet, les deux côtés le perdent), et les
+        // pluriels en -aux ne sont pas couverts — « terminaux » ne rejoint pas « terminal ».
+        Assert.Equal(expected, GlossaryDeviation.Singular(word));
     }
 
     [Fact]
