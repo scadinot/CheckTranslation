@@ -7,11 +7,16 @@ namespace CheckTranslation;
 /// le français contient le terme source. C'est le contrôle que fait <c>glossary.py check</c> dans
 /// l'outillage resx-tools d'elec calc, porté ici à l'identique pour que l'application et les
 /// skills comptent la même chose sur le même <c>glossary.json</c> :
-/// - côté français, des mots entiers (« terre » ne se déclenche pas sur « atterrissage ») ;
+/// - côté français, des mots entiers (« terre » ne se déclenche pas sur « atterrissage »), au
+///   pluriel près : chaque mot est ramené au singulier des deux côtés (<see cref="Singular"/>),
+///   sans quoi « régimes de neutre » n'atteint pas sa ligne et retombe sur « neutre », qui
+///   accuse alors une traduction juste ;
 /// - côté cible, une inclusion insensible à la casse, chaque forme d'une cellule à variantes
 ///   (« kabel / kabl ») valant, avec tolérance sur la dernière lettre d'un mot d'au moins cinq
 ///   caractères (« curva » couvre « curve ») — le contrôle propose une relecture, il ne
-///   prononce pas une faute ;
+///   prononce pas une faute —, puis sur les radicaux des deux côtés (<see cref="Normalise"/>) :
+///   la flexion frappe n'importe quel mot du groupe, pas seulement le dernier, « corrientes
+///   admisibles » rejoint « corriente admisible » ;
 /// - pour le chinois, comparaison sur les seuls caractères CJK, sauf pour une forme latine
 ///   (« RCD », « MPPT ») cherchée dans le texte brut ;
 /// - quand deux termes se recouvrent, seul le plus long est contrôlé : « transformateur de
@@ -27,6 +32,23 @@ internal static partial class GlossaryDeviation
     [GeneratedRegex(@"[一-鿿]")]
     private static partial Regex CjkRegex();
 
+    /// <summary>
+    /// Marques du pluriel rabotées mot à mot côté cible, jusqu'à ce que le mot n'en porte plus :
+    /// « fases » donne « fase » et s'arrête là, « tekens » descend jusqu'à « tek » comme
+    /// « teken ». Les deux côtés subissant le même traitement, c'est la confluence qui compte,
+    /// pas la justesse du singulier obtenu. Port de <c>PLURIEL</c> de <c>glossary.py</c> : le
+    /// polonais n'y figure pas, sa flexion porte sur la racine autant que sur la finale et se
+    /// liste en formes séparées par « / » ; le chinois n'a pas de pluriel.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> PluralMarks = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["en-US"] = ["s"],
+        ["es-ES"] = ["s"],
+        ["nl-NL"] = ["en", "s"],
+        ["de-DE"] = ["e"],
+        ["it-IT"] = ["a", "e", "i", "o"],
+    };
+
     /// <summary>Formes acceptées d'une cellule : « kabel / kabl » → « kabel », « kabl ».</summary>
     public static IReadOnlyList<string> Variants(string? cell)
         => (cell ?? string.Empty)
@@ -35,7 +57,7 @@ internal static partial class GlossaryDeviation
             .Where(v => v.Length > 0)
             .ToList();
 
-    /// <summary>Le français contient le terme, en mots entiers et dans l'ordre.</summary>
+    /// <summary>Le français contient le terme, en mots entiers et dans l'ordre, au pluriel près.</summary>
     public static bool FrenchContains(string? french, string? term)
     {
         var words = Words(french);
@@ -92,9 +114,59 @@ internal static partial class GlossaryDeviation
                 if (low.Contains(stem, StringComparison.Ordinal))
                     return true;
             }
+
+            // Puis sur les radicaux des deux côtés : la flexion porte sur la finale en langue
+            // romane, sur la finale et l'inflexion en allemand, et elle frappe n'importe quel
+            // mot du groupe — « corrientes admisibles » rejoint « corriente admisible », ce que
+            // la troncature de la seule dernière lettre du dernier mot ne faisait pas.
+            if (Normalise(value, languageCode).Contains(Normalise(variant, languageCode), StringComparison.Ordinal))
+                return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Rabote la marque du pluriel de la langue cible, tant que le mot en porte une et qu'il
+    /// reste au moins trois lettres. Port de <c>glossary.py radical</c>.
+    /// </summary>
+    internal static string Radical(string word, string languageCode)
+    {
+        if (!PluralMarks.TryGetValue(languageCode, out var marks))
+            return word;
+
+        bool trimmed = true;
+        while (trimmed)
+        {
+            trimmed = false;
+            foreach (var mark in marks)
+            {
+                if (word.EndsWith(mark, StringComparison.Ordinal) && word.Length - mark.Length >= 3)
+                {
+                    word = word[..^mark.Length];
+                    trimmed = true;
+                    break;
+                }
+            }
+        }
+
+        return word;
+    }
+
+    /// <summary>
+    /// Ramène un texte cible à ses radicaux, mot à mot, pour que la comparaison ne bute pas sur
+    /// le pluriel. L'allemand marque son pluriel par l'inflexion autant que par la finale (Fall /
+    /// Fälle, Kanal / Kanäle) : ses umlauts sont pliés et « ß » écrit « ss » avant le rabotage.
+    /// Port de <c>glossary.py normalise</c>.
+    /// </summary>
+    internal static string Normalise(string text, string languageCode)
+    {
+        if (string.Equals(languageCode, "de-DE", StringComparison.OrdinalIgnoreCase))
+            text = text.Replace('ä', 'a').Replace('ö', 'o').Replace('ü', 'u')
+                .Replace('Ä', 'A').Replace('Ö', 'O').Replace('Ü', 'U')
+                .Replace("ß", "ss", StringComparison.Ordinal);
+
+        return string.Join(' ', WordRegex().Matches(text).Select(m => Radical(m.Value.ToLowerInvariant(), languageCode)));
     }
 
     /// <summary>
@@ -119,7 +191,11 @@ internal static partial class GlossaryDeviation
     /// <summary>
     /// Termes présents dans le français et contrôlables : le plus long l'emporte sur ceux qu'il
     /// contient, <i>avant</i> d'écarter les entrées sans traduction (cellule vide). L'ordre compte :
-    /// un terme long sans cellule masque quand même le terme court qu'il contient.
+    /// un terme long sans cellule masque quand même le terme court qu'il contient. Le recouvrement
+    /// se juge avec la même comparaison que la correspondance — mots entiers au pluriel près —,
+    /// sans quoi « transformateurs de courant », au pluriel dans le glossaire, ne masquerait plus
+    /// « transformateur ». Un doublon singulier / pluriel (mêmes mots normalisés) ne masque rien :
+    /// les deux sont contrôlés.
     /// </summary>
     public static List<GlossaryEntry> MatchingTerms(string? french, IReadOnlyList<GlossaryEntry> entries)
     {
@@ -129,8 +205,8 @@ internal static partial class GlossaryDeviation
 
         return matched
             .Where(e => !matched.Any(other => !ReferenceEquals(other, e)
-                && other.Source.Contains(e.Source, StringComparison.OrdinalIgnoreCase)
-                && other.Source.Length > e.Source.Length))
+                && !Words(other.Source).SequenceEqual(Words(e.Source))
+                && FrenchContains(other.Source, e.Source)))
             .Where(e => !string.IsNullOrWhiteSpace(e.Destination))
             .ToList();
     }
@@ -190,6 +266,20 @@ internal static partial class GlossaryDeviation
         }).ToList();
     }
 
+    /// <summary>
+    /// Retire la marque du pluriel, sur chaque membre d'un mot composé — le français la porte sur
+    /// tous les mots du groupe, « courts-circuits ». Port de <c>glossary.py singulier</c>. La règle
+    /// est volontairement grossière : elle sert à comparer deux formes normalisées de la même
+    /// façon, pas à produire un singulier juste — que « processus » devienne « processu » est
+    /// sans effet tant que les deux côtés subissent le même traitement. Les pluriels en -aux ne
+    /// sont pas couverts (« terminaux » ne rejoint pas « terminal ») : aucun terme du glossaire
+    /// n'en a pour l'instant, et l'ajouter ici sans l'ajouter dans <c>glossary.py</c> ferait
+    /// diverger les deux comptes.
+    /// </summary>
+    internal static string Singular(string word)
+        => string.Join('-', word.Split('-').Select(member =>
+            (member.Length >= 4 && member[^1] is 's' or 'x') ? member[..^1] : member));
+
     private static List<string> Words(string? text)
-        => WordRegex().Matches(text ?? string.Empty).Select(m => m.Value.ToLowerInvariant()).ToList();
+        => WordRegex().Matches(text ?? string.Empty).Select(m => Singular(m.Value.ToLowerInvariant())).ToList();
 }

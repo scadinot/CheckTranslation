@@ -22,9 +22,33 @@ public class GlossaryDeviationTests
     [InlineData("Le Transformateur de courant mesure", "transformateur de courant", true)]
     [InlineData("Un transformateur mesure le courant", "transformateur de courant", false)]
     [InlineData("", "terre", false)]
+    [InlineData("Les disjoncteurs déclenchent", "disjoncteur", true)]
+    [InlineData("Régimes de neutre disponibles", "régime de neutre", true)]
+    [InlineData("Protection contre les courts-circuits", "court-circuit", true)]
+    [InlineData("Choix des réseaux", "réseau", true)]
+    [InlineData("Le disjoncteur principal", "disjoncteurs", true)]
+    [InlineData("Un bus de communication", "bus", true)]
     public void FrenchContains_MatchesWholeWordsInOrder(string french, string term, bool expected)
     {
+        // Le pluriel se ramène au singulier des deux côtés, terme comme texte : un glossaire
+        // qui porte « disjoncteurs » trouve « disjoncteur », et réciproquement.
         Assert.Equal(expected, GlossaryDeviation.FrenchContains(french, term));
+    }
+
+    [Theory]
+    [InlineData("disjoncteurs", "disjoncteur")]
+    [InlineData("réseaux", "réseau")]
+    [InlineData("courts-circuits", "court-circuit")]
+    [InlineData("bus", "bus")]
+    [InlineData("cas", "cas")]
+    [InlineData("processus", "processu")]
+    [InlineData("terminaux", "terminau")]
+    public void Singular_IsThePortOfGlossaryPySingulier(string word, string expected)
+    {
+        // Règle grossière et symétrique, portée telle quelle : un mot de moins de quatre lettres
+        // reste intact, « processus » perd son s (sans effet, les deux côtés le perdent), et les
+        // pluriels en -aux ne sont pas couverts — « terminaux » ne rejoint pas « terminal ».
+        Assert.Equal(expected, GlossaryDeviation.Singular(word));
     }
 
     [Fact]
@@ -40,13 +64,42 @@ public class GlossaryDeviationTests
     [InlineData("Ein Leitungsschutzschalter", "Leistungsschalter", "de-DE", false)]
     [InlineData("Dwa kable", "kabel / kabl", "pl-PL", true)]
     [InlineData("Le curve di intervento", "curva", "it-IT", true)]
-    [InlineData("I cavi sono lunghi", "cavo", "it-IT", false)]
+    [InlineData("I cavi sono lunghi", "cavo", "it-IT", true)]
     [InlineData("Nennspannung des Netzes", "Spannung", "de-DE", true)]
+    [InlineData("Las corrientes admisibles", "corriente admisible", "es-ES", true)]
+    [InlineData("Die Kanäle sind lang", "Kanal", "de-DE", true)]
+    [InlineData("Le curve caratteristiche", "curva caratteristica", "it-IT", true)]
     public void TargetContains_IsInclusionWithVariantsAndLastLetterTolerance(string value, string cell, string code, bool expected)
     {
         // « curva » (5 lettres) couvre « curve » par la tolérance sur la finale ; « cavo » (4
-        // lettres) ne couvre pas « cavi » : c'est le seuil de glossary.py, porté tel quel.
+        // lettres) ne la déclenche pas mais rejoint « cavi » par les radicaux (« cav » des deux
+        // côtés). Les radicaux couvrent aussi la flexion d'un mot autre que le dernier
+        // (« corrientes admisibles »), l'inflexion allemande (« Kanäle ») et deux mots fléchis
+        // à la fois (« curve caratteristiche »). Un composé différent reste un écart.
         Assert.Equal(expected, GlossaryDeviation.TargetContains(value, cell, code));
+    }
+
+    [Theory]
+    [InlineData("fases", "es-ES", "fase")]
+    [InlineData("tekens", "nl-NL", "tek")]
+    [InlineData("teken", "nl-NL", "tek")]
+    [InlineData("Kanale", "de-DE", "Kanal")]
+    [InlineData("curve", "it-IT", "curv")]
+    [InlineData("bus", "en-US", "bus")]
+    [InlineData("kable", "pl-PL", "kable")]
+    public void Radical_IsThePortOfGlossaryPyRadical(string word, string code, string expected)
+    {
+        // Rabotage répété tant qu'il reste trois lettres ; « tekens » et « teken » confluent en
+        // « tek » ; un mot de trois lettres reste intact ; le polonais n'a pas de marques, ses
+        // formes se listent par « / ».
+        Assert.Equal(expected, GlossaryDeviation.Radical(word, code));
+    }
+
+    [Fact]
+    public void Normalise_FoldsGermanUmlautsBeforeStripping()
+    {
+        Assert.Equal("die kanal sind gross", GlossaryDeviation.Normalise("Die Kanäle sind groß", "de-DE"));
+        Assert.Equal("los cable", GlossaryDeviation.Normalise("Los cables", "es-ES"));
     }
 
     [Theory]
@@ -98,6 +151,34 @@ public class GlossaryDeviationTests
 
         Assert.Empty(GlossaryDeviation.MatchingTerms("Le régime de neutre TT", entries));
         Assert.Equal("neutre", Assert.Single(GlossaryDeviation.MatchingTerms("Le conducteur neutre", entries)).Source);
+    }
+
+    [Fact]
+    public void MatchingTerms_MasksWithTheSameNormalizedWholeWordRule_AsFrenchContains()
+    {
+        var entries = new[]
+        {
+            Entry("transformateurs de courant", ""),
+            Entry("transformateur", "Transformator"),
+            Entry("courant", "Strom"),
+        };
+
+        // Le terme long, au pluriel dans le glossaire et sans cellule, masque les deux courts sur
+        // un texte au singulier : rien à contrôler. Une comparaison brute des sources ne le
+        // verrait pas (« transformateur de courant » n'est pas une sous-chaîne du pluriel).
+        Assert.Empty(GlossaryDeviation.MatchingTerms("Le transformateur de courant mesure", entries));
+        Assert.Equal("courant", Assert.Single(GlossaryDeviation.MatchingTerms("Le courant nominal", entries)).Source);
+    }
+
+    [Fact]
+    public void MatchingTerms_SingularAndPluralDuplicates_MaskNothing()
+    {
+        // Mêmes mots une fois normalisés : aucun n'est « plus long », les deux sont contrôlés.
+        var entries = new[] { Entry("courant", "Strom"), Entry("courants", "Ströme") };
+
+        var matched = GlossaryDeviation.MatchingTerms("Les courants de fuite", entries);
+
+        Assert.Equal(new[] { "courant", "courants" }, matched.Select(e => e.Source).ToArray());
     }
 
     [Fact]
