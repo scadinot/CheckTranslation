@@ -64,13 +64,42 @@ public class GlossaryDeviationTests
     [InlineData("Ein Leitungsschutzschalter", "Leistungsschalter", "de-DE", false)]
     [InlineData("Dwa kable", "kabel / kabl", "pl-PL", true)]
     [InlineData("Le curve di intervento", "curva", "it-IT", true)]
-    [InlineData("I cavi sono lunghi", "cavo", "it-IT", false)]
+    [InlineData("I cavi sono lunghi", "cavo", "it-IT", true)]
     [InlineData("Nennspannung des Netzes", "Spannung", "de-DE", true)]
+    [InlineData("Las corrientes admisibles", "corriente admisible", "es-ES", true)]
+    [InlineData("Die Kanäle sind lang", "Kanal", "de-DE", true)]
+    [InlineData("Le curve caratteristiche", "curva caratteristica", "it-IT", true)]
     public void TargetContains_IsInclusionWithVariantsAndLastLetterTolerance(string value, string cell, string code, bool expected)
     {
         // « curva » (5 lettres) couvre « curve » par la tolérance sur la finale ; « cavo » (4
-        // lettres) ne couvre pas « cavi » : c'est le seuil de glossary.py, porté tel quel.
+        // lettres) ne la déclenche pas mais rejoint « cavi » par les radicaux (« cav » des deux
+        // côtés). Les radicaux couvrent aussi la flexion d'un mot autre que le dernier
+        // (« corrientes admisibles »), l'inflexion allemande (« Kanäle ») et deux mots fléchis
+        // à la fois (« curve caratteristiche »). Un composé différent reste un écart.
         Assert.Equal(expected, GlossaryDeviation.TargetContains(value, cell, code));
+    }
+
+    [Theory]
+    [InlineData("fases", "es-ES", "fase")]
+    [InlineData("tekens", "nl-NL", "tek")]
+    [InlineData("teken", "nl-NL", "tek")]
+    [InlineData("Kanale", "de-DE", "Kanal")]
+    [InlineData("curve", "it-IT", "curv")]
+    [InlineData("bus", "en-US", "bus")]
+    [InlineData("kable", "pl-PL", "kable")]
+    public void Radical_IsThePortOfGlossaryPyRadical(string word, string code, string expected)
+    {
+        // Rabotage répété tant qu'il reste trois lettres ; « tekens » et « teken » confluent en
+        // « tek » ; un mot de trois lettres reste intact ; le polonais n'a pas de marques, ses
+        // formes se listent par « / ».
+        Assert.Equal(expected, GlossaryDeviation.Radical(word, code));
+    }
+
+    [Fact]
+    public void Normalise_FoldsGermanUmlautsBeforeStripping()
+    {
+        Assert.Equal("die kanal sind gross", GlossaryDeviation.Normalise("Die Kanäle sind groß", "de-DE"));
+        Assert.Equal("los cable", GlossaryDeviation.Normalise("Los cables", "es-ES"));
     }
 
     [Theory]
