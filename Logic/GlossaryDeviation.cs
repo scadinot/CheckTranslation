@@ -122,7 +122,11 @@ internal static partial class GlossaryDeviation
     /// <summary>
     /// Termes présents dans le français et contrôlables : le plus long l'emporte sur ceux qu'il
     /// contient, <i>avant</i> d'écarter les entrées sans traduction (cellule vide). L'ordre compte :
-    /// un terme long sans cellule masque quand même le terme court qu'il contient.
+    /// un terme long sans cellule masque quand même le terme court qu'il contient. Le recouvrement
+    /// se juge avec la même comparaison que la correspondance — mots entiers au pluriel près —,
+    /// sans quoi « transformateurs de courant », au pluriel dans le glossaire, ne masquerait plus
+    /// « transformateur ». Un doublon singulier / pluriel (mêmes mots normalisés) ne masque rien :
+    /// les deux sont contrôlés.
     /// </summary>
     public static List<GlossaryEntry> MatchingTerms(string? french, IReadOnlyList<GlossaryEntry> entries)
     {
@@ -132,8 +136,8 @@ internal static partial class GlossaryDeviation
 
         return matched
             .Where(e => !matched.Any(other => !ReferenceEquals(other, e)
-                && other.Source.Contains(e.Source, StringComparison.OrdinalIgnoreCase)
-                && other.Source.Length > e.Source.Length))
+                && !Words(other.Source).SequenceEqual(Words(e.Source))
+                && FrenchContains(other.Source, e.Source)))
             .Where(e => !string.IsNullOrWhiteSpace(e.Destination))
             .ToList();
     }

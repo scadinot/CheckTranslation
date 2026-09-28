@@ -125,6 +125,34 @@ public class GlossaryDeviationTests
     }
 
     [Fact]
+    public void MatchingTerms_MasksWithTheSameNormalizedWholeWordRule_AsFrenchContains()
+    {
+        var entries = new[]
+        {
+            Entry("transformateurs de courant", ""),
+            Entry("transformateur", "Transformator"),
+            Entry("courant", "Strom"),
+        };
+
+        // Le terme long, au pluriel dans le glossaire et sans cellule, masque les deux courts sur
+        // un texte au singulier : rien à contrôler. Une comparaison brute des sources ne le
+        // verrait pas (« transformateur de courant » n'est pas une sous-chaîne du pluriel).
+        Assert.Empty(GlossaryDeviation.MatchingTerms("Le transformateur de courant mesure", entries));
+        Assert.Equal("courant", Assert.Single(GlossaryDeviation.MatchingTerms("Le courant nominal", entries)).Source);
+    }
+
+    [Fact]
+    public void MatchingTerms_SingularAndPluralDuplicates_MaskNothing()
+    {
+        // Mêmes mots une fois normalisés : aucun n'est « plus long », les deux sont contrôlés.
+        var entries = new[] { Entry("courant", "Strom"), Entry("courants", "Ströme") };
+
+        var matched = GlossaryDeviation.MatchingTerms("Les courants de fuite", entries);
+
+        Assert.Equal(new[] { "courant", "courants" }, matched.Select(e => e.Source).ToArray());
+    }
+
+    [Fact]
     public void ControlledEntries_KeepsValidatedTermsIncludingThoseWithoutCell()
     {
         var terms = new[]
