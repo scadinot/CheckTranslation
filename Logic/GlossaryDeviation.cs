@@ -12,7 +12,7 @@ namespace CheckTranslation;
 ///   sans quoi « régimes de neutre » n'atteint pas sa ligne et retombe sur « neutre », qui
 ///   accuse alors une traduction juste ;
 /// - côté cible, une inclusion insensible à la casse, chaque forme d'une cellule à variantes
-///   (« kabel / kabl ») valant, avec tolérance sur la dernière lettre d'un mot d'au moins cinq
+///   (« kabel / kabl », séparateur « / » entouré d'espaces) valant, avec tolérance sur la dernière lettre d'un mot d'au moins cinq
 ///   caractères (« curva » couvre « curve ») — le contrôle propose une relecture, il ne
 ///   prononce pas une faute —, puis sur les radicaux des deux côtés (<see cref="Normalise"/>) :
 ///   la flexion frappe n'importe quel mot du groupe, pas seulement le dernier, « corrientes
@@ -32,6 +32,11 @@ internal static partial class GlossaryDeviation
     [GeneratedRegex(@"[一-鿿]")]
     private static partial Regex CjkRegex();
 
+    // Séparateur de formes d'une cellule : une barre oblique ENTOURÉE d'espaces. Une barre collée
+    // aux lettres fait partie du terme — l'allemand écrit « FI/LS-Schalter ».
+    [GeneratedRegex(@"\s+/\s+")]
+    private static partial Regex FormSeparatorRegex();
+
     /// <summary>
     /// Marques du pluriel rabotées mot à mot côté cible, jusqu'à ce que le mot n'en porte plus :
     /// « fases » donne « fase » et s'arrête là, « tekens » descend jusqu'à « tek » comme
@@ -49,10 +54,16 @@ internal static partial class GlossaryDeviation
         ["it-IT"] = ["a", "e", "i", "o"],
     };
 
-    /// <summary>Formes acceptées d'une cellule : « kabel / kabl » → « kabel », « kabl ».</summary>
+    /// <summary>
+    /// Formes acceptées d'une cellule : « kabel / kabl » → « kabel », « kabl ». Le séparateur est
+    /// une barre oblique <b>entourée d'espaces</b> ; une barre collée aux lettres fait partie du
+    /// terme — « FI/LS-Schalter » est une seule forme, « FI/LS-Schalter / FI-Schalter » en fait
+    /// deux. Définition unique de la convention : les prompts (<c>GlossaryService.CanonicalForm</c>)
+    /// et <c>glossary.py variants()</c> côté elec calc suivent la même règle.
+    /// </summary>
     public static IReadOnlyList<string> Variants(string? cell)
-        => (cell ?? string.Empty)
-            .Split('/')
+        => FormSeparatorRegex()
+            .Split(cell ?? string.Empty)
             .Select(v => v.Trim())
             .Where(v => v.Length > 0)
             .ToList();

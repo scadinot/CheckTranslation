@@ -89,17 +89,19 @@ internal sealed class GlossaryService : IGlossaryService
 
     /// <summary>
     /// Forme à écrire d'une cellule de traduction. Une cellule peut porter plusieurs formes
-    /// acceptées séparées par « / » (« kabel / kabl ») : la première est celle que les prompts
-    /// imposent, les suivantes ne servent qu'au contrôle des formes fléchies — convention
-    /// partagée avec l'outillage resx-tools du dépôt elec calc (glossary.py, variants()).
+    /// acceptées séparées par une barre oblique entourée d'espaces (« kabel / kabl ») : la
+    /// première est celle que les prompts imposent, les suivantes ne servent qu'au contrôle des
+    /// formes fléchies. Une barre collée aux lettres fait partie du terme (« FI/LS-Schalter »).
+    /// La découpe est celle de <see cref="GlossaryDeviation.Variants"/>, définition unique de la
+    /// convention, partagée avec l'outillage resx-tools du dépôt elec calc (glossary.py, variants()).
     /// </summary>
     internal static string CanonicalForm(string? cell)
     {
         if (string.IsNullOrWhiteSpace(cell))
             return string.Empty;
 
-        var first = cell.Split('/', 2)[0].Trim();
-        return first.Length > 0 ? first : cell.Trim();
+        var forms = GlossaryDeviation.Variants(cell);
+        return forms.Count > 0 ? forms[0] : cell.Trim();
     }
 
     /// <summary>

@@ -52,11 +52,15 @@ public class GlossaryDeviationTests
     }
 
     [Fact]
-    public void Variants_SplitOnSlashAndTrim()
+    public void Variants_SplitOnSpacedSlashOnly_AndTrim()
     {
         Assert.Equal(new[] { "kabel", "kabl" }, GlossaryDeviation.Variants("kabel / kabl"));
         Assert.Equal(new[] { "SPD" }, GlossaryDeviation.Variants(" SPD "));
         Assert.Empty(GlossaryDeviation.Variants(""));
+
+        // Une barre collée aux lettres fait partie du terme : l'allemand écrit « FI/LS-Schalter ».
+        Assert.Equal(new[] { "FI/LS-Schalter" }, GlossaryDeviation.Variants("FI/LS-Schalter"));
+        Assert.Equal(new[] { "FI/LS-Schalter", "FI-Schalter" }, GlossaryDeviation.Variants("FI/LS-Schalter / FI-Schalter"));
     }
 
     [Theory]
@@ -69,6 +73,8 @@ public class GlossaryDeviationTests
     [InlineData("Las corrientes admisibles", "corriente admisible", "es-ES", true)]
     [InlineData("Die Kanäle sind lang", "Kanal", "de-DE", true)]
     [InlineData("Le curve caratteristiche", "curva caratteristica", "it-IT", true)]
+    [InlineData("Der FI/LS-Schalter löst aus", "FI/LS-Schalter", "de-DE", true)]
+    [InlineData("Der FI-Schalter löst aus", "FI/LS-Schalter", "de-DE", false)]
     public void TargetContains_IsInclusionWithVariantsAndLastLetterTolerance(string value, string cell, string code, bool expected)
     {
         // « curva » (5 lettres) couvre « curve » par la tolérance sur la finale ; « cavo » (4

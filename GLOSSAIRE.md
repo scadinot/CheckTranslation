@@ -108,11 +108,12 @@ ordre stable pour que le diff git ne montre que ce qui change. Les deux consomma
 même règle : **seuls les termes Validé font autorité** — un Proposé ou un En contrôle n'existe ni
 pour les prompts de l'application ni pour ceux des skills.
 
-Une cellule de traduction peut porter plusieurs formes acceptées séparées par « / »
-(`kabel / kabl`, `surge protective device / SPD`) : la première est celle à écrire, que
-l'application injecte dans ses prompts ; les suivantes ne servent qu'au contrôle des formes
-fléchies par `glossary.py check`. Convention héritée du `glossary.md` d'elec calc, dont le tableau
-a été migré tel quel en termes Validé.
+Une cellule de traduction peut porter plusieurs formes acceptées séparées par une barre
+oblique **entourée d'espaces** (`kabel / kabl`, `surge protective device / SPD`) : la première
+est celle à écrire, que l'application injecte dans ses prompts ; les suivantes ne servent qu'au
+contrôle des formes fléchies par `glossary.py check`. Une barre collée aux lettres fait partie
+du terme : l'allemand écrit `FI/LS-Schalter`, qui est une seule forme. Convention héritée du
+`glossary.md` d'elec calc, dont le tableau a été migré tel quel en termes Validé.
 
 ---
 

@@ -128,7 +128,9 @@ public sealed class GlossaryStoreTests : IDisposable
     [InlineData("", "")]
     [InlineData(null, "")]
     [InlineData("/x", "/x")]
-    public void CanonicalForm_TakesTheFirstFormBeforeSlash(string? cell, string expected)
+    [InlineData("FI/LS-Schalter", "FI/LS-Schalter")]
+    [InlineData("FI/LS-Schalter / FI-Schalter", "FI/LS-Schalter")]
+    public void CanonicalForm_TakesTheFirstFormBeforeSpacedSlash(string? cell, string expected)
     {
         Assert.Equal(expected, GlossaryService.CanonicalForm(cell));
     }
